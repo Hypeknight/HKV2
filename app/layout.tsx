@@ -28,6 +28,8 @@ export default function RootLayout({
             <a href="/">Home</a>
             <a href="/events">Events</a>
             <a href="/venues">Venues</a>
+            <a href="/auth/login">Login</a>
+            <a href="/auth/sign-up">Sign Up</a>
           </nav>
         </header>
 
