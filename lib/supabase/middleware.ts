@@ -1,11 +1,5 @@
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-
-export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
 
 type CookieToSet = {
   name: string;
@@ -13,7 +7,7 @@ type CookieToSet = {
   options?: CookieOptions;
 };
 
-export function updateSession(request: NextRequest) {
+export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
     request,
   });
@@ -43,19 +37,14 @@ export function updateSession(request: NextRequest) {
     }
   );
 
-  void supabase.auth.getUser();
-
-  return response;
-}
-  );
-
   const {
-    data: { user }
+    data: { user },
   } = await supabase.auth.getUser();
 
   if (
     !user &&
-    (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/dashboard'))
+    (request.nextUrl.pathname.startsWith('/admin') ||
+      request.nextUrl.pathname.startsWith('/dashboard'))
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth/login';
