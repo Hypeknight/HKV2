@@ -13,11 +13,28 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url)
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body>
-        <Shell>{children}</Shell>
+      <body className="bg-black text-white">
+        {/* NAVBAR */}
+        <header className="border-b border-white/10 px-6 py-4 flex justify-between items-center">
+          <h1 className="text-xl font-bold text-accent">HypeKnight</h1>
+          <nav className="flex gap-6 text-sm">
+            <a href="/">Home</a>
+            <a href="/events">Events</a>
+            <a href="/venues">Venues</a>
+          </nav>
+        </header>
+
+        {/* PAGE WRAPPER */}
+        <main className="max-w-6xl mx-auto px-6 py-10">
+          {children}
+        </main>
       </body>
     </html>
   );
