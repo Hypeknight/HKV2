@@ -1,5 +1,5 @@
-import { EmptyState } from '@/components/empty-state';
-import { EventCard } from '@/components/cards';
+import { EmptyState } from 'components/empty-state';
+import { EventCard } from 'components/cards';
 import { getUpcomingEvents } from '@/lib/data';
 
 export default async function EventsPage() {

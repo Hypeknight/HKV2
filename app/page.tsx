@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { EventCard, VenueCard } from '@/components/cards';
+import { EventCard, VenueCard } from 'components/cards';
 import { getFeaturedVenues, getUpcomingEvents } from '@/lib/data';
 
 export default async function HomePage() {

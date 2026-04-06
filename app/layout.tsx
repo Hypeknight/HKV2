@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
-import { Shell } from '@/components/shell';
+import { Shell } from 'components/shell';
 import { siteConfig } from '@/lib/site';
 import './globals.css';
 

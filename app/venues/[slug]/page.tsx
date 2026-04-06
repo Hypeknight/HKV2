@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { EmptyState } from '@/components/empty-state';
-import { EventCard } from '@/components/cards';
+import { EmptyState } from 'components/empty-state';
+import { EventCard } from 'components/cards';
 import { getVenueBySlug, getVenueEvents } from '@/lib/data';
 
 export default async function VenueDetailPage({ params }: { params: Promise<{ slug: string }> }) {
