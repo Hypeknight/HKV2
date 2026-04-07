@@ -65,9 +65,7 @@ export default function Navbar({
               <Link href="/admin">Admin</Link>
             )}
 
-            <button onClick={handleLogout} className="hover:text-accent">
-              Logout
-            </button>
+
           </>
         )}
       </nav>
