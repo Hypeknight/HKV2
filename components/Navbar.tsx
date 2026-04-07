@@ -88,7 +88,8 @@ export default function Navbar() {
     await supabase.auth.signOut();
     window.location.href = '/';
   };
-
+console.log('Navbar user:', user);
+console.log('Navbar role:', role);
   return (
     <header className="flex items-center justify-between border-b border-white/10 px-6 py-4">
       <Link href="/" className="text-xl font-bold text-accent">
