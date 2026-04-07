@@ -4,7 +4,7 @@ import { signOut } from '@/app/auth/actions';
 import { getOwnedVenues, getProfile } from '@/lib/data';
 import { createClient } from '@/lib/supabase/server';
 
-const role = profile?.app_role || 'user';
+
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -16,7 +16,8 @@ export default async function DashboardPage() {
 
   const profile = await getProfile();
   const venues = await getOwnedVenues(user.id);
-
+  const role = profile?.app_role || 'user';
+  
   return (
   <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
     <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
