@@ -44,7 +44,7 @@ export default function Navbar() {
       </Link>
 
       <nav className="flex items-center gap-4 text-sm">
-        <Link href="/index">Home</Link>
+        <Link href="/">Home</Link>
         <Link href="/events">Events</Link>
         <Link href="/venues">Venues</Link>
         
