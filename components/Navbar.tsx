@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 
-type AppUser = {
+type NavUser = {
   id: string;
   email?: string;
 };
 
 export default function Navbar() {
-  const [user, setUser] = useState<AppUser | null>(null);
+  const [user, setUser] = useState<NavUser | null>(null);
   const [role, setRole] = useState<string | null>(null);
 
   const supabase = useMemo(
@@ -23,7 +23,7 @@ export default function Navbar() {
   );
 
   useEffect(() => {
-    const loadUser = async () => {
+    const loadUserAndRole = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -38,7 +38,7 @@ export default function Navbar() {
           .single();
 
         if (error) {
-          console.error('Navbar profile load error:', error.message);
+          console.error('Navbar profile error:', error.message);
           setRole('user');
         } else {
           setRole(profile?.app_role || 'user');
@@ -48,7 +48,7 @@ export default function Navbar() {
       }
     };
 
-    loadUser();
+    loadUserAndRole();
 
     const {
       data: { subscription },
@@ -69,7 +69,7 @@ export default function Navbar() {
           .single();
 
         if (error) {
-          console.error('Navbar profile load error:', error.message);
+          console.error('Navbar profile error:', error.message);
           setRole('user');
         } else {
           setRole(profile?.app_role || 'user');
@@ -88,10 +88,9 @@ export default function Navbar() {
     await supabase.auth.signOut();
     window.location.href = '/';
   };
-console.log('Navbar user:', user);
-console.log('Navbar role:', role);
+
   return (
-    <header className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+    <header className="flex justify-between items-center border-b border-white/10 px-6 py-4">
       <Link href="/" className="text-xl font-bold text-accent">
         HypeKnight
       </Link>
@@ -106,7 +105,7 @@ console.log('Navbar role:', role);
             <Link href="/auth/login">Login</Link>
             <Link
               href="/auth/sign-up"
-              className="rounded-lg bg-accent px-4 py-2 font-semibold text-black"
+              className="bg-accent text-black px-4 py-2 rounded-lg font-semibold"
             >
               Sign Up
             </Link>
