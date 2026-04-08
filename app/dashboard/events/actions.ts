@@ -240,3 +240,35 @@ export async function discardDraftEvent(formData: FormData) {
 
   redirect('/dashboard?draft_deleted=1');
 }
+
+export async function requestEventRemoval(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect('/auth/login');
+
+  const eventId = String(formData.get('event_id') || '');
+  const removalReason = String(formData.get('removal_reason') || '');
+  const refundRequested = String(formData.get('refund_requested') || '') === 'yes';
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'removal_requested',
+      removal_requested_at: new Date().toISOString(),
+      removal_reason: removalReason,
+      refund_requested: refundRequested,
+      is_public: false,
+    })
+    .eq('id', eventId)
+    .eq('owner_id', user.id)
+    .in('status', ['scheduled', 'live']);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  redirect('/dashboard?removal_requested=1');
+}

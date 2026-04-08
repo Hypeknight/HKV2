@@ -119,3 +119,76 @@ export async function getMyDraftEvents() {
 
   return data ?? [];
 }
+
+export async function getMyEvents() {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('events')
+    .select(`
+      id,
+      name,
+      slug,
+      venue_name,
+      city,
+      state,
+      status,
+      current_step,
+      is_public,
+      is_paid,
+      payment_override,
+      total_price,
+      event_start_at,
+      promotion_start_at,
+      promotion_end_at,
+      created_at,
+      updated_at,
+      rejected_at,
+      rejection_reason
+    `)
+    .eq('owner_id', user.id)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('Error loading user events:', error.message);
+    return [];
+  }
+
+  return data ?? [];
+}
+
+export async function getMyVenues() {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('venues')
+    .select(`
+      id,
+      name,
+      slug,
+      city,
+      state,
+      status,
+      created_at,
+      updated_at
+    `)
+    .eq('owner_id', user.id)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('Error loading user venues:', error.message);
+    return [];
+  }
+
+  return data ?? [];
+}
