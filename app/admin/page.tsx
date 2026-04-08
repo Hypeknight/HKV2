@@ -35,10 +35,10 @@ export default async function AdminPage({
           <h1 className="mt-2 text-4xl font-bold text-white">Control room</h1>
         </div>
         <div className="flex gap-3">
-          <Link href="/admin/venues/new/step-1" className="rounded-full border border-white/10 px-5 py-3 hover:border-accent/40">
+          <Link href="/admin/venues/new/" className="rounded-full border border-white/10 px-5 py-3 hover:border-accent/40">
             New venue
           </Link>
-          <Link href="/dashboard/events/new" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          <Link href="/dashboard/events/new/step-1" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
             New event
           </Link>
           <Link href="/admin/events" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
