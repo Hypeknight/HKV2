@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { signOut } from '@/app/auth/actions';
-import { getOwnedVenues, getProfile } from '@/lib/data';
+import { getOwnedVenues, getProfile, getMyDraftEvents, } from '@/lib/data';
 import { createClient } from '@/lib/supabase/server';
-
+import { discardDraftEvent } from '@/app/dashboard/events/actions';
 
 
 export default async function DashboardPage() {
@@ -17,7 +17,8 @@ export default async function DashboardPage() {
   const profile = await getProfile();
   const venues = await getOwnedVenues(user.id);
   const role = profile?.app_role || 'user';
-  
+  const drafts = await getMyDraftEvents();
+
   return (
   <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
     <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
@@ -53,6 +54,62 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+          <div className="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <h2 className="text-2xl font-bold text-white">My Draft Events</h2>
+
+            {drafts.length === 0 ? (
+              <p className="mt-4 text-white/70">No unfinished drafts right now.</p>
+            ) : (
+              <div className="mt-6 space-y-4">
+                {drafts.map((draft) => {
+                  const resumeHref =
+                    draft.current_step === 1
+                      ? `/dashboard/events/${draft.id}/edit/step-2`
+                      : draft.current_step === 2
+                      ? `/dashboard/events/${draft.id}/edit/step-3`
+                      : `/dashboard/events/${draft.id}/edit/step-3`;
+
+                  return (
+                    <div
+                      key={draft.id}
+                      className="rounded-3xl border border-white/10 bg-black/20 p-5"
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <p className="text-lg font-semibold text-white">
+                            {draft.name || 'Untitled draft'}
+                          </p>
+                          <p className="mt-1 text-sm text-white/60">
+                            Step {draft.current_step} · Last updated{' '}
+                            {new Date(draft.updated_at).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <Link
+                            href={resumeHref}
+                            className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-white hover:border-accent/40"
+                          >
+                            Continue draft
+                          </Link>
+
+                          <form action={discardDraftEvent}>
+                            <input type="hidden" name="event_id" value={draft.id} />
+                            <button
+                              type="submit"
+                              className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-red-300 hover:border-red-500/40"
+                            >
+                              Discard
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
       {/* RIGHT PANEL */}
       <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
         <h2 className="text-2xl font-bold text-white">Quick actions</h2>
@@ -70,9 +127,12 @@ export default async function DashboardPage() {
                 Create venue
               </Link>
 
-              <Link href="/admin/events/new" className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40">
-                Create event
-              </Link>
+              <Link
+                  href="/dashboard/events/new/step-1"
+                  className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
+                >
+                  Create new event
+                </Link>
             </>
           )}
 
@@ -83,8 +143,11 @@ export default async function DashboardPage() {
                 Create venue
               </Link>
 
-              <Link href="/admin/events/new" className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40">
-                Create event
+              <Link
+                href="/dashboard/events/new/step-1"
+                className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
+              >
+                Create new event
               </Link>
             </>
           )}
