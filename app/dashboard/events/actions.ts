@@ -68,6 +68,8 @@ export async function createEventStep1(formData: FormData) {
       address,
       city,
       state,
+      start_at: eventStartAt.toISOString(),
+      end_at: eventEndAt.toISOString(),
       event_start_at: eventStartAt.toISOString(),
       event_end_at: eventEndAt.toISOString(),
       status: 'building',
