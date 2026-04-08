@@ -15,6 +15,16 @@ function getOwnerType(appRole: string | null | undefined): 'user' | 'venue_owner
   return 'user';
 }
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
 export async function createEventStep1(formData: FormData) {
   const supabase = await createClient();
   const {
@@ -39,6 +49,8 @@ export async function createEventStep1(formData: FormData) {
   const endDate = String(formData.get('end_date') || '');
   const endTime = String(formData.get('end_time') || '');
   const flyerUrl = String(formData.get('flyer_url') || '');
+  const baseSlug = slugify(`${eventName} ${city} ${state}`);
+  const slug = `${baseSlug}-${Date.now()}`;
 
   const eventStartAt = new Date(`${startDate}T${startTime}`);
   const eventEndAt = endDate && endTime
@@ -52,6 +64,7 @@ export async function createEventStep1(formData: FormData) {
       owner_type: getOwnerType(profile?.app_role),
       name: eventName,
       venue_name: venueName,
+      slug,
       address,
       city,
       state,
