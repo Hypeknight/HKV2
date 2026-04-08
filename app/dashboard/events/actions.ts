@@ -58,35 +58,34 @@ export async function createEventStep1(formData: FormData) {
     : new Date(`${startDate}T${startTime}`);
 
   const { data, error } = await supabase
-    .from('events')
-    .insert({
-      owner_id: user.id,
-      owner_type: getOwnerType(profile?.app_role),
-      name: eventName,
-      venue_name: venueName,
-      slug,
-      address,
-      city,
-      state,
-      start_at: eventStartAt.toISOString(),
-      end_at: eventEndAt.toISOString(),
-      event_start_at: eventStartAt.toISOString(),
-      event_end_at: eventEndAt.toISOString(),
-      status: 'building',
-      is_public: false,
-      is_approved: false,
-      is_paid: false,
-      included_promo_days: 14,
-      extra_promo_days: 0,
-      base_price: 19.99,
-      extra_promo_price: 0,
-      linkdn_mode: 'none',
-      linkdn_price: 0,
-      flyer_url: flyerUrl,
-      current_step: 1,
-    })
-    .select('id')
-    .single();
+  .from('events')
+  .insert({
+    owner_id: user.id,
+    owner_type: getOwnerType(profile?.app_role),
+    name: eventName,
+    slug,
+    flyer_url: flyerUrl,
+    venue_name: venueName,
+    address,
+    city,
+    state,
+    event_start_at: eventStartAt.toISOString(),
+    event_end_at: eventEndAt.toISOString(),
+    status: 'building',
+    is_public: false,
+    is_approved: false,
+    is_paid: false,
+    included_promo_days: 14,
+    extra_promo_days: 0,
+    base_price: 19.99,
+    extra_promo_price: 0,
+    linkdn_mode: 'none',
+    linkdn_price: 0,
+    total_price: 19.99,
+    current_step: 1,
+  })
+  .select('id')
+  .single();
 
   if (error) {
     throw new Error(error.message);
@@ -106,19 +105,19 @@ export async function updateEventStep2(formData: FormData) {
   const eventId = String(formData.get('event_id') || '');
 
   const payload = {
-    description: String(formData.get('description') || ''),
-    dress_code: String(formData.get('dress_code') || ''),
-    entry_price: String(formData.get('entry_price') || ''),
-    age_requirement: String(formData.get('age_requirement') || ''),
-    event_type: String(formData.get('event_type') || ''),
-    smoking_policy: String(formData.get('smoking_policy') || ''),
-    parking_notes: String(formData.get('parking_notes') || ''),
-    special_notes: String(formData.get('special_notes') || ''),
-    music_selection: formData.getAll('music_selection').map(String),
-    vibe_tags: formData.getAll('vibe_tags').map(String),
-    current_step: 2,
-    status: 'building',
-  };
+  description: String(formData.get('description') || ''),
+  dress_code: String(formData.get('dress_code') || ''),
+  entry_price: String(formData.get('entry_price') || ''),
+  age_requirement: String(formData.get('age_requirement') || ''),
+  event_type: String(formData.get('event_type') || ''),
+  smoking_policy: String(formData.get('smoking_policy') || ''),
+  parking_notes: String(formData.get('parking_notes') || ''),
+  special_notes: String(formData.get('special_notes') || ''),
+  music_selection: formData.getAll('music_selection').map(String),
+  vibe_tags: formData.getAll('vibe_tags').map(String),
+  current_step: 2,
+  status: 'building',
+};
 
   const { error } = await supabase
     .from('events')
@@ -172,17 +171,17 @@ export async function updateEventStep3(formData: FormData) {
   const { error } = await supabase
     .from('events')
     .update({
-      extra_promo_days: extraPromoDays,
-      extra_promo_price: extraPromoPrice,
-      promotion_start_at: promotionStartAt.toISOString(),
-      promotion_end_at: promotionEndAt.toISOString(),
-      linkdn_mode: linkdnMode,
-      linkdn_price: linkdnPrice,
-      status: 'building',
-      is_public: false,
-      total_price: totalPrice,
-      current_step: 3,
-    })
+  extra_promo_days: extraPromoDays,
+  extra_promo_price: extraPromoPrice,
+  promotion_start_at: promotionStartAt.toISOString(),
+  promotion_end_at: promotionEndAt.toISOString(),
+  linkdn_mode: linkdnMode,
+  linkdn_price: linkdnPrice,
+  total_price: totalPrice,
+  current_step: 3,
+  status: 'building',
+  is_public: false,
+})
     .eq('id', eventId)
     .eq('owner_id', user.id);
 
