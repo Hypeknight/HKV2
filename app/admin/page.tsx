@@ -42,6 +42,7 @@ export default async function AdminPage({
             New event
           </Link>
         </div>
+        <Link href="/admin/events">Moderate Events</Link>
       </div>
       {created ? (
         <p className="mb-6 rounded-2xl bg-emerald-500/10 p-4 text-sm text-emerald-300">
