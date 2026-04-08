@@ -167,7 +167,6 @@ export async function updateEventStep3(formData: FormData) {
       is_public: false,
       total_price: totalPrice,
       current_step: 3,
-      status: 'building',
     })
     .eq('id', eventId)
     .eq('owner_id', user.id);
