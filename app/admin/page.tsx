@@ -41,8 +41,9 @@ export default async function AdminPage({
           <Link href="/admin/events/new" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
             New event
           </Link>
+          <Link href="/admin/events">Moderate Events</Link>
         </div>
-        <Link href="/admin/events">Moderate Events</Link>
+        
       </div>
       {created ? (
         <p className="mb-6 rounded-2xl bg-emerald-500/10 p-4 text-sm text-emerald-300">
