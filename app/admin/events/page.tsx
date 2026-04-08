@@ -132,12 +132,7 @@ export default async function AdminEventsPage() {
                       <h2 className="mt-2 text-2xl font-bold text-white">
                         {event.name}
                       </h2>
-                        <Link
-                            href={`/admin/events/${event.id}`}
-                            className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
-                            >
-                            View Full Event
-                        </Link>
+                        
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <Info label="Venue" value={event.venue_name} />
                         <Info label="City / State" value={`${event.city}, ${event.state}`} />
@@ -155,6 +150,12 @@ export default async function AdminEventsPage() {
                           label="Total Due"
                           value={`$${Number(event.total_price || 0).toFixed(2)}`}
                         />
+                        <Link
+  href={`/admin/events/${event.id}`}
+  className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+>
+  View Full Event
+</Link>
                       </div>
                     </div>
 
