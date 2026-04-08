@@ -85,29 +85,3 @@ export async function getOwnedVenues(userId: string) {
   if (error) throw error;
   return (data ?? []) as Venue[];
 }
-
-import { createClient } from '@/lib/supabase/server';
-
-export async function getMyDraftEvents() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return [];
-
-  const { data, error } = await supabase
-    .from('events')
-    .select('id, name, status, current_step, created_at, updated_at')
-    .eq('owner_id', user.id)
-    .eq('status', 'building')
-    .is('submitted_at', null)
-    .order('updated_at', { ascending: false });
-
-  if (error) {
-    console.error('Error loading draft events:', error.message);
-    return [];
-  }
-
-  return data ?? [];
-}
