@@ -1,10 +1,11 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import {
   approveEvent,
   rejectEvent,
   applyPaymentOverride,
-} from '@/app/admin/events/new/actions';
+} from './new/actions';
 
 export default async function AdminEventsPage() {
   const supabase = await createClient();
@@ -132,10 +133,13 @@ export default async function AdminEventsPage() {
                       <h2 className="mt-2 text-2xl font-bold text-white">
                         {event.name}
                       </h2>
-                        
+
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <Info label="Venue" value={event.venue_name} />
-                        <Info label="City / State" value={`${event.city}, ${event.state}`} />
+                        <Info
+                          label="City / State"
+                          value={`${event.city}, ${event.state}`}
+                        />
                         <Info
                           label="Event Start"
                           value={
@@ -150,16 +154,17 @@ export default async function AdminEventsPage() {
                           label="Total Due"
                           value={`$${Number(event.total_price || 0).toFixed(2)}`}
                         />
-                        <Link
-  href={`/admin/events/${event.id}`}
-  className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
->
-  View Full Event
-</Link>
                       </div>
                     </div>
 
                     <div className="space-y-4">
+                      <Link
+                        href={`/admin/events/${event.id}`}
+                        className="block rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
+                      >
+                        View Full Event
+                      </Link>
+
                       <form action={approveEvent}>
                         <input type="hidden" name="event_id" value={event.id} />
                         <button
@@ -211,7 +216,10 @@ export default async function AdminEventsPage() {
                       <h2 className="text-2xl font-bold text-white">{event.name}</h2>
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <Info label="Venue" value={event.venue_name} />
-                        <Info label="City / State" value={`${event.city}, ${event.state}`} />
+                        <Info
+                          label="City / State"
+                          value={`${event.city}, ${event.state}`}
+                        />
                         <Info
                           label="Event Start"
                           value={
@@ -233,6 +241,13 @@ export default async function AdminEventsPage() {
                     </div>
 
                     <div className="space-y-4">
+                      <Link
+                        href={`/admin/events/${event.id}`}
+                        className="block rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
+                      >
+                        View Full Event
+                      </Link>
+
                       <form action={applyPaymentOverride} className="space-y-3">
                         <input type="hidden" name="event_id" value={event.id} />
                         <textarea
@@ -248,12 +263,6 @@ export default async function AdminEventsPage() {
                           Apply Payment Override
                         </button>
                       </form>
-                      <Link
-                        href={`/admin/events/${event.id}`}
-                        className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
-                        >
-                        View Full Event
-                        </Link>
                     </div>
                   </div>
                 </div>
@@ -275,13 +284,16 @@ export default async function AdminEventsPage() {
                   key={event.id}
                   className="rounded-3xl border border-white/10 bg-white/5 p-5"
                 >
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mb-4">
                     <Link
-                    href={`/admin/events/${event.id}`}
-                    className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+                      href={`/admin/events/${event.id}`}
+                      className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
                     >
-                    View Full Event
+                      View Full Event
                     </Link>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Info label="Event" value={event.name} />
                     <Info label="Status" value={event.status} />
                     <Info label="Venue" value={event.venue_name} />
