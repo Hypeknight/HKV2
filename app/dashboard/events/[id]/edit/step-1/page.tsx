@@ -25,6 +25,7 @@ export default async function EditEventStep1Page({ params }: EditStep1PageProps)
       id,
       owner_id,
       name,
+      slug,
       flyer_url,
       venue_name,
       address,
