@@ -273,15 +273,6 @@ export async function requestEventRemoval(formData: FormData) {
   redirect('/dashboard?removal_requested=1');
 }
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/&/g, 'and')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
-}
 
 export async function updateEventStep1(formData: FormData) {
   const supabase = await createClient();
