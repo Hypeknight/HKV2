@@ -86,7 +86,7 @@ export default async function DashboardPage() {
             className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
             >View all events</Link>
 
-            {(role === 'admin' || role === 'venue_owner') && (
+            {(role === 'admin') && (
               <Link
                 href="/admin"
                 className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"

@@ -90,16 +90,4 @@ export default async function AdminPage({
                   <p className="mt-1 text-sm text-white/60">
                     {venue.city}, {venue.state} • {venue.status}
                   </p>
-                </div>
-              ))
-            ) : (
-              <p className="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-white/60">
-                No venues yet. Create one to begin publishing events.
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+          
