@@ -43,6 +43,9 @@ export default async function AdminPage({
           </Link>
           <Link href="/admin/events" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
           Moderate Events</Link>
+
+          <Link href="/admin/venue-owner-requests/" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          Venue Owner Requests</Link>
         </div>
         
       </div>
