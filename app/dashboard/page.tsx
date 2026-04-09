@@ -73,12 +73,14 @@ export default async function DashboardPage() {
               Create new event
             </Link>
 
+            {role === 'user' && (
             <Link
-              href="/admin/venues/new"
+              href="/dashboard/venue-owner-request"
               className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
             >
-              Create venue
+              Request Venue Owner Access
             </Link>
+            )}
 
             <Link href="/dashboard/events" 
             className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
