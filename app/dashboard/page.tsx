@@ -80,6 +80,10 @@ export default async function DashboardPage() {
               Create venue
             </Link>
 
+            <Link href="/dashboard/events" 
+            className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
+            >View all events</Link>
+
             {(role === 'admin' || role === 'venue_owner') && (
               <Link
                 href="/admin"
