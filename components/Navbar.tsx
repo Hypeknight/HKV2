@@ -61,7 +61,7 @@ export default function Navbar({
           <>
             <Link href="/dashboard">Dashboard</Link>
 
-            {(role === 'admin' || role === 'venue_owner') && (
+            {(role === 'admin') &&(
               <Link href="/admin">Admin</Link>
             )}
 
