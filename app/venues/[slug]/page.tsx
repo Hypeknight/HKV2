@@ -1,6 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import CommentForm from '@/components/venues/CommentForm';
+import MusicRequestForm from '@/components/venues/MusicRequestForm';
+import MusicVoteButtons from '@/components/venues/MusicVoteButtons';
+import FlagCommentForm from '@/components/venues/FlagCommentForm';
+import FlagMusicRequestForm from '@/components/venues/FlagMusicRequestForm';
+import { ownerUpdateVenueMusicRequestStatus } from '@/app/venues/actions';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -57,6 +63,12 @@ export default async function VenueDetailPage({ params }: Props) {
     .eq('venue_id', venue.id)
     .maybeSingle();
 
+  const { data: interactionSettings } = await supabase
+    .from('venue_interaction_settings')
+    .select('*')
+    .eq('venue_id', venue.id)
+    .maybeSingle();
+
   const { data: hours } = await supabase
     .from('venue_hours')
     .select('*')
@@ -80,12 +92,27 @@ export default async function VenueDetailPage({ params }: Props) {
     .order('event_start_at', { ascending: false })
     .limit(8);
 
-  // Placeholder values until tables are added
-  const hypeScore = '0.0';
-  const galleryImages: string[] = [];
+  const { data: comments } = await supabase
+    .from('venue_comments')
+    .select('*')
+    .eq('venue_id', venue.id)
+    .eq('status', 'live')
+    .order('is_pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(20);
 
-  const commentsEnabled = !!featureProfile?.comments_enabled;
-  const djRequestsEnabled = !!featureProfile?.dj_requests_enabled;
+  const { data: musicRequests } = await supabase
+    .from('venue_music_requests')
+    .select('*')
+    .eq('venue_id', venue.id)
+    .in('status', ['pending', 'accepted', 'played'])
+    .order('vote_score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  const hypeScore = '0.0';
+  const commentsEnabled = !!interactionSettings?.comments_enabled;
+  const djRequestsEnabled = !!interactionSettings?.music_requests_enabled;
   const linkdnMode = featureProfile?.linkdn_mode || 'none';
 
   return (
@@ -95,9 +122,7 @@ export default async function VenueDetailPage({ params }: Props) {
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-sm uppercase tracking-[0.35em] text-accent">
-                  Venue
-                </p>
+                <p className="text-sm uppercase tracking-[0.35em] text-accent">Venue</p>
                 <h1 className="mt-3 text-4xl font-bold text-white">{venue.name}</h1>
                 <p className="mt-3 text-white/70">
                   {venue.city}, {venue.state}
@@ -111,7 +136,6 @@ export default async function VenueDetailPage({ params }: Props) {
 
             {venue.cover_image_url ? (
               <div className="mt-8 overflow-hidden rounded-[2rem] border border-white/10">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={venue.cover_image_url}
                   alt={venue.name}
@@ -195,23 +219,6 @@ export default async function VenueDetailPage({ params }: Props) {
           </div>
 
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-            <h2 className="text-2xl font-bold text-white">Images</h2>
-
-            {galleryImages.length ? (
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                {galleryImages.map((url, index) => (
-                  <div key={index} className="overflow-hidden rounded-2xl border border-white/10">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={`${venue.name} ${index + 1}`} className="w-full object-cover" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-white/70">Venue gallery coming soon.</p>
-            )}
-          </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
             <h2 className="text-2xl font-bold text-white">Upcoming Events</h2>
 
             {upcomingEvents?.length ? (
@@ -275,33 +282,113 @@ export default async function VenueDetailPage({ params }: Props) {
           </div>
 
           {!!user && (
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-              <h2 className="text-2xl font-bold text-white">Interactive Features</h2>
+            <>
+              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+                <h2 className="text-2xl font-bold text-white">Live Comments</h2>
 
-              <div className="mt-6 space-y-4">
                 {commentsEnabled ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
-                    <p className="font-semibold">Live Comments</p>
-                    <p className="mt-2 text-sm text-white/70">
-                      Live venue comments will appear here.
-                    </p>
-                  </div>
+                  <>
+                    <div className="mt-6">
+                      <CommentForm venueId={venue.id} venueSlug={venue.slug} />
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      {comments?.length ? (
+                        comments.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                          >
+                            <p className="text-white">{comment.comment_text}</p>
+                            <p className="mt-2 text-xs text-white/50">
+                              {new Date(comment.created_at).toLocaleString()}
+                            </p>
+                            <div className="mt-3">
+                              <FlagCommentForm
+                                commentId={comment.id}
+                                venueSlug={venue.slug}
+                              />
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-white/70">No live comments yet.</p>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <DisabledCard title="Live Comments" text="Comments are not enabled for this venue." />
                 )}
+              </div>
+
+              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+                <h2 className="text-2xl font-bold text-white">Music Requests</h2>
 
                 {djRequestsEnabled ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
-                    <p className="font-semibold">DJ / Music Requests</p>
-                    <p className="mt-2 text-sm text-white/70">
-                      Music request tools will appear here.
-                    </p>
-                  </div>
+                  <>
+                    <div className="mt-6">
+                      <MusicRequestForm venueId={venue.id} venueSlug={venue.slug} />
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      {musicRequests?.length ? (
+                        musicRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                          >
+                            <p className="font-semibold text-white">
+                              {request.song_title}
+                            </p>
+                            <p className="mt-1 text-sm text-white/70">
+                              {request.artist_name || 'Unknown artist'}
+                            </p>
+                            {request.request_note ? (
+                              <p className="mt-2 text-sm text-white/75">{request.request_note}</p>
+                            ) : null}
+
+                            <div className="mt-4 flex flex-wrap items-center gap-3">
+                              <MusicVoteButtons
+                                requestId={request.id}
+                                venueSlug={venue.slug}
+                                upvotes={request.upvote_count || 0}
+                                downvotes={request.downvote_count || 0}
+                              />
+                              <FlagMusicRequestForm
+                                requestId={request.id}
+                                venueSlug={venue.slug}
+                              />
+                            </div>
+
+                            {(isOwner || isAdmin) && (
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {['accepted', 'played', 'rejected', 'removed'].map((status) => (
+                                  <form key={status} action={ownerUpdateVenueMusicRequestStatus}>
+                                    <input type="hidden" name="request_id" value={request.id} />
+                                    <input type="hidden" name="venue_slug" value={venue.slug} />
+                                    <input type="hidden" name="status" value={status} />
+                                    <button
+                                      type="submit"
+                                      className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white hover:border-accent/40"
+                                    >
+                                      {status}
+                                    </button>
+                                  </form>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-white/70">No music requests yet.</p>
+                      )}
+                    </div>
+                  </>
                 ) : (
-                  <DisabledCard title="DJ / Music Requests" text="Music requests are not enabled for this venue." />
+                  <DisabledCard title="Music Requests" text="Music requests are not enabled for this venue." />
                 )}
               </div>
-            </div>
+            </>
           )}
 
           {isOwner && (
