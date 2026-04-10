@@ -7,6 +7,7 @@ import MusicVoteButtons from '@/components/venues/MusicVoteButtons';
 import FlagCommentForm from '@/components/venues/FlagCommentForm';
 import FlagMusicRequestForm from '@/components/venues/FlagMusicRequestForm';
 import { ownerUpdateVenueMusicRequestStatus } from '@/app/venues/actions';
+import CommentModerationButtons from '@/components/venues/CommentModerationButtons';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -92,14 +93,25 @@ export default async function VenueDetailPage({ params }: Props) {
     .order('event_start_at', { ascending: false })
     .limit(8);
 
-  const { data: comments } = await supabase
+    const commentsQuery = supabase
     .from('venue_comments')
     .select('*')
     .eq('venue_id', venue.id)
-    .eq('status', 'live')
     .order('is_pinned', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(20);
+
+  const { data: comments } =
+    isOwner || isAdmin
+      ? await commentsQuery
+      : await supabase
+          .from('venue_comments')
+          .select('*')
+          .eq('venue_id', venue.id)
+          .eq('status', 'live')
+          .order('is_pinned', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(20);
 
   const { data: musicRequests } = await supabase
     .from('venue_music_requests')
@@ -307,6 +319,16 @@ export default async function VenueDetailPage({ params }: Props) {
                               <FlagCommentForm
                                 commentId={comment.id}
                                 venueSlug={venue.slug}
+                                                            {(isOwner || isAdmin) && (
+                              <div className="mt-3">
+                                <CommentModerationButtons
+                                  venueId={venue.id}
+                                  commentId={comment.id}
+                                  venueSlug={venue.slug}
+                                  isPinned={!!comment.is_pinned}
+                                />
+                              </div>
+                            )}
                               />
                             </div>
                           </div>
@@ -401,7 +423,12 @@ export default async function VenueDetailPage({ params }: Props) {
                 >
                   Manage Venue
                 </Link>
-
+                <Link
+                  href={`/dashboard/venues/${venue.id}/interactions`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Manage Interactions
+                </Link>
                 <Link
                   href="/dashboard/venues"
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
