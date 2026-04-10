@@ -174,7 +174,7 @@ export async function updateVenueStep2(formData: FormData) {
 
   if (featureError) throw new Error(featureError.message);
 
-  redirect(`/dashboard/venues/${venueId}/edit/step-3`);
+  redirect(`/dashboard/venues/${venueId}/edit/hours`);
 }
 
 export async function updateVenueStep3(formData: FormData) {
@@ -324,4 +324,50 @@ export async function updateVenueStep3(formData: FormData) {
   if (venueError) throw new Error(venueError.message);
 
   redirect(`/dashboard/venues/${venueId}/review`);
+}
+
+export async function updateVenueHours(formData: FormData) {
+  const { supabase, user } = await requireVenueOwnerOrAdmin();
+
+  const venueId = String(formData.get('venue_id') || '');
+
+  const { data: venue, error: venueError } = await supabase
+    .from('venues')
+    .select('id, owner_id')
+    .eq('id', venueId)
+    .eq('owner_id', user.id)
+    .single();
+
+  if (venueError || !venue) {
+    throw new Error(venueError?.message || 'Venue not found');
+  }
+
+  const rows = [0, 1, 2, 3, 4, 5, 6].map((day) => {
+    const isOpen = String(formData.get(`is_open_${day}`) || '') === 'yes';
+    const openTime = String(formData.get(`open_time_${day}`) || '').trim();
+    const closeTime = String(formData.get(`close_time_${day}`) || '').trim();
+
+    return {
+      venue_id: venueId,
+      day_of_week: day,
+      is_open: isOpen,
+      open_time: isOpen && openTime ? openTime : null,
+      close_time: isOpen && closeTime ? closeTime : null,
+    };
+  });
+
+  const { error: deleteError } = await supabase
+    .from('venue_hours')
+    .delete()
+    .eq('venue_id', venueId);
+
+  if (deleteError) throw new Error(deleteError.message);
+
+  const { error: insertError } = await supabase
+    .from('venue_hours')
+    .insert(rows);
+
+  if (insertError) throw new Error(insertError.message);
+
+  redirect(`/dashboard/venues/${venueId}/edit/step-3`);
 }

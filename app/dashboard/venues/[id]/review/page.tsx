@@ -61,6 +61,12 @@ export default async function VenueReviewPage({ params }: Props) {
         .maybeSingle()
     : { data: null };
 
+  const { data: hours } = await supabase
+    .from('venue_hours')
+    .select('*')
+    .eq('venue_id', id)
+    .order('day_of_week', { ascending: true });
+
   return (
     <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="mb-8">
@@ -121,6 +127,38 @@ export default async function VenueReviewPage({ params }: Props) {
             </Link>
           </div>
         </Panel>
+
+        <Panel title="Operating Hours">
+          {hours?.length ? (
+            <div className="space-y-3">
+              {hours.map((row) => (
+                <div
+                  key={row.id}
+                  className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                >
+                  <p className="text-white">
+                    <span className="font-semibold">
+                      {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][row.day_of_week]}
+                    </span>{' '}
+                    — {row.is_open ? `${row.open_time || '—'} to ${row.close_time || '—'}` : 'Closed'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-white/70">No operating hours set yet.</p>
+          )}
+
+          <div className="mt-6">
+            <Link
+              href={`/dashboard/venues/${venue.id}/edit/hours`}
+              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+            >
+              Edit Hours
+            </Link>
+          </div>
+        </Panel>
+
 
         <Panel title="Plan + Features">
           <Grid>
