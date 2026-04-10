@@ -185,7 +185,7 @@ export default async function VenueStep2Page({ params }: Props) {
               type="submit"
               className="inline-flex items-center justify-center rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
             >
-              Continue to Step 3
+              Continue to Hours
             </button>
           </div>
         </form>

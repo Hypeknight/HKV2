@@ -63,39 +63,9 @@ export default async function VenueDetailPage({ params }: Props) {
     .eq('venue_id', venue.id)
     .order('day_of_week', { ascending: true });
 
-  const { data: subscription } = await supabase
-    .from('venue_subscriptions')
-    .select('*')
-    .eq('venue_id', venue.id)
-    .maybeSingle();
-
-  const { data: subscriptionFeatures } = subscription
-    ? await supabase
-        .from('venue_subscription_features')
-        .select('*')
-        .eq('venue_subscription_id', subscription.id)
-        .maybeSingle()
-    : { data: null };
-
-  const { data: usage } = subscription
-    ? await supabase
-        .from('venue_subscription_usage')
-        .select('*')
-        .eq('venue_subscription_id', subscription.id)
-        .maybeSingle()
-    : { data: null };
-
-  const { data: plan } = subscription?.plan_definition_id
-    ? await supabase
-        .from('venue_plan_definitions')
-        .select('*')
-        .eq('id', subscription.plan_definition_id)
-        .maybeSingle()
-    : { data: null };
-
   const { data: upcomingEvents } = await supabase
     .from('events')
-    .select('id, name, slug, event_start_at, status, is_public')
+    .select('id, name, slug, event_start_at, is_public')
     .eq('venue_id', venue.id)
     .eq('is_public', true)
     .gte('event_start_at', new Date().toISOString())
@@ -104,11 +74,19 @@ export default async function VenueDetailPage({ params }: Props) {
 
   const { data: pastEvents } = await supabase
     .from('events')
-    .select('id, name, slug, event_start_at, status')
+    .select('id, name, slug, event_start_at')
     .eq('venue_id', venue.id)
     .lt('event_start_at', new Date().toISOString())
     .order('event_start_at', { ascending: false })
     .limit(8);
+
+  // Placeholder values until tables are added
+  const hypeScore = '0.0';
+  const galleryImages: string[] = [];
+
+  const commentsEnabled = !!featureProfile?.comments_enabled;
+  const djRequestsEnabled = !!featureProfile?.dj_requests_enabled;
+  const linkdnMode = featureProfile?.linkdn_mode || 'none';
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
@@ -127,7 +105,7 @@ export default async function VenueDetailPage({ params }: Props) {
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white">
-                Status: <span className="font-semibold">{venue.status}</span>
+                Hype Score: <span className="font-semibold">{hypeScore}</span>
               </div>
             </div>
 
@@ -147,8 +125,6 @@ export default async function VenueDetailPage({ params }: Props) {
               <Info label="City / State" value={`${venue.city}, ${venue.state}`} />
               <Info label="Website" value={venue.website_url} />
               <Info label="Instagram" value={venue.instagram_url} />
-              <Info label="Visibility" value={venue.is_visible ? 'Visible' : 'Hidden'} />
-              <Info label="Plan" value={plan?.name || '—'} />
             </div>
 
             <Block label="Description" value={venue.description} />
@@ -173,9 +149,7 @@ export default async function VenueDetailPage({ params }: Props) {
                     className="rounded-2xl border border-white/10 bg-black/20 p-4"
                   >
                     <p className="text-white">
-                      <span className="font-semibold">
-                        {DAY_NAMES[row.day_of_week]}
-                      </span>{' '}
+                      <span className="font-semibold">{DAY_NAMES[row.day_of_week]}</span>{' '}
                       — {row.is_open ? `${row.open_time || '—'} to ${row.close_time || '—'}` : 'Closed'}
                     </p>
                   </div>
@@ -210,24 +184,31 @@ export default async function VenueDetailPage({ params }: Props) {
               {featureProfile?.table_service_enabled && (
                 <Info label="Table Service" value="Enabled" />
               )}
-              {subscriptionFeatures?.comments_enabled && (
-                <Info label="Live Comments" value="Enabled" />
-              )}
-              {subscriptionFeatures?.dj_requests_enabled && (
-                <Info label="DJ Requests" value="Enabled" />
-              )}
-              {subscriptionFeatures?.linkdn_mode &&
-                subscriptionFeatures.linkdn_mode !== 'none' && (
-                  <Info
-                    label="Linkd'N"
-                    value={subscriptionFeatures.linkdn_mode}
-                  />
-                )}
+              {commentsEnabled && <Info label="Live Comments" value="Enabled" />}
+              {djRequestsEnabled && <Info label="DJ Requests" value="Enabled" />}
+              {linkdnMode !== 'none' && <Info label="Linkd'N" value={linkdnMode} />}
             </div>
 
             {featureProfile?.drink_menu_enabled && featureProfile?.drink_menu_notes ? (
               <Block label="Drink Menu Notes" value={featureProfile.drink_menu_notes} />
             ) : null}
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <h2 className="text-2xl font-bold text-white">Images</h2>
+
+            {galleryImages.length ? (
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {galleryImages.map((url, index) => (
+                  <div key={index} className="overflow-hidden rounded-2xl border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt={`${venue.name} ${index + 1}`} className="w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-white/70">Venue gallery coming soon.</p>
+            )}
           </div>
 
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
@@ -286,21 +267,42 @@ export default async function VenueDetailPage({ params }: Props) {
             <h2 className="text-2xl font-bold text-white">Venue Summary</h2>
 
             <div className="mt-6 space-y-4">
-              <SummaryRow label="Status" value={venue.status} />
-              <SummaryRow label="Visibility" value={venue.is_visible ? 'On' : 'Off'} />
-              <SummaryRow label="Plan" value={plan?.name || '—'} />
-              <SummaryRow label="Billing" value={subscription?.billing_mode || '—'} />
-              <SummaryRow label="Lock-In" value={subscription?.lock_in ? 'Yes' : 'No'} />
-              <SummaryRow
-                label="Included Events"
-                value={String(usage?.included_event_posts ?? 0)}
-              />
-              <SummaryRow
-                label="Used Events"
-                value={String(usage?.used_event_posts ?? 0)}
-              />
+              <SummaryRow label="Location" value={`${venue.city}, ${venue.state}`} />
+              <SummaryRow label="Comments" value={commentsEnabled ? 'Live' : 'Unavailable'} />
+              <SummaryRow label="DJ Requests" value={djRequestsEnabled ? 'Live' : 'Unavailable'} />
+              <SummaryRow label="Linkd'N" value={linkdnMode === 'none' ? 'Not enabled' : linkdnMode} />
             </div>
           </div>
+
+          {!!user && (
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+              <h2 className="text-2xl font-bold text-white">Interactive Features</h2>
+
+              <div className="mt-6 space-y-4">
+                {commentsEnabled ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
+                    <p className="font-semibold">Live Comments</p>
+                    <p className="mt-2 text-sm text-white/70">
+                      Live venue comments will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <DisabledCard title="Live Comments" text="Comments are not enabled for this venue." />
+                )}
+
+                {djRequestsEnabled ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
+                    <p className="font-semibold">DJ / Music Requests</p>
+                    <p className="mt-2 text-sm text-white/70">
+                      Music request tools will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <DisabledCard title="DJ / Music Requests" text="Music requests are not enabled for this venue." />
+                )}
+              </div>
+            </div>
+          )}
 
           {isOwner && (
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
@@ -325,7 +327,7 @@ export default async function VenueDetailPage({ params }: Props) {
 
           {isAdmin && (
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-              <h2 className="text-2xl font-bold text-white">Admin Access</h2>
+              <h2 className="text-2xl font-bold text-white">Admin Controls</h2>
               <div className="mt-6 space-y-3">
                 <Link
                   href={`/admin/venues/${venue.id}`}
@@ -342,13 +344,7 @@ export default async function VenueDetailPage({ params }: Props) {
   );
 }
 
-function Info({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string | null;
-}) {
+function Info({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
@@ -357,13 +353,7 @@ function Info({
   );
 }
 
-function Block({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string | null;
-}) {
+function Block({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
@@ -383,6 +373,15 @@ function SummaryRow({
     <div className="flex items-center justify-between gap-4 text-sm">
       <span className="text-white/60">{label}</span>
       <span className="text-right text-white">{value || '—'}</span>
+    </div>
+  );
+}
+
+function DisabledCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/70">
+      <p className="font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm">{text}</p>
     </div>
   );
 }
