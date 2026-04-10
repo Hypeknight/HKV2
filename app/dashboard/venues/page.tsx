@@ -81,7 +81,7 @@ export default async function DashboardVenuesPage() {
                   </Link>
 
                   <Link
-                    href={`/admin/venues/${venue.id}/edit`}
+                    href={`/dashboard/venues/${venue.id}/edit`}
                     className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
                   >
                     Edit
