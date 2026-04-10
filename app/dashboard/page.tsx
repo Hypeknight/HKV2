@@ -279,7 +279,7 @@ export default async function DashboardPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-white">My Venues</h2>
           <Link
-            href="/admin/venues/new"
+            href="/dashboard/venues/new/step-1/"
             className="rounded-2xl bg-accent px-4 py-2 font-semibold text-black hover:opacity-90"
           >
             New venue
