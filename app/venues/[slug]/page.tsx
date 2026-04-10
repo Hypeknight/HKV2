@@ -93,7 +93,7 @@ export default async function VenueDetailPage({ params }: Props) {
     .order('event_start_at', { ascending: false })
     .limit(8);
 
-    const commentsQuery = supabase
+  const commentsQuery = supabase
     .from('venue_comments')
     .select('*')
     .eq('venue_id', venue.id)
@@ -101,7 +101,7 @@ export default async function VenueDetailPage({ params }: Props) {
     .order('created_at', { ascending: false })
     .limit(20);
 
-  const { data: comments } =
+  const { data: comments, error: commentsError } =
     isOwner || isAdmin
       ? await commentsQuery
       : await supabase
@@ -113,7 +113,9 @@ export default async function VenueDetailPage({ params }: Props) {
           .order('created_at', { ascending: false })
           .limit(20);
 
-  const { data: musicRequests } = await supabase
+  if (commentsError) throw new Error(commentsError.message);
+
+  const { data: musicRequests, error: musicRequestsError } = await supabase
     .from('venue_music_requests')
     .select('*')
     .eq('venue_id', venue.id)
@@ -121,6 +123,8 @@ export default async function VenueDetailPage({ params }: Props) {
     .order('vote_score', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(20);
+
+  if (musicRequestsError) throw new Error(musicRequestsError.message);
 
   const hypeScore = '0.0';
   const commentsEnabled = !!interactionSettings?.comments_enabled;
@@ -315,11 +319,15 @@ export default async function VenueDetailPage({ params }: Props) {
                             <p className="mt-2 text-xs text-white/50">
                               {new Date(comment.created_at).toLocaleString()}
                             </p>
+
                             <div className="mt-3">
                               <FlagCommentForm
                                 commentId={comment.id}
                                 venueSlug={venue.slug}
-                                                            {(isOwner || isAdmin) && (
+                              />
+                            </div>
+
+                            {(isOwner || isAdmin) && (
                               <div className="mt-3">
                                 <CommentModerationButtons
                                   venueId={venue.id}
@@ -329,8 +337,6 @@ export default async function VenueDetailPage({ params }: Props) {
                                 />
                               </div>
                             )}
-                              />
-                            </div>
                           </div>
                         ))
                       ) : (
@@ -339,7 +345,10 @@ export default async function VenueDetailPage({ params }: Props) {
                     </div>
                   </>
                 ) : (
-                  <DisabledCard title="Live Comments" text="Comments are not enabled for this venue." />
+                  <DisabledCard
+                    title="Live Comments"
+                    text="Comments are not enabled for this venue."
+                  />
                 )}
               </div>
 
@@ -407,7 +416,10 @@ export default async function VenueDetailPage({ params }: Props) {
                     </div>
                   </>
                 ) : (
-                  <DisabledCard title="Music Requests" text="Music requests are not enabled for this venue." />
+                  <DisabledCard
+                    title="Music Requests"
+                    text="Music requests are not enabled for this venue."
+                  />
                 )}
               </div>
             </>
