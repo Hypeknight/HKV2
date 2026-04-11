@@ -6,6 +6,7 @@ import {
   updateVenueInteractionOverrides,
   updateVenueSubscriptionAdmin,
 } from '@/app/admin/venues/actions';
+import { resolveVenueRemovalRequest } from '@/app/admin/venues/actions';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -230,6 +231,57 @@ export default async function AdminVenueDetailPage({ params }: Props) {
               </button>
             </div>
           </form>
+        </Panel>
+
+        <Panel title="Removal / Refund Request">
+          <Grid>
+            <Info
+              label="Removal Requested At"
+              value={
+                venue.removal_requested_at
+                  ? new Date(venue.removal_requested_at).toLocaleString()
+                  : '—'
+              }
+            />
+            <Info label="Refund Requested" value={venue.refund_requested ? 'Yes' : 'No'} />
+            <Info label="Refund Decision" value={venue.refund_decision} />
+            <Info
+              label="Removed At"
+              value={venue.removed_at ? new Date(venue.removed_at).toLocaleString() : '—'}
+            />
+          </Grid>
+
+          <Block label="Removal Reason" value={venue.removal_reason} />
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <form action={resolveVenueRemovalRequest}>
+              <input type="hidden" name="venue_id" value={venue.id} />
+              <input type="hidden" name="action_type" value="approve_remove" />
+              <input
+                type="hidden"
+                name="refund_decision"
+                value={venue.refund_requested ? 'approved' : 'not_applicable'}
+              />
+              <button
+                type="submit"
+                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-red-300 hover:border-red-500/40"
+              >
+                Approve Removal
+              </button>
+            </form>
+
+            <form action={resolveVenueRemovalRequest}>
+              <input type="hidden" name="venue_id" value={venue.id} />
+              <input type="hidden" name="action_type" value="deny_remove" />
+              <input type="hidden" name="refund_decision" value="denied" />
+              <button
+                type="submit"
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+              >
+                Deny Removal
+              </button>
+            </form>
+          </div>
         </Panel>
 
         <Panel title="Operating Hours">

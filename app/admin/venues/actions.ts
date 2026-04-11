@@ -22,7 +22,7 @@ async function requireAdmin() {
     redirect('/dashboard');
   }
 
-  return { supabase, user };
+    return { supabase, user };
 }
 
 export async function updateVenueAdminState(formData: FormData) {
@@ -124,4 +124,41 @@ export async function updateVenueSubscriptionAdmin(formData: FormData) {
   }
 
   redirect(`/admin/venues/${venueId}?subscription_saved=1`);
+}
+
+export async function resolveVenueRemovalRequest(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const venueId = String(formData.get('venue_id') || '');
+  const action = String(formData.get('action_type') || '');
+  const refundDecision = String(formData.get('refund_decision') || 'not_applicable');
+
+  const updatePayload: Record<string, unknown> = {
+    refund_decision: refundDecision,
+  };
+
+  if (action === 'approve_remove') {
+    updatePayload.status = 'removed';
+    updatePayload.is_visible = false;
+    updatePayload.removed_at = new Date().toISOString();
+    updatePayload.removed_by = user.id;
+  }
+
+  if (action === 'deny_remove') {
+    updatePayload.removal_requested_at = null;
+    updatePayload.removal_reason = null;
+    updatePayload.refund_requested = false;
+    updatePayload.refund_decision = 'denied';
+  }
+
+  const { error } = await supabase
+    .from('venues')
+    .update(updatePayload)
+    .eq('id', venueId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  redirect(`/admin/venues/${venueId}?removal_resolved=1`);
 }

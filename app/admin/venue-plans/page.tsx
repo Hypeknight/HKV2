@@ -222,6 +222,133 @@ export default async function AdminVenuePlansPage() {
                     <Info label="Linkd’N Lite" value={plan.includes_linkdn_lite ? 'Yes' : 'No'} />
                     <Info label="Linkd’N Full" value={plan.includes_linkdn_full ? 'Yes' : 'No'} />
                   </div>
+
+                                <details className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
+                <summary className="cursor-pointer font-medium">Edit Plan</summary>
+
+                <form action={saveVenuePlan} className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <input type="hidden" name="plan_id" value={plan.id} />
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Code</label>
+                    <input
+                      name="code"
+                      type="text"
+                      required
+                      defaultValue={plan.code}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Name</label>
+                    <input
+                      name="name"
+                      type="text"
+                      required
+                      defaultValue={plan.name}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Tier</label>
+                    <select
+                      name="tier"
+                      defaultValue={plan.tier}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    >
+                      <option value="entertainer">entertainer</option>
+                      <option value="promoter">promoter</option>
+                      <option value="hype_lite">hype_lite</option>
+                      <option value="hype_full">hype_full</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Duration Months</label>
+                    <input
+                      name="duration_months"
+                      type="number"
+                      min="1"
+                      required
+                      defaultValue={plan.duration_months}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Base Monthly Price</label>
+                    <input
+                      name="base_monthly_price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      defaultValue={plan.base_monthly_price}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Base Prepaid Price</label>
+                    <input
+                      name="base_prepaid_price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      defaultValue={plan.base_prepaid_price}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white">Included Event Posts</label>
+                    <input
+                      name="included_event_posts"
+                      type="number"
+                      min="0"
+                      required
+                      defaultValue={plan.included_event_posts}
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    />
+                  </div>
+
+                  <div className="grid gap-3">
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                      <input type="checkbox" name="includes_comments" value="yes" defaultChecked={plan.includes_comments} className="h-4 w-4" />
+                      <span>Includes comments</span>
+                    </label>
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                      <input type="checkbox" name="includes_dj_requests" value="yes" defaultChecked={plan.includes_dj_requests} className="h-4 w-4" />
+                      <span>Includes DJ requests</span>
+                    </label>
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                      <input type="checkbox" name="includes_linkdn_lite" value="yes" defaultChecked={plan.includes_linkdn_lite} className="h-4 w-4" />
+                      <span>Includes Linkd'N Lite</span>
+                    </label>
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                      <input type="checkbox" name="includes_linkdn_full" value="yes" defaultChecked={plan.includes_linkdn_full} className="h-4 w-4" />
+                      <span>Includes Linkd'N Full</span>
+                    </label>
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                      <input type="checkbox" name="is_active" value="yes" defaultChecked={plan.is_active} className="h-4 w-4" />
+                      <span>Plan active</span>
+                    </label>
+                  </div>
+
+                  <div className="lg:col-span-2">
+                    <button
+                      type="submit"
+                      className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+                    >
+                      Save Plan Changes
+                    </button>
+                  </div>
+                </form>
+              </details>
+
                 </div>
               </div>
             </div>

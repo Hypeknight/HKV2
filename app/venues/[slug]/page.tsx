@@ -9,6 +9,7 @@ import FlagMusicRequestForm from '@/components/venues/FlagMusicRequestForm';
 import { ownerUpdateVenueMusicRequestStatus } from '@/app/venues/actions';
 import CommentModerationButtons from '@/components/venues/CommentModerationButtons';
 import PresenceJoinForm from '@/components/venues/PresenceJoinForm';
+import { requestVenueRemoval } from '@/app/dashboard/venues/removal/actions';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -438,6 +439,9 @@ export default async function VenueDetailPage({ params }: Props) {
           {isOwner && (
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
               <h2 className="text-2xl font-bold text-white">Owner Controls</h2>
+
+
+
               <div className="mt-6 space-y-3">
                 <Link
                   href={`/dashboard/venues/${venue.id}/edit`}
@@ -470,6 +474,7 @@ export default async function VenueDetailPage({ params }: Props) {
                 >
                   Open Moderation Queue
                 </Link>
+                
                 <Link
                   href="/dashboard/venues"
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
@@ -483,6 +488,37 @@ export default async function VenueDetailPage({ params }: Props) {
           {isAdmin && (
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
               <h2 className="text-2xl font-bold text-white">Admin Controls</h2>
+
+                              <details className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
+                  <summary className="cursor-pointer font-medium">Request Venue Removal</summary>
+                  <form action={requestVenueRemoval} className="mt-4 space-y-3">
+                    <input type="hidden" name="venue_id" value={venue.id} />
+
+                    <textarea
+                      name="removal_reason"
+                      rows={4}
+                      placeholder="Reason for removal"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40"
+                    />
+
+                    <select
+                      name="refund_requested"
+                      defaultValue="no"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                    >
+                      <option value="no">No refund requested</option>
+                      <option value="yes">Request refund</option>
+                    </select>
+
+                    <button
+                      type="submit"
+                      className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300 hover:border-red-500/40"
+                    >
+                      Submit Removal Request
+                    </button>
+                  </form>
+                </details>
+
               <div className="mt-6 space-y-3">
                 <Link
                   href={`/admin/venues/${venue.id}`}

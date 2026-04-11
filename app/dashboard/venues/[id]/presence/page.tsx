@@ -69,6 +69,15 @@ export default async function VenuePresencePage({ params }: Props) {
         </Link>
       </div>
 
+        <div className="flex gap-3">
+          <Link
+            href={`/dashboard/venues/${venue.id}/presence/qr`}
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
+          >
+            Open QR Page
+          </Link>
+        </div>
+
       <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
         <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
           <h2 className="text-2xl font-bold text-white">Create Session</h2>
