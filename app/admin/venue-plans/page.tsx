@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { saveVenuePlan } from '@/app/admin/venue-plans/actions';
 
 export default async function AdminVenuePlansPage() {
   const supabase = await createClient();
@@ -46,6 +47,145 @@ export default async function AdminVenuePlansPage() {
         >
           Back to Admin Venues
         </Link>
+      </div>
+
+      <div className="mb-8 rounded-[2rem] border border-white/10 bg-white/5 p-8">
+        <h2 className="text-2xl font-bold text-white">Create New Plan</h2>
+
+        <form action={saveVenuePlan} className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div>
+            <label htmlFor="code" className="mb-2 block text-sm font-medium text-white">
+              Code
+            </label>
+            <input
+              id="code"
+              name="code"
+              type="text"
+              required
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="name" className="mb-2 block text-sm font-medium text-white">
+              Name
+            </label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              required
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="tier" className="mb-2 block text-sm font-medium text-white">
+              Tier
+            </label>
+            <select
+              id="tier"
+              name="tier"
+              defaultValue="entertainer"
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            >
+              <option value="entertainer">entertainer</option>
+              <option value="promoter">promoter</option>
+              <option value="hype_lite">hype_lite</option>
+              <option value="hype_full">hype_full</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="duration_months" className="mb-2 block text-sm font-medium text-white">
+              Duration Months
+            </label>
+            <input
+              id="duration_months"
+              name="duration_months"
+              type="number"
+              min="1"
+              required
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="base_monthly_price" className="mb-2 block text-sm font-medium text-white">
+              Base Monthly Price
+            </label>
+            <input
+              id="base_monthly_price"
+              name="base_monthly_price"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="base_prepaid_price" className="mb-2 block text-sm font-medium text-white">
+              Base Prepaid Price
+            </label>
+            <input
+              id="base_prepaid_price"
+              name="base_prepaid_price"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="included_event_posts" className="mb-2 block text-sm font-medium text-white">
+              Included Event Posts
+            </label>
+            <input
+              id="included_event_posts"
+              name="included_event_posts"
+              type="number"
+              min="0"
+              required
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div className="grid gap-4">
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input type="checkbox" name="includes_comments" value="yes" className="h-4 w-4" />
+              <span>Includes comments</span>
+            </label>
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input type="checkbox" name="includes_dj_requests" value="yes" className="h-4 w-4" />
+              <span>Includes DJ requests</span>
+            </label>
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input type="checkbox" name="includes_linkdn_lite" value="yes" className="h-4 w-4" />
+              <span>Includes Linkd'N Lite</span>
+            </label>
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input type="checkbox" name="includes_linkdn_full" value="yes" className="h-4 w-4" />
+              <span>Includes Linkd'N Full</span>
+            </label>
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input type="checkbox" name="is_active" value="yes" defaultChecked className="h-4 w-4" />
+              <span>Plan active</span>
+            </label>
+          </div>
+
+          <div className="lg:col-span-2">
+            <button
+              type="submit"
+              className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+            >
+              Save Plan
+            </button>
+          </div>
+        </form>
       </div>
 
       {!plans?.length ? (

@@ -1,6 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import {
+  updateVenueAdminState,
+  updateVenueInteractionOverrides,
+  updateVenueSubscriptionAdmin,
+} from '@/app/admin/venues/actions';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -168,6 +173,65 @@ export default async function AdminVenueDetailPage({ params }: Props) {
           <Block label="Special Message" value={venue.special_message} />
         </Panel>
 
+        <Panel title="Admin Venue Controls">
+          <form action={updateVenueAdminState} className="grid gap-6 lg:grid-cols-2">
+            <input type="hidden" name="venue_id" value={venue.id} />
+
+            <div>
+              <label htmlFor="status" className="mb-2 block text-sm font-medium text-white">
+                Venue Status
+              </label>
+              <select
+                id="status"
+                name="status"
+                defaultValue={venue.status || 'draft'}
+                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+              >
+                <option value="draft">draft</option>
+                <option value="pending_payment">pending_payment</option>
+                <option value="active">active</option>
+                <option value="hidden">hidden</option>
+                <option value="suspended">suspended</option>
+                <option value="removed">removed</option>
+                <option value="archived">archived</option>
+              </select>
+            </div>
+
+            <div className="grid gap-4">
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+                <input
+                  type="checkbox"
+                  name="is_visible"
+                  value="yes"
+                  defaultChecked={venue.is_visible || false}
+                  className="h-4 w-4"
+                />
+                <span>Publicly visible</span>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+                <input
+                  type="checkbox"
+                  name="is_featured"
+                  value="yes"
+                  defaultChecked={venue.is_featured || false}
+                  className="h-4 w-4"
+                />
+                <span>Featured venue</span>
+              </label>
+            </div>
+
+            <div className="lg:col-span-2">
+              <button
+                type="submit"
+                className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+              >
+                Save Venue State
+              </button>
+            </div>
+          </form>
+        </Panel>
+
         <Panel title="Operating Hours">
           {hours?.length ? (
             <div className="space-y-3">
@@ -220,6 +284,99 @@ export default async function AdminVenueDetailPage({ params }: Props) {
           </Grid>
         </Panel>
 
+        <Panel title="Admin Interaction Overrides">
+          <form action={updateVenueInteractionOverrides} className="grid gap-6 lg:grid-cols-2">
+            <input type="hidden" name="venue_id" value={venue.id} />
+
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input
+                type="checkbox"
+                name="comments_enabled"
+                value="yes"
+                defaultChecked={interactionSettings?.comments_enabled || false}
+                className="h-4 w-4"
+              />
+              <span>Comments enabled</span>
+            </label>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input
+                type="checkbox"
+                name="music_requests_enabled"
+                value="yes"
+                defaultChecked={interactionSettings?.music_requests_enabled || false}
+                className="h-4 w-4"
+              />
+              <span>Music requests enabled</span>
+            </label>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input
+                type="checkbox"
+                name="comments_require_presence"
+                value="yes"
+                defaultChecked={interactionSettings?.comments_require_presence || false}
+                className="h-4 w-4"
+              />
+              <span>Comments require presence</span>
+            </label>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+              <input
+                type="checkbox"
+                name="music_requests_require_presence"
+                value="yes"
+                defaultChecked={interactionSettings?.music_requests_require_presence || false}
+                className="h-4 w-4"
+              />
+              <span>Music requests require presence</span>
+            </label>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white lg:col-span-2">
+              <input
+                type="checkbox"
+                name="comments_auto_filter_enabled"
+                value="yes"
+                defaultChecked={
+                  interactionSettings?.comments_auto_filter_enabled === false ? false : true
+                }
+                className="h-4 w-4"
+              />
+              <span>Auto-filter comments</span>
+            </label>
+
+            <div className="lg:col-span-2">
+              <label
+                htmlFor="comment_retention_hours"
+                className="mb-2 block text-sm font-medium text-white"
+              >
+                Comment retention
+              </label>
+              <select
+                id="comment_retention_hours"
+                name="comment_retention_hours"
+                defaultValue={String(interactionSettings?.comment_retention_hours || 24)}
+                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+              >
+                <option value="1">1 hour</option>
+                <option value="4">4 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24">24 hours</option>
+                <option value="72">72 hours</option>
+              </select>
+            </div>
+
+            <div className="lg:col-span-2">
+              <button
+                type="submit"
+                className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+              >
+                Save Interaction Overrides
+              </button>
+            </div>
+          </form>
+        </Panel>
+
         <Panel title="Subscription + Plan">
           <Grid>
             <Info label="Plan" value={plan?.name} />
@@ -238,6 +395,103 @@ export default async function AdminVenueDetailPage({ params }: Props) {
 
           <Block label="Admin Notes" value={subscription?.admin_notes} />
         </Panel>
+
+        {subscription && (
+          <Panel title="Admin Subscription Controls">
+            <form action={updateVenueSubscriptionAdmin} className="grid gap-6 lg:grid-cols-2">
+              <input type="hidden" name="venue_id" value={venue.id} />
+              <input type="hidden" name="subscription_id" value={subscription.id} />
+
+              <div>
+                <label
+                  htmlFor="subscription_status"
+                  className="mb-2 block text-sm font-medium text-white"
+                >
+                  Subscription Status
+                </label>
+                <select
+                  id="subscription_status"
+                  name="subscription_status"
+                  defaultValue={subscription.subscription_status || 'draft'}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                >
+                  <option value="draft">draft</option>
+                  <option value="pending_payment">pending_payment</option>
+                  <option value="active">active</option>
+                  <option value="past_due">past_due</option>
+                  <option value="canceled">canceled</option>
+                  <option value="expired">expired</option>
+                  <option value="refunded">refunded</option>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="billing_mode"
+                  className="mb-2 block text-sm font-medium text-white"
+                >
+                  Billing Mode
+                </label>
+                <select
+                  id="billing_mode"
+                  name="billing_mode"
+                  defaultValue={subscription.billing_mode || 'monthly'}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                >
+                  <option value="monthly">monthly</option>
+                  <option value="prepaid">prepaid</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+                <input
+                  type="checkbox"
+                  name="lock_in"
+                  value="yes"
+                  defaultChecked={subscription.lock_in || false}
+                  className="h-4 w-4"
+                />
+                <span>Lock-in</span>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white">
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  value="yes"
+                  defaultChecked={subscription.is_active || false}
+                  className="h-4 w-4"
+                />
+                <span>Subscription active</span>
+              </label>
+
+              <div className="lg:col-span-2">
+                <label
+                  htmlFor="admin_notes"
+                  className="mb-2 block text-sm font-medium text-white"
+                >
+                  Admin Notes
+                </label>
+                <textarea
+                  id="admin_notes"
+                  name="admin_notes"
+                  rows={4}
+                  defaultValue={subscription.admin_notes || ''}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                />
+              </div>
+
+              <div className="lg:col-span-2">
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+                >
+                  Save Subscription Controls
+                </button>
+              </div>
+            </form>
+          </Panel>
+        )}
 
         <Panel title="Subscription Features + Usage">
           <Grid>
