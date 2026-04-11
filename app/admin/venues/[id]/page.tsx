@@ -5,8 +5,8 @@ import {
   updateVenueAdminState,
   updateVenueInteractionOverrides,
   updateVenueSubscriptionAdmin,
+  resolveVenueRemovalRequest,
 } from '@/app/admin/venues/actions';
-import { resolveVenueRemovalRequest } from '@/app/admin/venues/actions';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -119,6 +119,13 @@ export default async function AdminVenueDetailPage({ params }: Props) {
     .eq('venue_id', id)
     .order('created_at', { ascending: false })
     .limit(10);
+
+  const { data: billingEvents } = await supabase
+    .from('venue_billing_events')
+    .select('*')
+    .eq('venue_id', id)
+    .order('created_at', { ascending: false })
+    .limit(20);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -253,15 +260,54 @@ export default async function AdminVenueDetailPage({ params }: Props) {
 
           <Block label="Removal Reason" value={venue.removal_reason} />
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <form action={resolveVenueRemovalRequest}>
+          <div className="mt-6 space-y-4">
+            <form
+              action={resolveVenueRemovalRequest}
+              className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-4"
+            >
               <input type="hidden" name="venue_id" value={venue.id} />
               <input type="hidden" name="action_type" value="approve_remove" />
-              <input
-                type="hidden"
-                name="refund_decision"
-                value={venue.refund_requested ? 'approved' : 'not_applicable'}
-              />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-white">
+                    Refund Decision
+                  </label>
+                  <select
+                    name="refund_decision"
+                    defaultValue={venue.refund_requested ? 'approved' : 'not_applicable'}
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                  >
+                    <option value="approved">approved</option>
+                    <option value="denied">denied</option>
+                    <option value="not_applicable">not_applicable</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-white">
+                    Refund Amount
+                  </label>
+                  <input
+                    name="refund_amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue="0.00"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-white">Notes</label>
+                <textarea
+                  name="notes"
+                  rows={3}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                />
+              </div>
+
               <button
                 type="submit"
                 className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-red-300 hover:border-red-500/40"
@@ -270,10 +316,26 @@ export default async function AdminVenueDetailPage({ params }: Props) {
               </button>
             </form>
 
-            <form action={resolveVenueRemovalRequest}>
+            <form
+              action={resolveVenueRemovalRequest}
+              className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-4"
+            >
               <input type="hidden" name="venue_id" value={venue.id} />
               <input type="hidden" name="action_type" value="deny_remove" />
               <input type="hidden" name="refund_decision" value="denied" />
+              <input type="hidden" name="refund_amount" value="0" />
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-white">
+                  Denial Notes
+                </label>
+                <textarea
+                  name="notes"
+                  rows={3}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                />
+              </div>
+
               <button
                 type="submit"
                 className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
@@ -315,9 +377,15 @@ export default async function AdminVenueDetailPage({ params }: Props) {
                   : '—'
               }
             />
-            <Info label="Drink Menu Enabled" value={featureProfile?.drink_menu_enabled ? 'Yes' : 'No'} />
+            <Info
+              label="Drink Menu Enabled"
+              value={featureProfile?.drink_menu_enabled ? 'Yes' : 'No'}
+            />
             <Info label="RSVP Enabled" value={featureProfile?.rsvp_enabled ? 'Yes' : 'No'} />
-            <Info label="Table Service Enabled" value={featureProfile?.table_service_enabled ? 'Yes' : 'No'} />
+            <Info
+              label="Table Service Enabled"
+              value={featureProfile?.table_service_enabled ? 'Yes' : 'No'}
+            />
             <Info label="Linkd'N Mode" value={featureProfile?.linkdn_mode} />
           </Grid>
 
@@ -327,12 +395,34 @@ export default async function AdminVenueDetailPage({ params }: Props) {
 
         <Panel title="Interaction Settings">
           <Grid>
-            <Info label="Comments Enabled" value={interactionSettings?.comments_enabled ? 'Yes' : 'No'} />
-            <Info label="Comment Retention" value={interactionSettings?.comment_retention_hours ? `${interactionSettings.comment_retention_hours} hours` : '—'} />
-            <Info label="Comments Require Presence" value={interactionSettings?.comments_require_presence ? 'Yes' : 'No'} />
-            <Info label="Auto Filter Enabled" value={interactionSettings?.comments_auto_filter_enabled ? 'Yes' : 'No'} />
-            <Info label="Music Requests Enabled" value={interactionSettings?.music_requests_enabled ? 'Yes' : 'No'} />
-            <Info label="Music Requests Require Presence" value={interactionSettings?.music_requests_require_presence ? 'Yes' : 'No'} />
+            <Info
+              label="Comments Enabled"
+              value={interactionSettings?.comments_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Comment Retention"
+              value={
+                interactionSettings?.comment_retention_hours
+                  ? `${interactionSettings.comment_retention_hours} hours`
+                  : '—'
+              }
+            />
+            <Info
+              label="Comments Require Presence"
+              value={interactionSettings?.comments_require_presence ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Auto Filter Enabled"
+              value={interactionSettings?.comments_auto_filter_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Music Requests Enabled"
+              value={interactionSettings?.music_requests_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Music Requests Require Presence"
+              value={interactionSettings?.music_requests_require_presence ? 'Yes' : 'No'}
+            />
           </Grid>
         </Panel>
 
@@ -439,10 +529,26 @@ export default async function AdminVenueDetailPage({ params }: Props) {
             <Info label="Lock-In" value={subscription?.lock_in ? 'Yes' : 'No'} />
             <Info label="Monthly Price" value={money(subscription?.monthly_price)} />
             <Info label="Prepaid Total" value={money(subscription?.prepaid_total)} />
-            <Info label="Current Period Price" value={money(subscription?.current_period_price)} />
-            <Info label="Next Billing Amount" value={money(subscription?.next_billing_amount)} />
-            <Info label="Subscription Active" value={subscription?.is_active ? 'Yes' : 'No'} />
-            <Info label="Activated At" value={subscription?.activated_at ? new Date(subscription.activated_at).toLocaleString() : '—'} />
+            <Info
+              label="Current Period Price"
+              value={money(subscription?.current_period_price)}
+            />
+            <Info
+              label="Next Billing Amount"
+              value={money(subscription?.next_billing_amount)}
+            />
+            <Info
+              label="Subscription Active"
+              value={subscription?.is_active ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Activated At"
+              value={
+                subscription?.activated_at
+                  ? new Date(subscription.activated_at).toLocaleString()
+                  : '—'
+              }
+            />
           </Grid>
 
           <Block label="Admin Notes" value={subscription?.admin_notes} />
@@ -547,15 +653,36 @@ export default async function AdminVenueDetailPage({ params }: Props) {
 
         <Panel title="Subscription Features + Usage">
           <Grid>
-            <Info label="Comments Feature" value={subscriptionFeatures?.comments_enabled ? 'Yes' : 'No'} />
-            <Info label="DJ Requests Feature" value={subscriptionFeatures?.dj_requests_enabled ? 'Yes' : 'No'} />
+            <Info
+              label="Comments Feature"
+              value={subscriptionFeatures?.comments_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="DJ Requests Feature"
+              value={subscriptionFeatures?.dj_requests_enabled ? 'Yes' : 'No'}
+            />
             <Info label="Linkd'N" value={subscriptionFeatures?.linkdn_mode} />
-            <Info label="Drink Menu Feature" value={subscriptionFeatures?.drink_menu_enabled ? 'Yes' : 'No'} />
+            <Info
+              label="Drink Menu Feature"
+              value={subscriptionFeatures?.drink_menu_enabled ? 'Yes' : 'No'}
+            />
             <Info label="RSVP Feature" value={subscriptionFeatures?.rsvp_enabled ? 'Yes' : 'No'} />
-            <Info label="Table Service Feature" value={subscriptionFeatures?.table_service_enabled ? 'Yes' : 'No'} />
-            <Info label="Music Profile Visible" value={subscriptionFeatures?.music_profile_enabled ? 'Yes' : 'No'} />
-            <Info label="Dress Code Visible" value={subscriptionFeatures?.dress_code_enabled ? 'Yes' : 'No'} />
-            <Info label="Special Message Visible" value={subscriptionFeatures?.special_message_enabled ? 'Yes' : 'No'} />
+            <Info
+              label="Table Service Feature"
+              value={subscriptionFeatures?.table_service_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Music Profile Visible"
+              value={subscriptionFeatures?.music_profile_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Dress Code Visible"
+              value={subscriptionFeatures?.dress_code_enabled ? 'Yes' : 'No'}
+            />
+            <Info
+              label="Special Message Visible"
+              value={subscriptionFeatures?.special_message_enabled ? 'Yes' : 'No'}
+            />
             <Info label="Included Event Posts" value={String(usage?.included_event_posts ?? 0)} />
             <Info label="Used Event Posts" value={String(usage?.used_event_posts ?? 0)} />
           </Grid>
@@ -630,6 +757,30 @@ export default async function AdminVenueDetailPage({ params }: Props) {
           )}
         </Panel>
 
+        <Panel title="Billing / Refund Log">
+          {billingEvents?.length ? (
+            <div className="space-y-3">
+              {billingEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                >
+                  <p className="font-semibold text-white">{event.event_type}</p>
+                  <p className="mt-1 text-sm text-white/70">
+                    Amount: ${Number(event.amount || 0).toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-sm text-white/70">{event.notes || '—'}</p>
+                  <p className="mt-1 text-xs text-white/50">
+                    {event.created_at ? new Date(event.created_at).toLocaleString() : '—'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-white/70">No billing events logged yet.</p>
+          )}
+        </Panel>
+
         <Panel title="Admin Shortcuts">
           <div className="flex flex-wrap gap-3">
             <Link
@@ -698,7 +849,7 @@ function Info({
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
       <p className="text-xs uppercase tracking-[0.2em] text-white/50">{label}</p>
-      <p className="mt-2 text-sm text-white break-words">{value || '—'}</p>
+      <p className="mt-2 break-words text-sm text-white">{value || '—'}</p>
     </div>
   );
 }

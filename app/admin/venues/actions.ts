@@ -132,16 +132,27 @@ export async function resolveVenueRemovalRequest(formData: FormData) {
   const venueId = String(formData.get('venue_id') || '');
   const action = String(formData.get('action_type') || '');
   const refundDecision = String(formData.get('refund_decision') || 'not_applicable');
+  const refundAmount = Number(formData.get('refund_amount') || 0);
+  const notes = String(formData.get('notes') || '').trim();
+
+  const { data: subscription } = await supabase
+    .from('venue_subscriptions')
+    .select('id')
+    .eq('venue_id', venueId)
+    .maybeSingle();
 
   const updatePayload: Record<string, unknown> = {
     refund_decision: refundDecision,
   };
+
+  let billingEventType = 'manual_adjustment';
 
   if (action === 'approve_remove') {
     updatePayload.status = 'removed';
     updatePayload.is_visible = false;
     updatePayload.removed_at = new Date().toISOString();
     updatePayload.removed_by = user.id;
+    billingEventType = 'removal_approved';
   }
 
   if (action === 'deny_remove') {
@@ -149,6 +160,7 @@ export async function resolveVenueRemovalRequest(formData: FormData) {
     updatePayload.removal_reason = null;
     updatePayload.refund_requested = false;
     updatePayload.refund_decision = 'denied';
+    billingEventType = 'removal_denied';
   }
 
   const { error } = await supabase
@@ -158,6 +170,40 @@ export async function resolveVenueRemovalRequest(formData: FormData) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const billingNote =
+    notes ||
+    (action === 'approve_remove'
+      ? `Venue removal approved. Refund decision: ${refundDecision}`
+      : 'Venue removal denied.');
+
+  const { error: billingError } = await supabase.from('venue_billing_events').insert({
+    venue_id: venueId,
+    venue_subscription_id: subscription?.id || null,
+    event_type: billingEventType,
+    amount: refundDecision === 'approved' ? refundAmount : 0,
+    notes: billingNote,
+    created_by: user.id,
+  });
+
+  if (billingError) {
+    throw new Error(billingError.message);
+  }
+
+  if (refundDecision === 'approved') {
+    const { error: refundLogError } = await supabase.from('venue_billing_events').insert({
+      venue_id: venueId,
+      venue_subscription_id: subscription?.id || null,
+      event_type: 'refund',
+      amount: refundAmount,
+      notes: notes || 'Admin-approved refund',
+      created_by: user.id,
+    });
+
+    if (refundLogError) {
+      throw new Error(refundLogError.message);
+    }
   }
 
   redirect(`/admin/venues/${venueId}?removal_resolved=1`);

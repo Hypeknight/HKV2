@@ -55,6 +55,24 @@ function moderateComment(text: string): {
   };
 }
 
+async function getActivePresenceCheckin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  venueId: string,
+  userId: string
+) {
+  const { data } = await supabase
+    .from('venue_presence_checkins')
+    .select('*')
+    .eq('venue_id', venueId)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .gt('expires_at', new Date().toISOString())
+    .order('checked_in_at', { ascending: false })
+    .maybeSingle();
+
+  return data;
+}
+
 export async function submitVenueComment(formData: FormData) {
   const supabase = await createClient();
 
@@ -86,6 +104,18 @@ export async function submitVenueComment(formData: FormData) {
     redirect(`/venues/${venueSlug}?comment_error=disabled`);
   }
 
+  let presenceSessionId: string | null = null;
+
+  if (settings.comments_require_presence) {
+    const activeCheckin = await getActivePresenceCheckin(supabase, venueId, user.id);
+
+    if (!activeCheckin) {
+      redirect(`/venues/${venueSlug}?comment_error=presence_required`);
+    }
+
+    presenceSessionId = activeCheckin.venue_presence_session_id;
+  }
+
   const moderation = settings.comments_auto_filter_enabled
     ? moderateComment(commentText)
     : {
@@ -105,6 +135,7 @@ export async function submitVenueComment(formData: FormData) {
     filter_result: moderation.filterResult,
     hidden_reason: moderation.hiddenReason,
     expires_at: expiresAt,
+    presence_session_id: presenceSessionId,
   });
 
   if (error) {
@@ -173,6 +204,18 @@ export async function submitVenueMusicRequest(formData: FormData) {
     redirect(`/venues/${venueSlug}?music_error=disabled`);
   }
 
+  let presenceSessionId: string | null = null;
+
+  if (settings.music_requests_require_presence) {
+    const activeCheckin = await getActivePresenceCheckin(supabase, venueId, user.id);
+
+    if (!activeCheckin) {
+      redirect(`/venues/${venueSlug}?music_error=presence_required`);
+    }
+
+    presenceSessionId = activeCheckin.venue_presence_session_id;
+  }
+
   const { error } = await supabase.from('venue_music_requests').insert({
     venue_id: venueId,
     user_id: user.id,
@@ -180,6 +223,7 @@ export async function submitVenueMusicRequest(formData: FormData) {
     song_title: songTitle,
     request_note: requestNote || null,
     status: 'pending',
+    presence_session_id: presenceSessionId,
   });
 
   if (error) throw new Error(error.message);

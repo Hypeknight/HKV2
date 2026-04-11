@@ -78,6 +78,13 @@ export default async function VenuePresenceQrPage({ params }: Props) {
           </div>
         </div>
 
+        <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5 text-white">
+          <p className="text-lg font-semibold">Display Instructions</p>
+          <p className="mt-2 text-white/70">
+            Place this QR near the bar, DJ booth, entrance, or tables so guests can join the live venue session.
+          </p>
+        </div>
+
         <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4 text-left text-white">
           <p><span className="font-semibold">Session code:</span> {session.session_code}</p>
           <p className="mt-2 break-all">
