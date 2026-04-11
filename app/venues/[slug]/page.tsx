@@ -441,6 +441,12 @@ export default async function VenueDetailPage({ params }: Props) {
                 >
                   Manage Interactions
                 </Link>
+                                <Link
+                  href={`/dashboard/venues/${venue.id}/music-requests`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Open Music Queue
+                </Link>
                 <Link
                   href="/dashboard/venues"
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"

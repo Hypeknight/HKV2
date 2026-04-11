@@ -90,7 +90,13 @@ export default async function EditVenueLandingPage({ params }: Props) {
           href={`/dashboard/venues/${venue.id}/edit/step-3`}
           buttonLabel="Edit Step 3"
         />
-
+        <SectionCard
+          title="Music Queue"
+          text="Review, sort, and manage submitted music requests."
+          href={`/dashboard/venues/${venue.id}/music-requests`}
+          buttonLabel="Open Music Queue"
+        />
+        
         <SectionCard
           title="Review"
           text="Review everything before payment activation and final venue go-live setup."
