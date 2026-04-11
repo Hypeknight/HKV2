@@ -8,6 +8,7 @@ import FlagCommentForm from '@/components/venues/FlagCommentForm';
 import FlagMusicRequestForm from '@/components/venues/FlagMusicRequestForm';
 import { ownerUpdateVenueMusicRequestStatus } from '@/app/venues/actions';
 import CommentModerationButtons from '@/components/venues/CommentModerationButtons';
+import PresenceJoinForm from '@/components/venues/PresenceJoinForm';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -298,7 +299,16 @@ export default async function VenueDetailPage({ params }: Props) {
           </div>
 
           {!!user && (
-            <>
+            <>              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+                <h2 className="text-2xl font-bold text-white">Venue Presence</h2>
+                <p className="mt-3 text-white/70">
+                  Join the live venue session to support future in-venue verification.
+                </p>
+                <div className="mt-6">
+                  <PresenceJoinForm venueId={venue.id} venueSlug={venue.slug} />
+                </div>
+              </div>
+
               <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
                 <h2 className="text-2xl font-bold text-white">Live Comments</h2>
 
@@ -446,6 +456,19 @@ export default async function VenueDetailPage({ params }: Props) {
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
                 >
                   Open Music Queue
+                </Link>
+                                <Link
+                  href={`/dashboard/venues/${venue.id}/presence`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Manage Presence / QR
+                </Link>
+
+                <Link
+                  href={`/dashboard/venues/${venue.id}/moderation`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Open Moderation Queue
                 </Link>
                 <Link
                   href="/dashboard/venues"

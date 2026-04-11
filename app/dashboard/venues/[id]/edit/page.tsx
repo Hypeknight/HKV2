@@ -110,6 +110,20 @@ export default async function EditVenueLandingPage({ params }: Props) {
           href="/dashboard/venues"
           buttonLabel="My Venues"
         />
+
+                <SectionCard
+          title="Presence / QR"
+          text="Start and manage live venue sessions for in-venue verification."
+          href={`/dashboard/venues/${venue.id}/presence`}
+          buttonLabel="Manage Presence"
+        />
+
+        <SectionCard
+          title="Moderation Queue"
+          text="Review flagged, hidden, and pending-review comments."
+          href={`/dashboard/venues/${venue.id}/moderation`}
+          buttonLabel="Open Moderation"
+        />
       </div>
     </section>
   );
