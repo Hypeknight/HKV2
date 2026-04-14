@@ -18,6 +18,9 @@ export async function getFeaturedVenues() {
 
 export async function getUpcomingEvents() {
   const supabase = await createServerClient();
+  
+  const now = new Date().toISOString();
+
   const { data, error } = await supabase
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
