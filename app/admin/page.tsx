@@ -46,6 +46,14 @@ export default async function AdminPage({
 
           <Link href="/admin/venue-owner-requests/" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
           Venue Owner Requests</Link>
+
+          <Link href="/admin/venues" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          Manage Venues</Link>
+
+         <Link href="/admin/djs" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          Manage DJs
+         </Link>
+
         </div>
         
       </div>

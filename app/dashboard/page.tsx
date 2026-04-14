@@ -82,6 +82,10 @@ export default async function DashboardPage() {
             </Link>
             )}
 
+            <Link href="/dashboard/dj/request"
+            className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
+            >Request DJ Role</Link>
+
             <Link href="/dashboard/events" 
             className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
             >View all events</Link>
