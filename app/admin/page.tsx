@@ -126,7 +126,7 @@ export default async function HomePage() {
         />
         <InfoPanel
           title="Designed to grow into Linkd'N"
-          text="Comments, music requests, presence, and live venue interaction are already shaping the next layer."
+          text="Comments, music requests, presence, and live venue interaction are already shaping the next layer, all we need is you."
         />
       </section>
 
