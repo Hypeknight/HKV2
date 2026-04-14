@@ -60,6 +60,29 @@ export default async function VenueDetailPage({ params }: Props) {
 
   if (!canView) notFound();
 
+  const { data: activePresenceCheckin } = user
+    ? await supabase
+        .from('venue_presence_checkins')
+        .select(
+          `
+            *,
+            session:venue_presence_sessions(
+              id,
+              session_code,
+              status,
+              starts_at,
+              ends_at
+            )
+          `
+        )
+        .eq('venue_id', venue.id)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .gt('expires_at', new Date().toISOString())
+        .order('checked_in_at', { ascending: false })
+        .maybeSingle()
+    : { data: null };
+
   const { data: featureProfile } = await supabase
     .from('venue_feature_profiles')
     .select('*')
@@ -295,19 +318,99 @@ export default async function VenueDetailPage({ params }: Props) {
               <SummaryRow label="Location" value={`${venue.city}, ${venue.state}`} />
               <SummaryRow label="Comments" value={commentsEnabled ? 'Live' : 'Unavailable'} />
               <SummaryRow label="DJ Requests" value={djRequestsEnabled ? 'Live' : 'Unavailable'} />
-              <SummaryRow label="Linkd'N" value={linkdnMode === 'none' ? 'Not enabled' : linkdnMode} />
+              <SummaryRow
+                label="Linkd'N"
+                value={linkdnMode === 'none' ? 'Not enabled' : linkdnMode}
+              />
             </div>
           </div>
 
           {!!user && (
-            <>              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <>
+              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
                 <h2 className="text-2xl font-bold text-white">Venue Presence</h2>
                 <p className="mt-3 text-white/70">
-                  Join the live venue session to support future in-venue verification.
+                  Join the live venue session to unlock presence-based interaction when required.
                 </p>
-                <div className="mt-6">
-                  <PresenceJoinForm venueId={venue.id} venueSlug={venue.slug} />
-                </div>
+
+                {activePresenceCheckin ? (
+                  <div className="mt-6 space-y-4">
+                    <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4">
+                      <p className="font-semibold text-green-300">You are checked in</p>
+                      <p className="mt-2 text-sm text-white/75">
+                        Session code:{' '}
+                        <span className="font-semibold text-white">
+                          {Array.isArray(activePresenceCheckin.session)
+                            ? activePresenceCheckin.session[0]?.session_code
+                            : activePresenceCheckin.session?.session_code || '—'}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-sm text-white/75">
+                        Checked in at:{' '}
+                        {activePresenceCheckin.checked_in_at
+                          ? new Date(activePresenceCheckin.checked_in_at).toLocaleString()
+                          : '—'}
+                      </p>
+                      <p className="mt-1 text-sm text-white/75">
+                        Presence expires:{' '}
+                        {activePresenceCheckin.expires_at
+                          ? new Date(activePresenceCheckin.expires_at).toLocaleString()
+                          : '—'}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-white/50">
+                          Comments Presence Rule
+                        </p>
+                        <p className="mt-2 text-white">
+                          {interactionSettings?.comments_require_presence ? 'Required' : 'Not required'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-white/50">
+                          Music Request Presence Rule
+                        </p>
+                        <p className="mt-2 text-white">
+                          {interactionSettings?.music_requests_require_presence ? 'Required' : 'Not required'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-6 space-y-4">
+                    <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4">
+                      <p className="font-semibold text-yellow-300">You are not checked in</p>
+                      <p className="mt-2 text-sm text-white/75">
+                        Join the live venue session to activate presence-based access when required.
+                      </p>
+                    </div>
+
+                    <PresenceJoinForm venueId={venue.id} venueSlug={venue.slug} />
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-white/50">
+                          Comments Presence Rule
+                        </p>
+                        <p className="mt-2 text-white">
+                          {interactionSettings?.comments_require_presence ? 'Required' : 'Not required'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-white/50">
+                          Music Request Presence Rule
+                        </p>
+                        <p className="mt-2 text-white">
+                          {interactionSettings?.music_requests_require_presence ? 'Required' : 'Not required'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
@@ -315,6 +418,12 @@ export default async function VenueDetailPage({ params }: Props) {
 
                 {commentsEnabled ? (
                   <>
+                    {interactionSettings?.comments_require_presence && !activePresenceCheckin ? (
+                      <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+                        This venue requires active presence for posting comments.
+                      </div>
+                    ) : null}
+
                     <div className="mt-6">
                       <CommentForm venueId={venue.id} venueSlug={venue.slug} />
                     </div>
@@ -368,6 +477,12 @@ export default async function VenueDetailPage({ params }: Props) {
 
                 {djRequestsEnabled ? (
                   <>
+                    {interactionSettings?.music_requests_require_presence && !activePresenceCheckin ? (
+                      <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+                        This venue requires active presence for submitting music requests.
+                      </div>
+                    ) : null}
+
                     <div className="mt-6">
                       <MusicRequestForm venueId={venue.id} venueSlug={venue.slug} />
                     </div>
@@ -379,12 +494,11 @@ export default async function VenueDetailPage({ params }: Props) {
                             key={request.id}
                             className="rounded-2xl border border-white/10 bg-black/20 p-4"
                           >
-                            <p className="font-semibold text-white">
-                              {request.song_title}
-                            </p>
+                            <p className="font-semibold text-white">{request.song_title}</p>
                             <p className="mt-1 text-sm text-white/70">
                               {request.artist_name || 'Unknown artist'}
                             </p>
+
                             {request.request_note ? (
                               <p className="mt-2 text-sm text-white/75">{request.request_note}</p>
                             ) : null}
@@ -440,8 +554,6 @@ export default async function VenueDetailPage({ params }: Props) {
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
               <h2 className="text-2xl font-bold text-white">Owner Controls</h2>
 
-
-
               <div className="mt-6 space-y-3">
                 <Link
                   href={`/dashboard/venues/${venue.id}/edit`}
@@ -449,19 +561,22 @@ export default async function VenueDetailPage({ params }: Props) {
                 >
                   Manage Venue
                 </Link>
+
                 <Link
                   href={`/dashboard/venues/${venue.id}/interactions`}
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
                 >
                   Manage Interactions
                 </Link>
-                                <Link
+
+                <Link
                   href={`/dashboard/venues/${venue.id}/music-requests`}
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
                 >
                   Open Music Queue
                 </Link>
-                                <Link
+
+                <Link
                   href={`/dashboard/venues/${venue.id}/presence`}
                   className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
                 >
@@ -474,22 +589,8 @@ export default async function VenueDetailPage({ params }: Props) {
                 >
                   Open Moderation Queue
                 </Link>
-                
-                <Link
-                  href="/dashboard/venues"
-                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
-                >
-                  Back to My Venues
-                </Link>
-              </div>
-            </div>
-          )}
 
-          {isAdmin && (
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-              <h2 className="text-2xl font-bold text-white">Admin Controls</h2>
-
-                              <details className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
+                <details className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
                   <summary className="cursor-pointer font-medium">Request Venue Removal</summary>
                   <form action={requestVenueRemoval} className="mt-4 space-y-3">
                     <input type="hidden" name="venue_id" value={venue.id} />
@@ -518,6 +619,20 @@ export default async function VenueDetailPage({ params }: Props) {
                     </button>
                   </form>
                 </details>
+
+                <Link
+                  href="/dashboard/venues"
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Back to My Venues
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+              <h2 className="text-2xl font-bold text-white">Admin Controls</h2>
 
               <div className="mt-6 space-y-3">
                 <Link
