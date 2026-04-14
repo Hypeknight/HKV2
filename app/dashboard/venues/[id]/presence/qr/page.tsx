@@ -60,7 +60,8 @@ export default async function VenuePresenceQrPage({ params }: Props) {
     );
   }
 
-  const joinUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/venues/${venue.slug}?session=${session.session_code}`;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const joinUrl = `${siteUrl}/presence/join/${session.qr_token}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(joinUrl)}`;
 
   return (
