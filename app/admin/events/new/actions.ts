@@ -23,17 +23,113 @@ async function requireAdmin() {
   return { supabase, user };
 }
 
+export async function reviewEvent(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = String(formData.get('event_id') || '');
+  const action = String(formData.get('action') || '');
+  const reason = String(formData.get('reason') || '');
+
+  if (!eventId) throw new Error('Missing event id');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select(`
+      id,
+      status,
+      is_paid,
+      payment_override,
+      promotion_start_at,
+      promotion_end_at
+    `)
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found');
+  }
+
+  if (action === 'approve') {
+    const nextStatus =
+      event.is_paid || event.payment_override ? 'scheduled' : 'submitted';
+
+    const isPublic = derivePublicState({
+      isApproved: true,
+      isPaid: event.is_paid,
+      paymentOverride: event.payment_override,
+      promotionStartAt: event.promotion_start_at,
+      promotionEndAt: event.promotion_end_at,
+      status: nextStatus,
+    });
+
+    const { error } = await supabase
+      .from('events')
+      .update({
+        status: nextStatus,
+        is_approved: true,
+        approved_at: new Date().toISOString(),
+        approved_by: user.id,
+        is_public: isPublic,
+        rejection_reason: null,
+        rejected_at: null,
+        rejected_by: null,
+      })
+      .eq('id', eventId);
+
+    if (error) throw new Error(error.message);
+
+    redirect('/admin/events?approved=1');
+  }
+
+  if (action === 'reject') {
+    const { error } = await supabase
+      .from('events')
+      .update({
+        status: 'rejected',
+        is_approved: false,
+        is_public: false,
+        rejected_at: new Date().toISOString(),
+        rejected_by: user.id,
+        rejection_reason: reason || null,
+        approved_at: null,
+        approved_by: null,
+        locked_at: null,
+      })
+      .eq('id', eventId);
+
+    if (error) throw new Error(error.message);
+
+    redirect('/admin/events?rejected=1');
+  }
+
+  redirect('/admin/events?reviewed=1');
+}
+
 export async function approveEvent(formData: FormData) {
   const { supabase, user } = await requireAdmin();
   const eventId = String(formData.get('event_id') || '');
 
+  if (!eventId) throw new Error('Missing event id');
+
   const { data: event, error: fetchError } = await supabase
     .from('events')
-    .select('is_paid, payment_override, promotion_start_at, promotion_end_at')
+    .select(`
+      id,
+      status,
+      is_paid,
+      payment_override,
+      promotion_start_at,
+      promotion_end_at
+    `)
     .eq('id', eventId)
     .single();
 
-  if (fetchError || !event) throw new Error(fetchError?.message || 'Event not found');
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found');
+  }
+
+  const nextStatus =
+    event.is_paid || event.payment_override ? 'scheduled' : 'submitted';
 
   const isPublic = derivePublicState({
     isApproved: true,
@@ -41,10 +137,8 @@ export async function approveEvent(formData: FormData) {
     paymentOverride: event.payment_override,
     promotionStartAt: event.promotion_start_at,
     promotionEndAt: event.promotion_end_at,
-    status: event.is_paid || event.payment_override ? 'scheduled' : 'approved_unpaid',
+    status: nextStatus,
   });
-
-  const nextStatus = event.is_paid || event.payment_override ? 'scheduled' : 'approved_unpaid';
 
   const { error } = await supabase
     .from('events')
@@ -70,6 +164,8 @@ export async function rejectEvent(formData: FormData) {
   const eventId = String(formData.get('event_id') || '');
   const rejectionReason = String(formData.get('rejection_reason') || '');
 
+  if (!eventId) throw new Error('Missing event id');
+
   const { error } = await supabase
     .from('events')
     .update({
@@ -78,7 +174,9 @@ export async function rejectEvent(formData: FormData) {
       is_public: false,
       rejected_at: new Date().toISOString(),
       rejected_by: user.id,
-      rejection_reason: rejectionReason,
+      rejection_reason: rejectionReason || null,
+      approved_at: null,
+      approved_by: null,
       locked_at: null,
     })
     .eq('id', eventId);
