@@ -90,13 +90,23 @@ export default async function EventDetailPage({ params }: Props) {
                 {venue?.name ? ` • ${venue.name}` : ''}
               </p>
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <HeroStat label="Starts" value={formattedStart} />
-                <HeroStat label="Venue" value={venue?.name || event.venue_name || 'TBA'} />
-                <HeroStat label="Event Type" value={event.event_type || '—'} />
+                
+                <HeroStat
+                  label={venue?.name || event.venue_name ? 'Venue' : 'Location Type'}
+                  value={venue?.name || event.venue_name || 'Direct Event Location'}
+                />
+                
+                <HeroStat
+                  label="Address"
+                  value={
+                    venue?.address
+                      ? venue.address
+                      : event.address || '—'
+                  }
+                />
               </div>
-            </div>
-          </div>
 
           {event.flyer_url ? (
             <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5">
