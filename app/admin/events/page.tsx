@@ -5,7 +5,7 @@ import {
   approveEvent,
   rejectEvent,
   applyPaymentOverride,
-} from './actions';
+} from './new/actions';
 
 export default async function AdminEventsPage() {
   const supabase = await createClient();
