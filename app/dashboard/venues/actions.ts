@@ -181,48 +181,72 @@ export async function updateVenueStep3(formData: FormData) {
   const { supabase, user } = await requireVenueOwnerOrAdmin();
 
   const venueId = String(formData.get('venue_id') || '');
-  const planDefinitionId = String(formData.get('plan_definition_id') || '');
+  const planCode = String(formData.get('plan_code') || 'entertainer_3m');
   const billingMode = String(formData.get('billing_mode') || 'monthly');
   const lockIn = String(formData.get('lock_in') || '') === 'yes';
 
   const commentsEnabled = String(formData.get('comments_enabled') || '') === 'yes';
   const djRequestsEnabled = String(formData.get('dj_requests_enabled') || '') === 'yes';
   const linkdnMode = String(formData.get('linkdn_mode') || 'none');
-  const drinkMenuEnabled = String(formData.get('drink_menu_enabled') || '') === 'yes';
-  const rsvpEnabled = String(formData.get('rsvp_enabled') || '') === 'yes';
-  const tableServiceEnabled = String(formData.get('table_service_enabled') || '') === 'yes';
-  const musicProfileEnabled = String(formData.get('music_profile_enabled') || '') === 'yes';
-  const dressCodeEnabled = String(formData.get('dress_code_enabled') || '') === 'yes';
-  const specialMessageEnabled = String(formData.get('special_message_enabled') || '') === 'yes';
+
+  const { data: venue, error: venueError } = await supabase
+    .from('venues')
+    .select('id, owner_id')
+    .eq('id', venueId)
+    .eq('owner_id', user.id)
+    .single();
+
+  if (venueError || !venue) {
+    throw new Error(venueError?.message || 'Venue not found');
+  }
 
   const { data: plan, error: planError } = await supabase
     .from('venue_plan_definitions')
     .select('*')
-    .eq('id', planDefinitionId)
+    .eq('code', planCode)
     .eq('is_active', true)
-    .single();
+    .maybeSingle();
 
-  if (planError || !plan) throw new Error(planError?.message || 'Plan not found');
+  if (planError || !plan) {
+    throw new Error(planError?.message || 'Plan not found');
+  }
 
-  const monthlyPrice = Number(plan.base_monthly_price || 0);
-  const prepaidTotal = Number(plan.base_prepaid_price || 0);
+  const basePrice =
+    billingMode === 'prepaid'
+      ? Number(plan.base_prepaid_price || 0)
+      : Number(plan.base_monthly_price || 0);
 
-  const addOnMonthlyPrice =
-    (commentsEnabled ? 10 : 0) +
-    (djRequestsEnabled ? 15 : 0) +
-    (linkdnMode === 'lite' ? 75 : 0) +
-    (linkdnMode === 'full' ? 250 : 0);
+  let featureAddOn = 0;
 
-  const addOnPrepaidPrice =
-    (commentsEnabled ? 25 : 0) +
-    (djRequestsEnabled ? 40 : 0) +
-    (linkdnMode === 'lite' ? 150 : 0) +
-    (linkdnMode === 'full' ? 500 : 0);
+  if (commentsEnabled && !plan.includes_comments) {
+    featureAddOn += 25;
+  }
 
-  const currentPeriodPrice =
+  if (djRequestsEnabled && !plan.includes_dj_requests) {
+    featureAddOn += 40;
+  }
+
+  if (linkdnMode === 'lite' && !plan.includes_linkdn_lite) {
+    featureAddOn += 125;
+  }
+
+  if (linkdnMode === 'full' && !plan.includes_linkdn_full) {
+    featureAddOn += 300;
+  }
+
+  const currentPeriodPrice = Number((basePrice + featureAddOn).toFixed(2));
+  const monthlyPrice =
     billingMode === 'monthly'
-      ? monthlyPrice + addOnMonthlyPrice
-      : prepaidTotal + addOnPrepaidPrice;
+      ? currentPeriodPrice
+      : Number((currentPeriodPrice / Math.max(Number(plan.duration_months || 1), 1)).toFixed(2));
+
+  const prepaidTotal =
+    billingMode === 'prepaid'
+      ? currentPeriodPrice
+      : Number((currentPeriodPrice * Math.max(Number(plan.duration_months || 1), 1)).toFixed(2));
+
+  const subscriptionStatus = 'draft';
+  const isActive = false;
 
   const { data: existingSubscription } = await supabase
     .from('venue_subscriptions')
@@ -232,35 +256,53 @@ export async function updateVenueStep3(formData: FormData) {
 
   const subscriptionPayload = {
     venue_id: venueId,
-    plan_definition_id: planDefinitionId,
+    plan_definition_id: plan.id,
     billing_mode: billingMode,
     lock_in: lockIn,
-    subscription_status: 'draft',
+    subscription_status: subscriptionStatus,
+    is_active: isActive,
     monthly_price: monthlyPrice,
     prepaid_total: prepaidTotal,
     current_period_price: currentPeriodPrice,
-    next_billing_amount: billingMode === 'monthly' ? monthlyPrice + addOnMonthlyPrice : 0,
-    is_active: false,
+    next_billing_amount: billingMode === 'monthly' ? currentPeriodPrice : 0,
+    activated_at: null,
   };
 
   const subscriptionResult = existingSubscription
     ? await supabase
         .from('venue_subscriptions')
         .update(subscriptionPayload)
-        .eq('venue_id', venueId)
-        .select('id')
+        .eq('id', existingSubscription.id)
+        .select()
         .single()
     : await supabase
         .from('venue_subscriptions')
         .insert(subscriptionPayload)
-        .select('id')
+        .select()
         .single();
 
   if (subscriptionResult.error || !subscriptionResult.data) {
-    throw new Error(subscriptionResult.error?.message || 'Subscription save failed');
+    throw new Error(subscriptionResult.error?.message || 'Could not save subscription');
   }
 
   const subscriptionId = subscriptionResult.data.id;
+
+  const subscriptionFeaturesPayload = {
+    venue_subscription_id: subscriptionId,
+    comments_enabled: plan.includes_comments || commentsEnabled,
+    dj_requests_enabled: plan.includes_dj_requests || djRequestsEnabled,
+    linkdn_mode: plan.includes_linkdn_full
+      ? 'full'
+      : plan.includes_linkdn_lite
+      ? 'lite'
+      : linkdnMode,
+    drink_menu_enabled: true,
+    rsvp_enabled: true,
+    table_service_enabled: true,
+    music_profile_enabled: true,
+    dress_code_enabled: true,
+    special_message_enabled: true,
+  };
 
   const { data: existingFeatures } = await supabase
     .from('venue_subscription_features')
@@ -268,60 +310,85 @@ export async function updateVenueStep3(formData: FormData) {
     .eq('venue_subscription_id', subscriptionId)
     .maybeSingle();
 
-  const featurePayload = {
-    venue_subscription_id: subscriptionId,
-    comments_enabled: commentsEnabled,
-    dj_requests_enabled: djRequestsEnabled,
-    linkdn_mode: linkdnMode,
-    drink_menu_enabled: drinkMenuEnabled,
-    rsvp_enabled: rsvpEnabled,
-    table_service_enabled: tableServiceEnabled,
-    music_profile_enabled: musicProfileEnabled,
-    dress_code_enabled: dressCodeEnabled,
-    special_message_enabled: specialMessageEnabled,
-    add_on_monthly_price: addOnMonthlyPrice,
-    add_on_prepaid_price: addOnPrepaidPrice,
-  };
-
-  const featureResult = existingFeatures
+  const featuresResult = existingFeatures
     ? await supabase
         .from('venue_subscription_features')
-        .update(featurePayload)
-        .eq('venue_subscription_id', subscriptionId)
-    : await supabase.from('venue_subscription_features').insert(featurePayload);
+        .update(subscriptionFeaturesPayload)
+        .eq('id', existingFeatures.id)
+    : await supabase
+        .from('venue_subscription_features')
+        .insert(subscriptionFeaturesPayload);
 
-  if (featureResult.error) throw new Error(featureResult.error.message);
-
-  const { data: existingUsage } = await supabase
-    .from('venue_subscription_usage')
-    .select('id, used_event_posts')
-    .eq('venue_subscription_id', subscriptionId)
-    .maybeSingle();
+  if (featuresResult.error) {
+    throw new Error(featuresResult.error.message);
+  }
 
   const usagePayload = {
     venue_subscription_id: subscriptionId,
     included_event_posts: Number(plan.included_event_posts || 0),
-    used_event_posts: Number(existingUsage?.used_event_posts || 0),
+    used_event_posts: 0,
   };
+
+  const { data: existingUsage } = await supabase
+    .from('venue_subscription_usage')
+    .select('id')
+    .eq('venue_subscription_id', subscriptionId)
+    .maybeSingle();
 
   const usageResult = existingUsage
     ? await supabase
         .from('venue_subscription_usage')
         .update(usagePayload)
-        .eq('venue_subscription_id', subscriptionId)
-    : await supabase.from('venue_subscription_usage').insert(usagePayload);
+        .eq('id', existingUsage.id)
+    : await supabase
+        .from('venue_subscription_usage')
+        .insert(usagePayload);
 
-  if (usageResult.error) throw new Error(usageResult.error.message);
+  if (usageResult.error) {
+    throw new Error(usageResult.error.message);
+  }
 
-  const { error: venueError } = await supabase
+  const interactionPayload = {
+    venue_id: venueId,
+    comments_enabled: plan.includes_comments || commentsEnabled,
+    comment_retention_hours: 24,
+    comments_require_presence: false,
+    comments_auto_filter_enabled: true,
+    music_requests_enabled: plan.includes_dj_requests || djRequestsEnabled,
+    music_requests_require_presence: false,
+  };
+
+  const { data: existingInteraction } = await supabase
+    .from('venue_interaction_settings')
+    .select('id')
+    .eq('venue_id', venueId)
+    .maybeSingle();
+
+  const interactionResult = existingInteraction
+    ? await supabase
+        .from('venue_interaction_settings')
+        .update(interactionPayload)
+        .eq('id', existingInteraction.id)
+    : await supabase
+        .from('venue_interaction_settings')
+        .insert(interactionPayload);
+
+  if (interactionResult.error) {
+    throw new Error(interactionResult.error.message);
+  }
+
+  const { error: venueUpdateError } = await supabase
     .from('venues')
     .update({
-      status: 'pending_payment',
+      updated_at: new Date().toISOString(),
+      status: 'draft',
     })
     .eq('id', venueId)
     .eq('owner_id', user.id);
 
-  if (venueError) throw new Error(venueError.message);
+  if (venueUpdateError) {
+    throw new Error(venueUpdateError.message);
+  }
 
   redirect(`/dashboard/venues/${venueId}/review`);
 }
