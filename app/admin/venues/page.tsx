@@ -79,23 +79,33 @@ export default async function AdminVenuesPage() {
     );
   });
 
+  const attentionIds = new Set(needsAttention.map((venue) => venue.id));
+
   const activeVisible = enrichedVenues.filter((venue) => {
     const subscription = venue.subscription;
 
     return (
+      !attentionIds.has(venue.id) &&
       venue.status === 'active' &&
       venue.is_visible === true &&
       (!subscription || subscription.is_active === true)
     );
   });
 
+  const activeIds = new Set(activeVisible.map((venue) => venue.id));
+
   const draftPending = enrichedVenues.filter((venue) =>
+    !attentionIds.has(venue.id) &&
+    !activeIds.has(venue.id) &&
     ['draft', 'pending_payment'].includes(venue.status)
   );
 
   const hiddenRemoved = enrichedVenues.filter((venue) =>
-    ['hidden', 'removed', 'archived', 'suspended'].includes(venue.status) ||
-    venue.is_visible === false
+    !attentionIds.has(venue.id) &&
+    !activeIds.has(venue.id) &&
+    !draftPending.some((v) => v.id === venue.id) &&
+    (['hidden', 'removed', 'archived', 'suspended'].includes(venue.status) ||
+      venue.is_visible === false)
   );
 
   return (
@@ -223,17 +233,21 @@ function VenueAdminCard({
 
   return (
     <div className={`rounded-[2rem] border p-6 ${cardTone}`}>
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-2xl font-bold text-white">{venue.name}</h2>
+            <h2 className="break-words text-2xl font-bold text-white">{venue.name}</h2>
             <StatusChip status={venue.status} />
             <VisibilityChip isVisible={venue.is_visible} />
             {venue.subscription?.subscription_status ? (
               <SubscriptionChip status={venue.subscription.subscription_status} />
             ) : null}
-            {venue.removal_requested_at ? <StateChip label="Removal Requested" tone="orange" /> : null}
-            {venue.refund_requested ? <StateChip label="Refund Requested" tone="orange" /> : null}
+            {venue.removal_requested_at ? (
+              <StateChip label="Removal Requested" tone="orange" />
+            ) : null}
+            {venue.refund_requested ? (
+              <StateChip label="Refund Requested" tone="orange" />
+            ) : null}
           </div>
 
           <p className="mt-2 text-white/65">
@@ -268,34 +282,34 @@ function VenueAdminCard({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col gap-3 xl:items-stretch">
           <Link
             href={`/venues/${venue.slug}`}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
           >
             View Public Page
           </Link>
           <Link
             href={`/dashboard/venues/${venue.id}/edit`}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
           >
             Open Venue Manager
           </Link>
           <Link
             href={`/dashboard/venues/${venue.id}/moderation`}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
           >
             Moderation Queue
           </Link>
           <Link
             href={`/dashboard/venues/${venue.id}/presence`}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
           >
             Presence
           </Link>
           <Link
             href={`/admin/venues/${venue.id}`}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
           >
             Admin Detail
           </Link>
