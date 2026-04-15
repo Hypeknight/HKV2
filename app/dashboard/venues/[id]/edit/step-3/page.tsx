@@ -62,7 +62,7 @@ const PLAN_OPTIONS = [
     includesDjRequests: true,
     includesLinkdnLite: false,
     includesLinkdnFull: true,
-    description: 'Full HypeKnight and Linkd’N venue experience.',
+    description: 'Full HypeKnight and Linkd’N venue experience with premium features.',
   },
 ];
 
