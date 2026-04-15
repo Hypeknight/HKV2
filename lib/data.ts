@@ -18,24 +18,21 @@ export async function getFeaturedVenues() {
 
 export async function getUpcomingEvents() {
   const supabase = await createServerClient();
-  
+
   const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
+    .eq('status', 'active')
     .eq('is_public', true)
-    .eq('is_approved', true)
-    .or('is_paid.eq.true,payment_override.eq.true')
     .is('removed_at', null)
     .gte('event_start_at', now)
-    .lte('promotion_start_at', now)
-    .gte('promotion_end_at', now)
     .order('event_start_at', { ascending: true })
     .limit(12);
 
   if (error) throw error;
-  return (data ?? []) as Event[];
+  return data ?? [];
 }
 
 export async function getLiveOrTonightEvents() {
@@ -47,19 +44,16 @@ export async function getLiveOrTonightEvents() {
   const { data, error } = await supabase
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
+    .eq('status', 'active')
     .eq('is_public', true)
-    .eq('is_approved', true)
-    .or('is_paid.eq.true,payment_override.eq.true')
     .is('removed_at', null)
     .gte('event_start_at', now.toISOString())
     .lte('event_start_at', next24.toISOString())
-    .lte('promotion_start_at', now.toISOString())
-    .gte('promotion_end_at', now.toISOString())
     .order('event_start_at', { ascending: true })
     .limit(8);
 
   if (error) throw error;
-  return (data ?? []) as Event[];
+  return data ?? [];
 }
 
 export async function getEventBySlug(slug: string) {
@@ -95,15 +89,14 @@ export async function getVenueEvents(venueId: string) {
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
     .eq('venue_id', venueId)
+    .eq('status', 'active')
     .eq('is_public', true)
-    .eq('is_approved', true)
-    .or('is_paid.eq.true,payment_override.eq.true')
     .is('removed_at', null)
     .gte('promotion_end_at', now)
     .order('event_start_at', { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as Event[];
+  return data ?? [];
 }
 
 

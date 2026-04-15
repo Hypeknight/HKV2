@@ -329,15 +329,33 @@ export async function ownerUpdateVenueMusicRequestStatus(formData: FormData) {
     throw new Error(requestError?.message || 'Music request not found');
   }
 
-  const { data: venue } = await supabase
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('app_role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const isAdmin = profile?.app_role === 'admin';
+
+  const { data: venueOwner } = await supabase
     .from('venues')
     .select('id')
     .eq('id', request.venue_id)
     .eq('owner_id', user.id)
     .maybeSingle();
 
-  if (!venue) {
-    redirect(`/venues/${venueSlug}`);
+  const { data: djAssignment } = await supabase
+    .from('venue_dj_assignments')
+    .select('id')
+    .eq('venue_id', request.venue_id)
+    .eq('dj_user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  const canManage = isAdmin || !!venueOwner || !!djAssignment;
+
+  if (!canManage) {
+    redirect(`/venues/${venueSlug}?music_error=unauthorized`);
   }
 
   const payload: Record<string, any> = {
