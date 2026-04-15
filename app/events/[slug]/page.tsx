@@ -90,23 +90,39 @@ export default async function EventDetailPage({ params }: Props) {
                 {venue?.name ? ` • ${venue.name}` : ''}
               </p>
 
-                            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <HeroStat label="Starts" value={formattedStart} />
-                
-                <HeroStat
-                  label={venue?.name || event.venue_name ? 'Venue' : 'Location Type'}
-                  value={venue?.name || event.venue_name || 'Direct Event Location'}
-                />
-                
-                <HeroStat
-                  label="Address"
-                  value={
-                    venue?.address
-                      ? venue.address
-                      : event.address || '—'
-                  }
-                />
-              </div>
+              <div className="relative">
+  <p className="text-sm uppercase tracking-[0.35em] text-accent">Event</p>
+
+  <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
+    {event.name}
+  </h1>
+
+  <p className="mt-4 max-w-3xl text-white/75">
+    {event.city}, {event.state}
+  </p>
+
+  <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <HeroStat label="Starts" value={formattedStart} />
+
+    {venue?.name || event.venue_name ? (
+      <>
+        <HeroStat
+          label="Venue"
+          value={venue?.name || event.venue_name}
+        />
+        <HeroStat
+          label="Address"
+          value={venue?.address || event.address || '—'}
+        />
+      </>
+    ) : (
+      <HeroStat
+        label="Address"
+        value={event.address || '—'}
+      />
+    )}
+  </div>
+</div>
 
           {event.flyer_url ? (
             <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5">
