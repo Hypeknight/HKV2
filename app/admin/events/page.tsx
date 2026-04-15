@@ -5,7 +5,7 @@ import {
   approveEvent,
   rejectEvent,
   applyPaymentOverride,
-} from './new/actions';
+} from './actions';
 
 export default async function AdminEventsPage() {
   const supabase = await createClient();
@@ -38,6 +38,7 @@ export default async function AdminEventsPage() {
       owner_id,
       owner_type,
       status,
+      is_approved,
       event_start_at,
       event_end_at,
       submitted_at,
@@ -51,6 +52,7 @@ export default async function AdminEventsPage() {
       created_at
     `)
     .eq('status', 'submitted')
+    .eq('is_approved', false)
     .order('submitted_at', { ascending: true });
 
   if (submittedError) throw new Error(submittedError.message);
@@ -60,18 +62,31 @@ export default async function AdminEventsPage() {
     .select(`
       id,
       name,
+      slug,
       city,
       state,
       venue_name,
+      owner_id,
+      owner_type,
       status,
+      is_approved,
       event_start_at,
+      event_end_at,
+      submitted_at,
+      approved_at,
       total_price,
+      payment_required,
       is_paid,
       payment_override,
-      approved_at,
-      linkdn_mode
+      promotion_start_at,
+      promotion_end_at,
+      linkdn_mode,
+      created_at
     `)
-    .eq('status', 'approved_unpaid')
+    .eq('is_approved', true)
+    .eq('is_paid', false)
+    .eq('payment_override', false)
+    .not('status', 'in', '(rejected,removed,completed)')
     .order('approved_at', { ascending: true });
 
   if (unpaidError) throw new Error(unpaidError.message);
@@ -81,21 +96,26 @@ export default async function AdminEventsPage() {
     .select(`
       id,
       name,
+      slug,
       city,
       state,
       venue_name,
+      owner_id,
+      owner_type,
       status,
-      event_start_at,
-      event_end_at,
       is_public,
       is_paid,
       payment_override,
+      is_approved,
+      event_start_at,
+      event_end_at,
       promotion_start_at,
       promotion_end_at,
       total_price,
-      linkdn_mode
+      linkdn_mode,
+      created_at
     `)
-    .in('status', ['scheduled', 'live'])
+    .in('status', ['scheduled', 'active'])
     .order('event_start_at', { ascending: true });
 
   if (activeError) throw new Error(activeError.message);
@@ -109,14 +129,20 @@ export default async function AdminEventsPage() {
         <h1 className="mt-3 text-4xl font-bold text-white">Event Moderation</h1>
         <p className="mt-3 max-w-3xl text-white/70">
           Review submitted events, approve or reject listings, and manage
-          approval/payment state before events become searchable.
+          payment state before events become searchable.
         </p>
+      </div>
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <MetricCard label="Submitted" value={String(submittedEvents?.length || 0)} />
+        <MetricCard label="Approved / Awaiting Payment" value={String(unpaidApprovedEvents?.length || 0)} />
+        <MetricCard label="Scheduled / Active" value={String(activeEvents?.length || 0)} />
       </div>
 
       <div className="space-y-10">
         <AdminSection
           title="Submitted Events"
-          subtitle="These events are waiting for review."
+          subtitle="These events are waiting for admin review."
         >
           {submittedEvents?.length ? (
             <div className="space-y-6">
@@ -127,9 +153,13 @@ export default async function AdminEventsPage() {
                 >
                   <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-                        {event.owner_type}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+                          {event.owner_type || 'user'}
+                        </p>
+                        <StatusChip status={event.status} />
+                      </div>
+
                       <h2 className="mt-2 text-2xl font-bold text-white">
                         {event.name}
                       </h2>
@@ -201,8 +231,8 @@ export default async function AdminEventsPage() {
         </AdminSection>
 
         <AdminSection
-          title="Approved but Unpaid"
-          subtitle="These events are approved but still need payment or an override."
+          title="Approved but Waiting on Payment"
+          subtitle="These events are approved but still need payment or a payment override."
         >
           {unpaidApprovedEvents?.length ? (
             <div className="space-y-6">
@@ -213,7 +243,16 @@ export default async function AdminEventsPage() {
                 >
                   <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
                     <div>
-                      <h2 className="text-2xl font-bold text-white">{event.name}</h2>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <StatusChip status={event.status} />
+                        <StateChip
+                          label="Approved"
+                          tone="green"
+                        />
+                      </div>
+
+                      <h2 className="mt-2 text-2xl font-bold text-white">{event.name}</h2>
+
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <Info label="Venue" value={event.venue_name} />
                         <Info
@@ -229,13 +268,20 @@ export default async function AdminEventsPage() {
                           }
                         />
                         <Info
+                          label="Approved At"
+                          value={
+                            event.approved_at
+                              ? new Date(event.approved_at).toLocaleString()
+                              : '—'
+                          }
+                        />
+                        <Info
                           label="Total Due"
                           value={`$${Number(event.total_price || 0).toFixed(2)}`}
                         />
-                        <Info label="Paid" value={event.is_paid ? 'Yes' : 'No'} />
                         <Info
-                          label="Override"
-                          value={event.payment_override ? 'Yes' : 'No'}
+                          label="Payment State"
+                          value={event.is_paid ? 'Paid' : event.payment_override ? 'Overridden' : 'Awaiting payment'}
                         />
                       </div>
                     </div>
@@ -284,7 +330,15 @@ export default async function AdminEventsPage() {
                   key={event.id}
                   className="rounded-3xl border border-white/10 bg-white/5 p-5"
                 >
-                  <div className="mb-4">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusChip status={event.status} />
+                      <StateChip
+                        label={event.is_public ? 'Public' : 'Hidden'}
+                        tone={event.is_public ? 'green' : 'gray'}
+                      />
+                    </div>
+
                     <Link
                       href={`/admin/events/${event.id}`}
                       className="inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
@@ -295,9 +349,9 @@ export default async function AdminEventsPage() {
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Info label="Event" value={event.name} />
-                    <Info label="Status" value={event.status} />
                     <Info label="Venue" value={event.venue_name} />
                     <Info label="Location" value={`${event.city}, ${event.state}`} />
+                    <Info label="Status" value={event.status} />
                     <Info
                       label="Start"
                       value={
@@ -314,7 +368,14 @@ export default async function AdminEventsPage() {
                           : '—'
                       }
                     />
-                    <Info label="Public" value={event.is_public ? 'Yes' : 'No'} />
+                    <Info
+                      label="Promo End"
+                      value={
+                        event.promotion_end_at
+                          ? new Date(event.promotion_end_at).toLocaleString()
+                          : '—'
+                      }
+                    />
                     <Info
                       label="Total"
                       value={`$${Number(event.total_price || 0).toFixed(2)}`}
@@ -324,7 +385,7 @@ export default async function AdminEventsPage() {
               ))}
             </div>
           ) : (
-            <EmptyState text="No scheduled or live events yet." />
+            <EmptyState text="No scheduled or active events yet." />
           )}
         </AdminSection>
       </div>
@@ -366,5 +427,58 @@ function EmptyState({ text }: { text: string }) {
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70">
       {text}
     </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
+      <p className="mt-3 text-3xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function StatusChip({ status }: { status?: string | null }) {
+  const tone =
+    status === 'submitted'
+      ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
+      : status === 'scheduled'
+      ? 'border-blue-500/20 bg-blue-500/10 text-blue-200'
+      : status === 'active'
+      ? 'border-green-500/20 bg-green-500/10 text-green-200'
+      : status === 'rejected'
+      ? 'border-red-500/20 bg-red-500/10 text-red-200'
+      : 'border-white/10 bg-black/20 text-white/70';
+
+  return (
+    <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${tone}`}>
+      {status || '—'}
+    </span>
+  );
+}
+
+function StateChip({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'green' | 'gray';
+}) {
+  const styles =
+    tone === 'green'
+      ? 'border-green-500/20 bg-green-500/10 text-green-200'
+      : 'border-white/10 bg-black/20 text-white/70';
+
+  return (
+    <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${styles}`}>
+      {label}
+    </span>
   );
 }
