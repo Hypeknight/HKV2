@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   }
 
   const stripe = new Stripe(secretKey, {
-    apiVersion: '2025-03-31.basil',
+    apiVersion: '2026-03-25.dahlia',
   });
 
   const body = await req.text();
