@@ -9,7 +9,10 @@ export async function POST(req: Request) {
   const webhookSecret = process.env.STRIPE_LIVE_WEBHOOK_SECRET;
 
   if (!secretKey || !webhookSecret) {
-    return NextResponse.json({ error: 'Missing Stripe live config' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Missing Stripe live config' },
+      { status: 500 }
+    );
   }
 
   const stripe = new Stripe(secretKey, {
@@ -20,18 +23,31 @@ export async function POST(req: Request) {
   const signature = (await headers()).get('stripe-signature');
 
   if (!signature) {
-    return NextResponse.json({ error: 'Missing stripe-signature' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Missing stripe-signature' },
+      { status: 400 }
+    );
   }
 
   let event: Stripe.Event;
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch {
-    return NextResponse.json({ error: 'Invalid live webhook signature' }, { status: 400 });
+  } catch (error) {
+    console.error('Invalid live webhook signature:', error);
+    return NextResponse.json(
+      { error: 'Invalid live webhook signature' },
+      { status: 400 }
+    );
   }
 
   await handleStripeWebhookEvent(event);
-
+  await supabase.from('stripe_webhook_events').upsert({
+    stripe_event_id: event.id,
+    event_type: event.type,
+    livemode: event.livemode,
+    processed: false,
+    payload: event as any,
+  });
   return NextResponse.json({ received: true, mode: 'live' });
 }
