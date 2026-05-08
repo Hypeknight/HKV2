@@ -1234,13 +1234,8 @@ const canRequestMusic =
   }
 />
               <QuickRow label="Linkd’N" value={linkdnEnabled ? 'Enabled' : 'Off'} />
-            </div>
-          </div>
 
-
-
-
-<QuickRow
+          <QuickRow
   label="Comment Moderation"
   value={commentsModerationMode}
 />
@@ -1248,7 +1243,14 @@ const canRequestMusic =
 <QuickRow
   label="Music Review"
   value={musicRequestsModerationMode}
-/>
+/>    
+            </div>
+          </div>
+
+
+
+
+
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
             <h2 className="text-2xl font-bold text-white">Guest Actions</h2>
 
