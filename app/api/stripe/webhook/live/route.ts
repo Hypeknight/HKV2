@@ -42,12 +42,6 @@ export async function POST(req: Request) {
   }
 
   await handleStripeWebhookEvent(event);
-  await supabase.from('stripe_webhook_events').upsert({
-    stripe_event_id: event.id,
-    event_type: event.type,
-    livemode: event.livemode,
-    processed: false,
-    payload: event as any,
-  });
+
   return NextResponse.json({ received: true, mode: 'live' });
 }
