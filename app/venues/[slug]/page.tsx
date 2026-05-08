@@ -1220,26 +1220,9 @@ const canRequestMusic =
               <QuickRow label="Venue" value={venue.name} />
               <QuickRow label="Location" value={`${venue.city}, ${venue.state}`} />
               <QuickRow label="Address" value={venue.address || '—'} />
-              <QuickRow label="Comments" value={commentsEnabled ? 'Enabled' : 'Off'} />
-              <QuickRow label="Music Requests" value={musicRequestsEnabled ? 'Enabled' : 'Off'} />
-              <QuickRow label="Linkd’N" value={linkdnEnabled ? 'Enabled' : 'Off'} />
-            </div>
-          </div>
-<QuickRow
-  label="Comments Access"
-  value={
-    commentsEnabled
-      ? commentsRequirePresence
-        ? 'Check-in required'
-        : commentsRequireLogin
-        ? 'Login required'
-        : 'Open'
-      : 'Off'
-  }
-/>
-
-<QuickRow
-  label="Music Access"
+              <QuickRow label="Comments Access" value={commentsEnabled ? commentsRequirePresence ? 'Check-in required' : commentsRequireLogin ? 'Login required' : 'Open' : 'Off'} />
+              <QuickRow
+  label="Music Requests"
   value={
     musicRequestsEnabled
       ? musicRequestsRequirePresence
@@ -1250,6 +1233,12 @@ const canRequestMusic =
       : 'Off'
   }
 />
+              <QuickRow label="Linkd’N" value={linkdnEnabled ? 'Enabled' : 'Off'} />
+            </div>
+          </div>
+
+
+
 
 <QuickRow
   label="Comment Moderation"
