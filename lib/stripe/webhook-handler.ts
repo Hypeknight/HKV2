@@ -4,168 +4,138 @@ import { createAdminClient } from '@/lib/supabase/admin';
 export async function handleStripeWebhookEvent(event: Stripe.Event) {
   const supabase = createAdminClient();
 
-  console.log('Stripe webhook received:', event.type, event.id);
+  let venueId: string | null = null;
+  let venueSubscriptionId: string | null = null;
 
-  if (
-    event.type === 'checkout.session.completed' ||
-    event.type === 'checkout.session.async_payment_succeeded'
-  ) {
-    const session = event.data.object as Stripe.Checkout.Session;
-
-    const venueId = session.metadata?.venue_id;
-    const venueSubscriptionId = session.metadata?.venue_subscription_id;
-
-    console.log('Stripe checkout session metadata:', {
-      venueId,
-      venueSubscriptionId,
-      paymentStatus: session.payment_status,
-      mode: session.mode,
-      customer: session.customer,
-      subscription: session.subscription,
-      paymentIntent: session.payment_intent,
-    });
-
-    if (!venueId || !venueSubscriptionId) {
-      console.error('Missing venue metadata on Stripe Checkout Session', {
-        sessionId: session.id,
-        metadata: session.metadata,
-      });
-      return;
-    }
-
+  try {
     if (
-      session.payment_status !== 'paid' &&
-      session.payment_status !== 'no_payment_required'
+      event.type === 'checkout.session.completed' ||
+      event.type === 'checkout.session.async_payment_succeeded'
     ) {
-      console.warn('Checkout session completed but payment is not paid yet', {
-        sessionId: session.id,
-        paymentStatus: session.payment_status,
-      });
-      return;
-    }
+      const session = event.data.object as Stripe.Checkout.Session;
 
-    const now = new Date().toISOString();
+      venueId = session.metadata?.venue_id || null;
+      venueSubscriptionId = session.metadata?.venue_subscription_id || null;
 
-    const { error: subscriptionError } = await supabase
-      .from('venue_subscriptions')
-      .update({
-        subscription_status: 'active',
-        is_active: true,
-        activated_at: now,
-        stripe_customer_id:
-          typeof session.customer === 'string' ? session.customer : null,
-        stripe_subscription_id:
-          typeof session.subscription === 'string' ? session.subscription : null,
-        stripe_checkout_session_id: session.id,
-      })
-      .eq('id', venueSubscriptionId)
-      .eq('venue_id', venueId);
-
-    if (subscriptionError) {
-      console.error('Failed to activate venue subscription:', subscriptionError);
-      throw new Error(subscriptionError.message);
-    }
-
-    const { error: venueError } = await supabase
-      .from('venues')
-      .update({
-        status: 'active',
-        is_visible: true,
-        updated_at: now,
-      })
-      .eq('id', venueId);
-
-    if (venueError) {
-      console.error('Failed to activate venue:', venueError);
-      throw new Error(venueError.message);
-    }
-
-    const { error: billingEventError } = await supabase
-      .from('venue_billing_events')
-      .insert({
+      await supabase.from('stripe_webhook_events').upsert({
+        stripe_event_id: event.id,
+        event_type: event.type,
+        livemode: event.livemode,
+        processed: false,
         venue_id: venueId,
         venue_subscription_id: venueSubscriptionId,
-        event_type: 'stripe_checkout_completed',
-        amount: Number((session.amount_total || 0) / 100),
-        notes: `Stripe checkout completed (${event.livemode ? 'live' : 'test'})`,
-        stripe_event_id: event.id,
-        stripe_payment_intent_id:
-          typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : null,
       });
 
-    if (billingEventError) {
-      console.error('Failed to insert venue billing event:', billingEventError);
-    }
+      if (!venueId || !venueSubscriptionId) {
+        throw new Error('Missing venue_id or venue_subscription_id in Stripe metadata');
+      }
 
-    console.log('Venue payment activation complete:', {
-      venueId,
-      venueSubscriptionId,
-    });
-  }
+      if (
+        session.payment_status !== 'paid' &&
+        session.payment_status !== 'no_payment_required'
+      ) {
+        throw new Error(`Checkout completed but payment_status is ${session.payment_status}`);
+      }
 
-  if (event.type === 'invoice.paid') {
-    const invoice = event.data.object as Stripe.Invoice;
+      const now = new Date().toISOString();
 
-    const stripeSubscriptionId =
-      typeof invoice.parent?.subscription_details?.subscription === 'string'
-        ? invoice.parent.subscription_details.subscription
-        : null;
-
-    if (stripeSubscriptionId) {
-      const { error } = await supabase
+      const { error: subscriptionError } = await supabase
         .from('venue_subscriptions')
         .update({
           subscription_status: 'active',
           is_active: true,
+          activated_at: now,
+          stripe_customer_id:
+            typeof session.customer === 'string' ? session.customer : null,
+          stripe_subscription_id:
+            typeof session.subscription === 'string' ? session.subscription : null,
+          stripe_checkout_session_id: session.id,
         })
-        .eq('stripe_subscription_id', stripeSubscriptionId);
+        .eq('id', venueSubscriptionId)
+        .eq('venue_id', venueId);
 
-      if (error) {
-        console.error('Failed to mark invoice subscription paid:', error);
-        throw new Error(error.message);
+      if (subscriptionError) throw new Error(subscriptionError.message);
+
+      const { error: venueError } = await supabase
+        .from('venues')
+        .update({
+          status: 'active',
+          is_visible: true,
+          updated_at: now,
+        })
+        .eq('id', venueId);
+
+      if (venueError) throw new Error(venueError.message);
+
+      const { error: billingError } = await supabase
+        .from('venue_billing_events')
+        .insert({
+          venue_id: venueId,
+          venue_subscription_id: venueSubscriptionId,
+          event_type: 'stripe_checkout_completed',
+          amount: Number((session.amount_total || 0) / 100),
+          notes: `Stripe checkout completed (${event.livemode ? 'live' : 'test'})`,
+          stripe_event_id: event.id,
+          stripe_payment_intent_id:
+            typeof session.payment_intent === 'string'
+              ? session.payment_intent
+              : null,
+        });
+
+      if (billingError) {
+        console.error('Billing event insert failed:', billingError.message);
+      }
+
+      await supabase
+        .from('stripe_webhook_events')
+        .update({
+          processed: true,
+          error_message: null,
+        })
+        .eq('stripe_event_id', event.id);
+    }
+
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as Stripe.Invoice;
+
+      const stripeSubscriptionId =
+        typeof invoice.parent?.subscription_details?.subscription === 'string'
+          ? invoice.parent.subscription_details.subscription
+          : null;
+
+      if (stripeSubscriptionId) {
+        await supabase
+          .from('venue_subscriptions')
+          .update({ subscription_status: 'past_due' })
+          .eq('stripe_subscription_id', stripeSubscriptionId);
       }
     }
-  }
 
-  if (event.type === 'invoice.payment_failed') {
-    const invoice = event.data.object as Stripe.Invoice;
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription;
 
-    const stripeSubscriptionId =
-      typeof invoice.parent?.subscription_details?.subscription === 'string'
-        ? invoice.parent.subscription_details.subscription
-        : null;
-
-    if (stripeSubscriptionId) {
-      const { error } = await supabase
+      await supabase
         .from('venue_subscriptions')
         .update({
-          subscription_status: 'past_due',
+          subscription_status: 'canceled',
+          is_active: false,
         })
-        .eq('stripe_subscription_id', stripeSubscriptionId);
-
-      if (error) {
-        console.error('Failed to mark subscription past_due:', error);
-        throw new Error(error.message);
-      }
+        .eq('stripe_subscription_id', subscription.id);
     }
-  }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown webhook error';
 
-  if (event.type === 'customer.subscription.deleted') {
-    const subscription = event.data.object as Stripe.Subscription;
+    await supabase.from('stripe_webhook_events').upsert({
+      stripe_event_id: event.id,
+      event_type: event.type,
+      livemode: event.livemode,
+      processed: false,
+      error_message: message,
+      venue_id: venueId,
+      venue_subscription_id: venueSubscriptionId,
+    });
 
-    const { error } = await supabase
-      .from('venue_subscriptions')
-      .update({
-        subscription_status: 'canceled',
-        is_active: false,
-      })
-      .eq('stripe_subscription_id', subscription.id);
-
-    if (error) {
-      console.error('Failed to cancel subscription:', error);
-      throw new Error(error.message);
-    }
+    console.error('Stripe webhook failed:', message);
+    throw error;
   }
 }
