@@ -1,3 +1,4 @@
+/*
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
@@ -689,5 +690,529 @@ function DisabledCard({ title, text }: { title: string; text: string }) {
       <p className="font-semibold text-white">{title}</p>
       <p className="mt-2 text-sm">{text}</p>
     </div>
+  );
+}
+  */
+
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+
+type Props = {
+  params: Promise<{ slug: string }>;
+};
+
+export default async function PublicVenuePage({ params }: Props) {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let viewerRole: string | null = null;
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('app_role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    viewerRole = profile?.app_role || 'user';
+  }
+
+  const { data: venue, error } = await supabase
+    .from('venues')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle();
+
+  if (error || !venue) notFound();
+
+  const isOwner = !!user && venue.owner_id === user.id;
+  const isAdmin = viewerRole === 'admin';
+
+  const canView =
+    (venue.status === 'active' && venue.is_visible === true) ||
+    isOwner ||
+    isAdmin;
+
+  if (!canView) notFound();
+
+  const { data: interactionSettings } = await supabase
+    .from('venue_interaction_settings')
+    .select('*')
+    .eq('venue_id', venue.id)
+    .maybeSingle();
+
+  const { data: activeComments } = await supabase
+    .from('venue_comments')
+    .select('id, body, display_name, created_at, status')
+    .eq('venue_id', venue.id)
+    .eq('status', 'approved')
+    .is('expired_at', null)
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  const { data: activeEvents } = await supabase
+    .from('events')
+    .select('id, name, slug, event_start_at, city, state, flyer_url')
+    .eq('venue_id', venue.id)
+    .eq('is_public', true)
+    .in('status', ['scheduled', 'active'])
+    .order('event_start_at', { ascending: true })
+    .limit(6);
+
+  const { data: recentRequests } = await supabase
+    .from('venue_music_requests')
+    .select('id, song_title, artist_name, status, upvotes, downvotes, created_at')
+    .eq('venue_id', venue.id)
+    .in('status', ['pending', 'approved', 'playing'])
+    .order('created_at', { ascending: false })
+    .limit(6);
+
+  const commentsEnabled =
+    interactionSettings?.comments_enabled === true ||
+    interactionSettings?.live_comments_enabled === true;
+
+  const musicRequestsEnabled =
+    interactionSettings?.music_requests_enabled === true ||
+    interactionSettings?.dj_requests_enabled === true;
+
+  const presenceEnabled =
+    interactionSettings?.presence_enabled === true ||
+    interactionSettings?.qr_presence_enabled === true;
+
+  const linkdnEnabled =
+    interactionSettings?.linkdn_enabled === true ||
+    interactionSettings?.linkdn_lite_enabled === true ||
+    interactionSettings?.linkdn_full_enabled === true;
+
+  const hasAnyLiveFeature =
+    commentsEnabled || musicRequestsEnabled || presenceEnabled || linkdnEnabled;
+
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+        <main className="space-y-8">
+          <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-8 sm:p-10">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.06),transparent_28%)]" />
+
+            <div className="relative">
+              <p className="text-sm uppercase tracking-[0.35em] text-accent">
+                HypeKnight Venue
+              </p>
+
+              <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-6xl">
+                {venue.name}
+              </h1>
+
+              <p className="mt-4 max-w-3xl text-white/75">
+                {venue.city}, {venue.state}
+                {venue.address ? ` • ${venue.address}` : ''}
+              </p>
+
+              {venue.description ? (
+                <p className="mt-6 max-w-3xl whitespace-pre-wrap text-lg text-white/80">
+                  {venue.description}
+                </p>
+              ) : null}
+
+              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <HeroStat label="Status" value={venue.status === 'active' ? 'Open on HypeKnight' : venue.status} />
+                <HeroStat label="City" value={`${venue.city}, ${venue.state}`} />
+                <HeroStat label="Featured" value={venue.is_featured ? 'Yes' : 'No'} />
+                <HeroStat label="Live Features" value={hasAnyLiveFeature ? 'Enabled' : 'Basic Profile'} />
+              </div>
+            </div>
+          </div>
+
+          {venue.cover_image_url ? (
+            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5">
+              <img
+                src={venue.cover_image_url}
+                alt={venue.name}
+                className="h-auto w-full object-cover"
+              />
+            </div>
+          ) : null}
+
+          {hasAnyLiveFeature ? (
+            <div className="rounded-[2rem] border border-accent/20 bg-accent/10 p-8">
+              <p className="text-sm uppercase tracking-[0.35em] text-accent">
+                Live Venue Tools
+              </p>
+              <h2 className="mt-3 text-3xl font-bold text-white">
+                Interact with this venue
+              </h2>
+              <p className="mt-3 text-white/75">
+                This venue has active HypeKnight features available for guests.
+              </p>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {commentsEnabled ? (
+                  <FeatureCard
+                    title="Live Comments"
+                    description="Join the conversation and see what people are saying."
+                    href={user ? `#comments` : `/auth/login`}
+                    cta={user ? 'View Comments' : 'Log in to Comment'}
+                  />
+                ) : null}
+
+                {musicRequestsEnabled ? (
+                  <FeatureCard
+                    title="Music Requests"
+                    description="Request songs and help shape the night."
+                    href={user ? `#music-requests` : `/auth/login`}
+                    cta={user ? 'Request Music' : 'Log in to Request'}
+                  />
+                ) : null}
+
+                {presenceEnabled ? (
+                  <FeatureCard
+                    title="Venue Check-In"
+                    description="Use QR presence tools when you are at the venue."
+                    href={`/dashboard/venues/${venue.id}/presence`}
+                    cta="Presence Info"
+                  />
+                ) : null}
+
+                {linkdnEnabled ? (
+                  <FeatureCard
+                    title="Linkd’N Enabled"
+                    description="This venue can participate in connected nightlife experiences."
+                    href="#linkdn"
+                    cta="Learn More"
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+              <h2 className="text-2xl font-bold text-white">Venue Profile</h2>
+              <p className="mt-3 text-white/70">
+                This venue currently has a basic HypeKnight profile. More interactive
+                features may be added later.
+              </p>
+            </div>
+          )}
+
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <h2 className="text-2xl font-bold text-white">Venue Details</h2>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <Info label="Address" value={venue.address} />
+              <Info label="City / State" value={`${venue.city}, ${venue.state}`} />
+              <Info label="Website" value={venue.website_url} />
+              <Info label="Instagram" value={venue.instagram_url} />
+              <Info label="Dress Code" value={venue.dress_code} />
+              <Info label="Music" value={venue.music} />
+              <Info label="Drink Menu" value={venue.drink_menu} />
+              <Info label="Table / RSVP" value={venue.rsvp_table_service} />
+            </div>
+
+            {venue.special_message ? (
+              <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+                  Special Message
+                </p>
+                <p className="mt-3 whitespace-pre-wrap text-white">
+                  {venue.special_message}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          {activeEvents?.length ? (
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+              <h2 className="text-2xl font-bold text-white">Upcoming Events</h2>
+              <p className="mt-2 text-white/65">
+                Events connected to this venue on HypeKnight.
+              </p>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {activeEvents.map((event) => (
+                  <Link
+                    key={event.id}
+                    href={`/events/${event.slug}`}
+                    className="rounded-2xl border border-white/10 bg-black/20 p-5 hover:border-accent/40"
+                  >
+                    <p className="text-lg font-bold text-white">{event.name}</p>
+                    <p className="mt-2 text-sm text-white/65">
+                      {event.event_start_at
+                        ? new Date(event.event_start_at).toLocaleString()
+                        : 'Date pending'}
+                    </p>
+                    <p className="mt-1 text-sm text-white/50">
+                      {event.city}, {event.state}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {commentsEnabled ? (
+            <div
+              id="comments"
+              className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Live Comments</h2>
+                  <p className="mt-2 text-white/65">
+                    See what guests are saying while comments are active.
+                  </p>
+                </div>
+
+                {user ? (
+                  <Link
+                    href={`/venues/${venue.slug}/comments`}
+                    className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
+                  >
+                    Post Comment
+                  </Link>
+                ) : (
+                  <Link
+                    href="/auth/login"
+                    className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                  >
+                    Log in to Comment
+                  </Link>
+                )}
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {activeComments?.length ? (
+                  activeComments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <p className="text-sm text-white/50">
+                        {comment.display_name || 'Guest'} •{' '}
+                        {new Date(comment.created_at).toLocaleString()}
+                      </p>
+                      <p className="mt-2 text-white">{comment.body}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/65">
+                    No live comments yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {musicRequestsEnabled ? (
+            <div
+              id="music-requests"
+              className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Music Requests</h2>
+                  <p className="mt-2 text-white/65">
+                    Request tracks and vote on what should play next.
+                  </p>
+                </div>
+
+                {user ? (
+                  <Link
+                    href={`/venues/${venue.slug}/music-requests`}
+                    className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
+                  >
+                    Request Song
+                  </Link>
+                ) : (
+                  <Link
+                    href="/auth/login"
+                    className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                  >
+                    Log in to Request
+                  </Link>
+                )}
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {recentRequests?.length ? (
+                  recentRequests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-white">
+                            {request.song_title}
+                          </p>
+                          <p className="text-sm text-white/60">
+                            {request.artist_name || 'Unknown artist'}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
+                          {request.status}
+                        </span>
+                      </div>
+
+                      <p className="mt-3 text-sm text-white/50">
+                        ▲ {request.upvotes || 0} • ▼ {request.downvotes || 0}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/65">
+                    No music requests yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {linkdnEnabled ? (
+            <div
+              id="linkdn"
+              className="rounded-[2rem] border border-accent/20 bg-accent/10 p-8"
+            >
+              <p className="text-sm uppercase tracking-[0.35em] text-accent">
+                Linkd’N
+              </p>
+              <h2 className="mt-3 text-2xl font-bold text-white">
+                Connected nightlife ready
+              </h2>
+              <p className="mt-3 text-white/75">
+                This venue has access to HypeKnight’s connected nightlife system.
+                Live room and venue-to-venue features may appear during active
+                experiences.
+              </p>
+            </div>
+          ) : null}
+        </main>
+
+        <aside className="space-y-6">
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <h2 className="text-2xl font-bold text-white">Quick Look</h2>
+
+            <div className="mt-6 space-y-4">
+              <QuickRow label="Venue" value={venue.name} />
+              <QuickRow label="Location" value={`${venue.city}, ${venue.state}`} />
+              <QuickRow label="Address" value={venue.address || '—'} />
+              <QuickRow label="Comments" value={commentsEnabled ? 'Enabled' : 'Off'} />
+              <QuickRow label="Music Requests" value={musicRequestsEnabled ? 'Enabled' : 'Off'} />
+              <QuickRow label="Linkd’N" value={linkdnEnabled ? 'Enabled' : 'Off'} />
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <h2 className="text-2xl font-bold text-white">Guest Actions</h2>
+
+            <div className="mt-5 space-y-3">
+              {commentsEnabled ? (
+                <Link
+                  href={user ? `/venues/${venue.slug}/comments` : '/auth/login'}
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  {user ? 'Post Comment' : 'Log in to Comment'}
+                </Link>
+              ) : null}
+
+              {musicRequestsEnabled ? (
+                <Link
+                  href={user ? `/venues/${venue.slug}/music-requests` : '/auth/login'}
+                  className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                >
+                  {user ? 'Request Music' : 'Log in for Music Requests'}
+                </Link>
+              ) : null}
+
+              {!hasAnyLiveFeature ? (
+                <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center text-white/60">
+                  No guest interaction tools are currently active.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {(isOwner || isAdmin) ? (
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+              <h2 className="text-2xl font-bold text-white">Management</h2>
+
+              <div className="mt-5 space-y-3">
+                {isOwner ? (
+                  <Link
+                    href={`/dashboard/venues/${venue.id}/review`}
+                    className="block rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
+                  >
+                    Manage Venue
+                  </Link>
+                ) : null}
+
+                {isAdmin ? (
+                  <Link
+                    href={`/admin/venues/${venue.id}`}
+                    className="block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+                  >
+                    Admin Detail
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
+      <p className="mt-3 text-sm font-semibold text-white">{value || '—'}</p>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
+      <p className="mt-2 break-words text-white">{value || '—'}</p>
+    </div>
+  );
+}
+
+function QuickRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex items-center justify-between gap-4 text-sm">
+      <span className="text-white/60">{label}</span>
+      <span className="text-right text-white">{value || '—'}</span>
+    </div>
+  );
+}
+
+function FeatureCard({
+  title,
+  description,
+  href,
+  cta,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-2xl border border-white/10 bg-black/20 p-5 hover:border-accent/40"
+    >
+      <h3 className="text-xl font-bold text-white">{title}</h3>
+      <p className="mt-2 text-sm text-white/65">{description}</p>
+      <p className="mt-4 text-sm font-semibold text-accent">{cta}</p>
+    </Link>
   );
 }
