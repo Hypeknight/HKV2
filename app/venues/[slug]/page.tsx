@@ -772,13 +772,56 @@ export default async function PublicVenuePage({ params }: Props) {
     .order('created_at', { ascending: false })
     .limit(6);
 
-  const commentsEnabled =
-    interactionSettings?.comments_enabled === true ||
-    interactionSettings?.live_comments_enabled === true;
+    const { data: activePresence } = user
+  ? await supabase
+      .from('venue_presence_sessions')
+      .select('id, expires_at')
+      .eq('venue_id', venue.id)
+      .eq('user_id', user.id)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle()
+  : { data: null };
 
-  const musicRequestsEnabled =
-    interactionSettings?.music_requests_enabled === true ||
-    interactionSettings?.dj_requests_enabled === true;
+const commentsEnabled =
+  interactionSettings?.comments_enabled === true ||
+  interactionSettings?.live_comments_enabled === true;
+
+const musicRequestsEnabled =
+  interactionSettings?.music_requests_enabled === true ||
+  interactionSettings?.dj_requests_enabled === true;
+
+const commentsRequireLogin =
+  interactionSettings?.comments_require_login !== false;
+
+const musicRequestsRequireLogin =
+  interactionSettings?.music_requests_require_login !== false;
+
+const commentsRequirePresence =
+  interactionSettings?.comments_require_presence === true;
+
+const musicRequestsRequirePresence =
+  interactionSettings?.music_requests_require_presence === true;
+
+const commentsModerationMode =
+  interactionSettings?.comments_moderation_mode || 'auto';
+
+const musicRequestsModerationMode =
+  interactionSettings?.music_requests_moderation_mode || 'manual';
+
+const userHasPresence = !!activePresence;
+const canBypassAccess = isOwner || isAdmin;
+
+const canPostComment =
+  commentsEnabled &&
+  (canBypassAccess ||
+    ((!commentsRequireLogin || !!user) &&
+      (!commentsRequirePresence || userHasPresence)));
+
+const canRequestMusic =
+  musicRequestsEnabled &&
+  (canBypassAccess ||
+    ((!musicRequestsRequireLogin || !!user) &&
+      (!musicRequestsRequirePresence || userHasPresence)));
 
   const presenceEnabled =
     interactionSettings?.presence_enabled === true ||
@@ -953,124 +996,201 @@ export default async function PublicVenuePage({ params }: Props) {
             </div>
           ) : null}
 
-          {commentsEnabled ? (
-            <div
-              id="comments"
-              className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">Live Comments</h2>
-                  <p className="mt-2 text-white/65">
-                    See what guests are saying while comments are active.
-                  </p>
-                </div>
+{commentsEnabled ? (
+  <div
+    id="comments"
+    className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
+  >
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 className="text-2xl font-bold text-white">Live Comments</h2>
+        <p className="mt-2 text-white/65">
+          {commentsRequirePresence
+            ? 'Comments are available for checked-in guests at this venue.'
+            : commentsRequireLogin
+            ? 'Log in to join the conversation while comments are active.'
+            : 'See what guests are saying while comments are active.'}
+        </p>
 
-                {user ? (
-                  <Link
-                    href={`/venues/${venue.slug}/comments`}
-                    className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
-                  >
-                    Post Comment
-                  </Link>
-                ) : (
-                  <Link
-                    href="/auth/login"
-                    className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
-                  >
-                    Log in to Comment
-                  </Link>
-                )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
+            {commentsRequirePresence
+              ? 'Check-in required'
+              : commentsRequireLogin
+              ? 'Login required'
+              : 'Open comments'}
+          </span>
+
+          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
+            {commentsModerationMode === 'manual'
+              ? 'Reviewed before posting'
+              : commentsModerationMode === 'auto'
+              ? 'Auto filtered'
+              : commentsModerationMode}
+          </span>
+        </div>
+      </div>
+
+      <Link
+        href={
+          canPostComment
+            ? `/venues/${venue.slug}/comments`
+            : !user && commentsRequireLogin
+            ? '/auth/login'
+            : commentsRequirePresence
+            ? `/presence/join/${venue.id}`
+            : '#comments'
+        }
+        className={
+          canPostComment
+            ? 'rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90'
+            : 'rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40'
+        }
+      >
+        {canPostComment
+          ? 'Post Comment'
+          : !user && commentsRequireLogin
+          ? 'Log in to Comment'
+          : commentsRequirePresence
+          ? 'Check In to Comment'
+          : 'Comments Restricted'}
+      </Link>
+    </div>
+
+    {!canPostComment && commentsRequirePresence ? (
+      <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-yellow-100">
+        This venue requires presence verification before posting comments. Check in
+        through the venue QR code or presence link to unlock commenting.
+      </div>
+    ) : null}
+
+    <div className="mt-6 space-y-3">
+      {activeComments?.length ? (
+        activeComments.map((comment) => (
+          <div
+            key={comment.id}
+            className="rounded-2xl border border-white/10 bg-black/20 p-4"
+          >
+            <p className="text-sm text-white/50">
+              {comment.display_name || 'Guest'} •{' '}
+              {new Date(comment.created_at).toLocaleString()}
+            </p>
+            <p className="mt-2 text-white">{comment.body}</p>
+          </div>
+        ))
+      ) : (
+        <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/65">
+          No live comments yet.
+        </p>
+      )}
+    </div>
+  </div>
+) : null}
+
+{musicRequestsEnabled ? (
+  <div
+    id="music-requests"
+    className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
+  >
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 className="text-2xl font-bold text-white">Music Requests</h2>
+        <p className="mt-2 text-white/65">
+          {musicRequestsRequirePresence
+            ? 'Music requests are available for checked-in guests at this venue.'
+            : musicRequestsRequireLogin
+            ? 'Log in to request tracks and vote on what should play next.'
+            : 'Request tracks and vote on what should play next.'}
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
+            {musicRequestsRequirePresence
+              ? 'Check-in required'
+              : musicRequestsRequireLogin
+              ? 'Login required'
+              : 'Open requests'}
+          </span>
+
+          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
+            {musicRequestsModerationMode === 'manual'
+              ? 'DJ approval required'
+              : musicRequestsModerationMode === 'auto'
+              ? 'Auto filtered'
+              : musicRequestsModerationMode}
+          </span>
+        </div>
+      </div>
+
+      <Link
+        href={
+          canRequestMusic
+            ? `/venues/${venue.slug}/music-requests`
+            : !user && musicRequestsRequireLogin
+            ? '/auth/login'
+            : musicRequestsRequirePresence
+            ? `/presence/join/${venue.id}`
+            : '#music-requests'
+        }
+        className={
+          canRequestMusic
+            ? 'rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90'
+            : 'rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40'
+        }
+      >
+        {canRequestMusic
+          ? 'Request Song'
+          : !user && musicRequestsRequireLogin
+          ? 'Log in to Request'
+          : musicRequestsRequirePresence
+          ? 'Check In to Request'
+          : 'Requests Restricted'}
+      </Link>
+    </div>
+
+    {!canRequestMusic && musicRequestsRequirePresence ? (
+      <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-yellow-100">
+        This venue requires presence verification before submitting music
+        requests. Check in through the venue QR code or presence link to unlock
+        requests.
+      </div>
+    ) : null}
+
+    <div className="mt-6 space-y-3">
+      {recentRequests?.length ? (
+        recentRequests.map((request) => (
+          <div
+            key={request.id}
+            className="rounded-2xl border border-white/10 bg-black/20 p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-white">
+                  {request.song_title}
+                </p>
+                <p className="text-sm text-white/60">
+                  {request.artist_name || 'Unknown artist'}
+                </p>
               </div>
 
-              <div className="mt-6 space-y-3">
-                {activeComments?.length ? (
-                  activeComments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                    >
-                      <p className="text-sm text-white/50">
-                        {comment.display_name || 'Guest'} •{' '}
-                        {new Date(comment.created_at).toLocaleString()}
-                      </p>
-                      <p className="mt-2 text-white">{comment.body}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/65">
-                    No live comments yet.
-                  </p>
-                )}
-              </div>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
+                {request.status}
+              </span>
             </div>
-          ) : null}
 
-          {musicRequestsEnabled ? (
-            <div
-              id="music-requests"
-              className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">Music Requests</h2>
-                  <p className="mt-2 text-white/65">
-                    Request tracks and vote on what should play next.
-                  </p>
-                </div>
-
-                {user ? (
-                  <Link
-                    href={`/venues/${venue.slug}/music-requests`}
-                    className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
-                  >
-                    Request Song
-                  </Link>
-                ) : (
-                  <Link
-                    href="/auth/login"
-                    className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
-                  >
-                    Log in to Request
-                  </Link>
-                )}
-              </div>
-
-              <div className="mt-6 space-y-3">
-                {recentRequests?.length ? (
-                  recentRequests.map((request) => (
-                    <div
-                      key={request.id}
-                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-white">
-                            {request.song_title}
-                          </p>
-                          <p className="text-sm text-white/60">
-                            {request.artist_name || 'Unknown artist'}
-                          </p>
-                        </div>
-
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/70">
-                          {request.status}
-                        </span>
-                      </div>
-
-                      <p className="mt-3 text-sm text-white/50">
-                        ▲ {request.upvotes || 0} • ▼ {request.downvotes || 0}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/65">
-                    No music requests yet.
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : null}
+            <p className="mt-3 text-sm text-white/50">
+              ▲ {request.upvotes || 0} • ▼ {request.downvotes || 0}
+            </p>
+          </div>
+        ))
+      ) : (
+        <p className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white/65">
+          No music requests yet.
+        </p>
+      )}
+    </div>
+  </div>
+) : null}
 
           {linkdnEnabled ? (
             <div
@@ -1105,7 +1225,41 @@ export default async function PublicVenuePage({ params }: Props) {
               <QuickRow label="Linkd’N" value={linkdnEnabled ? 'Enabled' : 'Off'} />
             </div>
           </div>
+<QuickRow
+  label="Comments Access"
+  value={
+    commentsEnabled
+      ? commentsRequirePresence
+        ? 'Check-in required'
+        : commentsRequireLogin
+        ? 'Login required'
+        : 'Open'
+      : 'Off'
+  }
+/>
 
+<QuickRow
+  label="Music Access"
+  value={
+    musicRequestsEnabled
+      ? musicRequestsRequirePresence
+        ? 'Check-in required'
+        : musicRequestsRequireLogin
+        ? 'Login required'
+        : 'Open'
+      : 'Off'
+  }
+/>
+
+<QuickRow
+  label="Comment Moderation"
+  value={commentsModerationMode}
+/>
+
+<QuickRow
+  label="Music Review"
+  value={musicRequestsModerationMode}
+/>
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
             <h2 className="text-2xl font-bold text-white">Guest Actions</h2>
 
