@@ -22,14 +22,31 @@ export async function reconcileVenueCheckoutSession(sessionId: string) {
     throw new Error(`Stripe session payment is not complete: ${session.payment_status}`);
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
+const nowIso = now.toISOString();
+
+const periodEnd = new Date(now);
+periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+const graceEnd = new Date(periodEnd);
+graceEnd.setDate(graceEnd.getDate() + 7);
 
   const { error: subscriptionError } = await supabase
     .from('venue_subscriptions')
     .update({
       subscription_status: 'active',
-      is_active: true,
-      activated_at: now,
+payment_due_status: 'paid',
+is_active: true,
+activated_at: nowIso,
+starts_at: nowIso,
+current_period_start: nowIso,
+current_period_end: periodEnd.toISOString(),
+next_payment_due_at: periodEnd.toISOString(),
+renewal_at: periodEnd.toISOString(),
+grace_period_ends_at: graceEnd.toISOString(),
+expires_at: graceEnd.toISOString(),
+last_payment_at: nowIso,
+last_payment_amount: Number((session.amount_total || 0) / 100),
       stripe_customer_id:
         typeof session.customer === 'string' ? session.customer : null,
       stripe_subscription_id:

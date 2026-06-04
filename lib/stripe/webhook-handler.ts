@@ -13,6 +13,14 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
       event.type === 'checkout.session.async_payment_succeeded'
     ) {
       const session = event.data.object as Stripe.Checkout.Session;
+      const now = new Date();
+      const nowIso = now.toISOString();
+
+      const periodEnd = new Date(now);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+      const graceEnd = new Date(periodEnd);
+      graceEnd.setDate(graceEnd.getDate() + 7);
 
       venueId = session.metadata?.venue_id || null;
       venueSubscriptionId = session.metadata?.venue_subscription_id || null;
@@ -43,8 +51,18 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
         .from('venue_subscriptions')
         .update({
           subscription_status: 'active',
+          payment_due_status: 'paid',
           is_active: true,
-          activated_at: now,
+          activated_at: nowIso,
+          starts_at: nowIso,
+          current_period_start: nowIso,
+          current_period_end: periodEnd.toISOString(),
+          next_payment_due_at: periodEnd.toISOString(),
+          renewal_at: periodEnd.toISOString(),
+          grace_period_ends_at: graceEnd.toISOString(),
+          expires_at: graceEnd.toISOString(),
+          last_payment_at: nowIso,
+          last_payment_amount: Number((session.amount_total || 0) / 100),
           stripe_customer_id:
             typeof session.customer === 'string' ? session.customer : null,
           stripe_subscription_id:
