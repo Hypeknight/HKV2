@@ -43,7 +43,7 @@ export default function Navbar({
       <nav className="flex items-center gap-4 text-sm">
         <Link href="/">Home</Link>
         <Link href="/events">Events</Link>
-       <!-- <Link href="/venues">Venues</Link> -->
+        
 
         {!user && (
           <>

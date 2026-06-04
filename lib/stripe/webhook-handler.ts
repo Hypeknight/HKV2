@@ -45,7 +45,7 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
         throw new Error(`Checkout completed but payment_status is ${session.payment_status}`);
       }
 
-      const now = new Date().toISOString();
+      //const now = new Date().toISOString();
 
       const { error: subscriptionError } = await supabase
         .from('venue_subscriptions')

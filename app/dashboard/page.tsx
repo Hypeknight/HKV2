@@ -74,18 +74,20 @@ export default async function DashboardPage() {
             </Link>
 
             {role === 'user' && (
-            <Link
-              href="/dashboard/venue-owner-request"
-              className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
-            >
-              Request Venue Owner Access
-            </Link>
+           // <Link
+            //  href="/dashboard/venue-owner-request"
+            //  className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
+            //>
+            //</div>  Request Venue Owner Access
+            //</Link>
+            
+
+           // <Link href="/dashboard/dj/request"
+           // className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
+           // >Request DJ Role</Link>
+           <p className="block rounded-2xl border border-white/10 bg-black/20 p-4 text-white/70">Currently, Hypeknight is not offering Venue and DJ profiles. They will be coming soon.</p>
+
             )}
-
-            <Link href="/dashboard/dj/request"
-            className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
-            >Request DJ Role</Link>
-
             <Link href="/dashboard/events" 
             className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40"
             >View all events</Link>
@@ -279,7 +281,7 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <div className="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8">
+      {/* <div className="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-white">My Venues</h2>
           <Link
@@ -330,7 +332,7 @@ export default async function DashboardPage() {
             ))}
           </div>
         )}
-      </div>
+      </div>*/}
     </section>
   );
 }
