@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createEventStep1 } from '@/app/dashboard/events/actions';
+import EventFlyerUpload from '@/components/events/EventFlyerUpload';
 
 export default function NewEventStep1Page() {
   return (
@@ -24,16 +25,13 @@ export default function NewEventStep1Page() {
             >
               Flyer Image URL
             </label>
-            <input
+            <EventFlyerUpload
               id="flyer_url"
               name="flyer_url"
               type="url"
               placeholder="https://your-image-link.com/flyer.jpg"
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
             />
-            <p className="mt-2 text-xs text-white/50">
-              For now, use an image URL. Later we can switch this to true file upload.
-            </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">

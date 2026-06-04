@@ -22,6 +22,51 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
       const graceEnd = new Date(periodEnd);
       graceEnd.setDate(graceEnd.getDate() + 7);
 
+const kind = session.metadata?.kind;
+
+if (kind === 'event_payment') {
+  const eventId = session.metadata?.event_id;
+
+  if (!eventId) {
+    throw new Error('Missing event_id in Stripe metadata');
+  }
+
+  if (
+    session.payment_status !== 'paid' &&
+    session.payment_status !== 'no_payment_required'
+  ) {
+    throw new Error(`Event checkout completed but payment_status is ${session.payment_status}`);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error: eventError } = await supabase
+    .from('events')
+    .update({
+      payment_status: 'paid',
+      is_paid: true,
+      paid_at: nowIso,
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id:
+        typeof session.payment_intent === 'string' ? session.payment_intent : null,
+      status: 'submitted',
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (eventError) throw new Error(eventError.message);
+
+  await supabase.from('stripe_webhook_events').upsert({
+    stripe_event_id: event.id,
+    event_type: event.type,
+    livemode: event.livemode,
+    processed: true,
+    error_message: null,
+  });
+
+  return;
+}
+
       venueId = session.metadata?.venue_id || null;
       venueSubscriptionId = session.metadata?.venue_subscription_id || null;
 

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { updateEventStep1 } from '@/app/dashboard/events/actions';
+import EventFlyerUpload from '@/components/events/EventFlyerUpload';
 
 type EditStep1PageProps = {
   params: Promise<{
@@ -76,13 +77,7 @@ export default async function EditEventStep1Page({ params }: EditStep1PageProps)
             <label htmlFor="flyer_url" className="mb-2 block text-sm font-medium text-white">
               Flyer Image URL
             </label>
-            <input
-              id="flyer_url"
-              name="flyer_url"
-              type="url"
-              defaultValue={event.flyer_url || ''}
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-            />
+            <EventFlyerUpload defaultUrl={event.flyer_url} />
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
