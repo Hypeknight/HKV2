@@ -40,7 +40,14 @@ export default async function EditEventStep1Page({ params }: EditStep1PageProps)
     .eq('owner_id', user.id)
     .single();
 
-  if (error || !event) notFound();
+  //if (error || !event) notFound();
+  if (error) {
+  throw new Error(error.message);
+}
+
+if (!event) {
+  notFound();
+}
 
   if (!['draft', 'building', 'rejected'].includes(event.status)) {
     redirect(`/events/${event.slug}`);
