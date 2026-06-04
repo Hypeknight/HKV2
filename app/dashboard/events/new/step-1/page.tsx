@@ -25,13 +25,7 @@ export default function NewEventStep1Page() {
             >
               Flyer Image URL
             </label>
-            <EventFlyerUpload
-              id="flyer_url"
-              name="flyer_url"
-              type="url"
-              placeholder="https://your-image-link.com/flyer.jpg"
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-            />
+            <EventFlyerUpload/>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
