@@ -1,3 +1,4 @@
+/*
 import Link from 'next/link';
 import { getFeaturedVenues, getLiveOrTonightEvents, getUpcomingEvents } from '@/lib/data';
 
@@ -290,6 +291,296 @@ function VenueCard({ venue }: { venue: any }) {
 
       <div className="mt-6 text-sm font-medium text-accent">Open venue →</div>
     </Link>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
+      <p className="mt-3 text-3xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function InfoPanel({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+      <h3 className="text-2xl font-bold text-white">{title}</h3>
+      <p className="mt-4 text-white/70">{text}</p>
+    </div>
+  );
+}
+
+function EmptyCard({ text }: { text: string }) {
+  return (
+    <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/70">
+      {text}
+    </div>
+  );
+}
+  */
+
+import Link from 'next/link';
+import { getLiveOrTonightEvents, getUpcomingEvents } from '@/lib/data';
+
+export default async function HomePage() {
+  const [liveEvents, upcomingEvents] = await Promise.all([
+    getLiveOrTonightEvents(),
+    getUpcomingEvents(),
+  ]);
+
+  const spotlightEvents = liveEvents.length ? liveEvents : upcomingEvents.slice(0, 3);
+
+  return (
+    <section className="space-y-16 pb-16">
+      <Hero />
+
+      <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-8">
+          <p className="text-sm uppercase tracking-[0.35em] text-accent">
+            Personal discovery
+          </p>
+          <h2 className="mt-3 text-3xl font-bold text-white">
+            Find events that match your night, not just your location.
+          </h2>
+          <p className="mt-4 max-w-2xl text-white/70">
+            Search by city, music, vibe, date, crowd energy, and event type. HypeKnight is built to help people decide where the night should start.
+          </p>
+
+          <form action="/events" className="mt-8 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <input
+              name="q"
+              placeholder="Search vibe, music, event..."
+              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+            />
+            <input
+              name="city"
+              placeholder="City"
+              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+            />
+            <button
+              type="submit"
+              className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+            >
+              Search
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
+          <p className="text-sm uppercase tracking-[0.35em] text-accent">
+            Tonight’s pulse
+          </p>
+          <h2 className="mt-3 text-3xl font-bold text-white">
+            Active event discovery
+          </h2>
+
+          <div className="mt-8 grid gap-4">
+            <StatCard label="Live / Tonight" value={String(liveEvents.length)} />
+            <StatCard label="Upcoming Events" value={String(upcomingEvents.length)} />
+            <StatCard label="Discovery Mode" value="Event-first" />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader
+          eyebrow="Spotlight"
+          title="Start here"
+          text="Events currently live, happening tonight, or coming up soon."
+        />
+
+        {spotlightEvents.length ? (
+          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {spotlightEvents.map((event) => (
+              <EventCard key={event.id} event={event} featured />
+            ))}
+          </div>
+        ) : (
+          <EmptyCard text="No spotlight events are visible right now." />
+        )}
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-3">
+        <InfoPanel
+          title="Match the vibe"
+          text="Find events by energy, music, type, city, and what kind of night you want."
+        />
+        <InfoPanel
+          title="See what’s active"
+          text="HypeKnight focuses on events that are approved, paid, public, and ready to be discovered."
+        />
+        <InfoPanel
+          title="Built for what’s next"
+          text="Comments, music requests, presence, and Linkd’N can grow around events as the system expands."
+        />
+      </section>
+
+      <section>
+        <SectionHeader
+          eyebrow="Upcoming"
+          title="Plan your next move"
+          text="Browse events scheduled ahead and discover what is building momentum."
+        />
+
+        {upcomingEvents.length ? (
+          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {upcomingEvents.slice(0, 6).map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
+        ) : (
+          <EmptyCard text="No upcoming events are visible right now." />
+        )}
+      </section>
+
+      <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-10 text-center">
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          HypeKnight
+        </p>
+        <h2 className="mt-3 text-4xl font-bold text-white">
+          Discover the night before the night discovers you.
+        </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-white/70">
+          Search events, compare vibes, and find the experience that fits your mood.
+        </p>
+
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Link
+            href="/events"
+            className="inline-flex items-center justify-center rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+          >
+            Explore Events
+          </Link>
+          <Link
+            href="/dashboard/events/new/step-1"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-white hover:border-accent/40"
+          >
+            Add an Event
+          </Link>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="relative overflow-hidden rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-8 py-16 sm:px-12 lg:px-16">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.07),transparent_28%)]" />
+
+      <div className="relative max-w-4xl">
+        <p className="text-sm uppercase tracking-[0.4em] text-accent">
+          HypeKnight
+        </p>
+        <h1 className="mt-4 text-5xl font-black tracking-tight text-white sm:text-7xl">
+          Your night, personalized.
+        </h1>
+        <p className="mt-6 max-w-2xl text-lg text-white/75">
+          Discover events by vibe, music, city, energy, and timing. HypeKnight helps you find the night that actually fits.
+        </p>
+
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <Link
+            href="/events"
+            className="inline-flex items-center justify-center rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+          >
+            Find Events
+          </Link>
+          <Link
+            href="/events?q=tonight"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-white hover:border-accent/40"
+          >
+            What’s Tonight?
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EventCard({ event, featured }: { event: any; featured?: boolean }) {
+  return (
+    <Link
+      href={`/events/${event.slug}`}
+      className={`group overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07] ${
+        featured ? 'shadow-[0_0_0_1px_rgba(255,255,255,0.04)]' : ''
+      }`}
+    >
+      <div className="aspect-[16/10] bg-black/30">
+        {event.flyer_url ? (
+          <img
+            src={event.flyer_url}
+            alt={event.name}
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-white/40">
+            Event image coming soon
+          </div>
+        )}
+      </div>
+
+      <div className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-accent">
+              Event
+            </p>
+            <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
+              {event.name}
+            </h3>
+          </div>
+
+          <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
+            {event.status || 'Event'}
+          </div>
+        </div>
+
+        <p className="mt-4 text-white/65">
+          {event.city}, {event.state}
+        </p>
+
+        <p className="mt-2 text-sm text-white/55">
+          {event.event_start_at
+            ? new Date(event.event_start_at).toLocaleString()
+            : 'Date pending'}
+        </p>
+
+        {event.description ? (
+          <p className="mt-4 line-clamp-3 text-sm text-white/70">
+            {event.description}
+          </p>
+        ) : (
+          <p className="mt-4 text-sm text-white/45">
+            No description added yet.
+          </p>
+        )}
+
+        <div className="mt-6 text-sm font-medium text-accent">
+          Open event →
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  text,
+}: {
+  eyebrow: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="max-w-3xl">
+      <p className="text-sm uppercase tracking-[0.35em] text-accent">{eyebrow}</p>
+      <h2 className="mt-3 text-3xl font-bold text-white">{title}</h2>
+      <p className="mt-3 text-white/70">{text}</p>
+    </div>
   );
 }
 
