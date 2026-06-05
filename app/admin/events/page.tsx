@@ -120,26 +120,7 @@ const removedEvents = events.filter(
       </div>
 
       <div className="space-y-12">
-        <AdminSection
-          title="Events Waiting for Approval"
-          subtitle="Waiting for admin review."
-        >
-          {readyForApprovalEvents.length ? (
-            <div className="space-y-6">
-              {readyForApprovalEvents.map((event) => (
-  <EventModerationCard
-    key={event.id}
-    event={event}
-    mode="submitted"
-    approveEvent={approveEvent}
-    rejectEvent={rejectEvent}
-  />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No submitted events waiting for review." />
-          )}
-        </AdminSection>
+      
         <AdminSection
   title="Not Paid / Not Approved"
   subtitle="Events completed by the user but blocked until payment is complete."
@@ -154,6 +135,29 @@ const removedEvents = events.filter(
     <EmptyState text="No unpaid unapproved events." />
   )}
 </AdminSection>
+
+
+<AdminSection
+          title="Events Waiting for Approval"
+          subtitle="Waiting for admin review."
+        >
+          {readyForApprovalEvents.length ? (
+            <div className="space-y-6">
+              {readyForApprovalEvents.map((event) => (
+                <EventModerationCard
+                  key={event.id}
+                  event={event}
+                  mode="submitted"
+                  approveEvent={approveEvent}
+                  rejectEvent={rejectEvent}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="No submitted events waiting for review." />
+          )}
+        </AdminSection>
+
 
         <AdminSection
           title="Unapproved and Waiting on Payment"
