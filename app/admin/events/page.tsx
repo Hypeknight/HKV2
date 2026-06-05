@@ -59,25 +59,33 @@ export default async function AdminEventsPage() {
   if (error) throw new Error(error.message);
 
   const events = allEvents ?? [];
+const unpaidUnapprovedEvents = events.filter(
+  (event) => event.status === 'NPNA'
+);
 
-  const submittedEvents = events.filter(
-    (event) => event.status === 'submitted' && !event.is_approved
-  );
+const readyForApprovalEvents = events.filter(
+  (event) => event.status === 'paid_awaiting_approval'
+);
 
-  const unpaidApprovedEvents = events.filter(
-    (event) =>
-      event.is_approved === true &&
-      event.is_paid === false &&
-      event.payment_override === false &&
-      !['rejected', 'removed', 'completed'].includes(event.status)
-  );
+const approvedAwaitingPaymentEvents = events.filter(
+  (event) => event.status === 'approved_awaiting_payment'
+);
 
-  const activePipelineEvents = events.filter((event) =>
-    ['scheduled', 'active'].includes(event.status)
-  );
+const activePipelineEvents = events.filter((event) =>
+  ['scheduled', 'active'].includes(event.status)
+);
 
-  const rejectedEvents = events.filter((event) => event.status === 'rejected');
+const completedEvents = events.filter(
+  (event) => event.status === 'completed'
+);
 
+const rejectedEvents = events.filter(
+  (event) => event.status === 'rejected'
+);
+
+const removedEvents = events.filter(
+  (event) => event.status === 'removed'
+);
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="mb-8">
@@ -90,13 +98,13 @@ export default async function AdminEventsPage() {
 
       <div className="mb-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Submitted"
-          value={String(submittedEvents.length)}
+          label="Paid Awaiting Approval"
+          value={String(readyForApprovalEvents.length)}
           tone="yellow"
         />
         <MetricCard
-          label="Approved / Awaiting Payment"
-          value={String(unpaidApprovedEvents.length)}
+          label="Not Paid / Not Approved"
+          value={String(unpaidUnapprovedEvents.length)}
           tone="orange"
         />
         <MetricCard
@@ -113,33 +121,47 @@ export default async function AdminEventsPage() {
 
       <div className="space-y-12">
         <AdminSection
-          title="Submitted Events"
-          subtitle="Waiting for admin decision."
+          title="Events Waiting for Approval"
+          subtitle="Waiting for admin review."
         >
-          {submittedEvents.length ? (
+          {readyForApprovalEvents.length ? (
             <div className="space-y-6">
-              {submittedEvents.map((event) => (
-                <EventModerationCard
-                  key={event.id}
-                  event={event}
-                  mode="submitted"
-                  approveEvent={approveEvent}
-                  rejectEvent={rejectEvent}
-                />
+              {readyForApprovalEvents.map((event) => (
+  <EventModerationCard
+    key={event.id}
+    event={event}
+    mode="submitted"
+    approveEvent={approveEvent}
+    rejectEvent={rejectEvent}
+  />
               ))}
             </div>
           ) : (
             <EmptyState text="No submitted events waiting for review." />
           )}
         </AdminSection>
+        <AdminSection
+  title="Not Paid / Not Approved"
+  subtitle="Events completed by the user but blocked until payment is complete."
+>
+  {unpaidUnapprovedEvents.length ? (
+    <div className="space-y-6">
+      {unpaidUnapprovedEvents.map((event) => (
+        <EventPipelineCard key={event.id} event={event} />
+      ))}
+    </div>
+  ) : (
+    <EmptyState text="No unpaid unapproved events." />
+  )}
+</AdminSection>
 
         <AdminSection
-          title="Approved but Waiting on Payment"
-          subtitle="Approved events that still need payment or an admin override."
+          title="Unapproved and Waiting on Payment"
+          subtitle="Events that are not approved and still need payment or an admin override."
         >
-          {unpaidApprovedEvents.length ? (
+          {unpaidUnapprovedEvents.length ? (
             <div className="space-y-6">
-              {unpaidApprovedEvents.map((event) => (
+              {unpaidUnapprovedEvents.map((event) => (
                 <EventModerationCard
                   key={event.id}
                   event={event}
@@ -451,15 +473,15 @@ function MetricCard({
 
 function StatusChip({ status }: { status?: string | null }) {
   const tone =
-    status === 'submitted'
-      ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
-      : status === 'scheduled'
-      ? 'border-blue-500/20 bg-blue-500/10 text-blue-200'
-      : status === 'active'
-      ? 'border-green-500/20 bg-green-500/10 text-green-200'
-      : status === 'rejected'
-      ? 'border-red-500/20 bg-red-500/10 text-red-200'
-      : 'border-white/10 bg-black/20 text-white/70';
+    status === 'NPNA'
+  ? 'border-orange-500/20 bg-orange-500/10 text-orange-200'
+  : status === 'paid_awaiting_approval'
+  ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
+  : status === 'approved_awaiting_payment'
+  ? 'border-orange-500/20 bg-orange-500/10 text-orange-200'
+  : status === 'building'
+  ? 'border-white/10 bg-black/20 text-white/70'
+  : 'border-white/10 bg-black/20 text-white/70';
 
   return (
     <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${tone}`}>

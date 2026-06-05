@@ -192,6 +192,7 @@ export async function updateEventStep3(formData: FormData) {
 
 export async function submitEventForModeration(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -200,21 +201,64 @@ export async function submitEventForModeration(formData: FormData) {
 
   const eventId = String(formData.get('event_id') || '');
 
+  if (!eventId) {
+    throw new Error('Missing event id');
+  }
+
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select(`
+      id,
+      owner_id,
+      status,
+      is_paid,
+      payment_status,
+      payment_override,
+      total_price,
+      payment_amount,
+      promotion_start_at,
+      promotion_end_at,
+      event_start_at,
+      event_end_at
+    `)
+    .eq('id', eventId)
+    .eq('owner_id', user.id)
+    .single();
+
+  if (eventError || !event) {
+    throw new Error(eventError?.message || 'Event not found');
+  }
+
+  const amountDue = Number(event.payment_amount || event.total_price || 0);
+
+  const isPaid =
+    event.is_paid === true ||
+    event.payment_status === 'paid' ||
+    event.payment_override === true ||
+    amountDue <= 0;
+
+  const nextStatus = isPaid ? 'paid_awaiting_approval' : 'NPNA';
+
   const { error } = await supabase
     .from('events')
     .update({
-      status: 'submitted',
-      submitted_at: new Date().toISOString(),
-      locked_at: new Date().toISOString(),
+      status: nextStatus,
       is_public: false,
-      current_step: 3,
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .eq('id', eventId)
     .eq('owner_id', user.id);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(error.message);
+  }
 
-  redirect('/dashboard?submitted=1');
+  if (nextStatus === 'NPNA') {
+    redirect(`/dashboard/events/${eventId}/payment`);
+  }
+
+  redirect(`/dashboard/events/${eventId}/review?submitted=1`);
 }
 
 export async function discardDraftEvent(formData: FormData) {
