@@ -120,7 +120,7 @@ export default async function EventsPage() {
     .select('*')
     .eq('status', 'active')
     //.gte('event_start_at', now)
-    .order('event_start_at', { ascending: true });
+    //.order('event_start_at', { ascending: true });
 
   if (externalError) {
     throw new Error(externalError.message);
