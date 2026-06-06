@@ -80,7 +80,9 @@ export default async function EventsPage() {
 }
   */
 
-import Link from 'next/link';
+import DiscoveryEventCard, {
+  DiscoveryEventCardItem,
+} from '@/components/events/DiscoveryEventCard';
 import { createClient } from '@/lib/supabase/server';
 
 type SearchParams = {
@@ -93,21 +95,6 @@ type SearchParams = {
 
 type EventsPageProps = {
   searchParams?: Promise<SearchParams>;
-};
-
-type EventCardItem = {
-  id: string;
-  name: string;
-  city?: string | null;
-  state?: string | null;
-  description?: string | null;
-  event_start_at?: string | null;
-  image_url?: string | null;
-  href: string;
-  status: string;
-  source_label: string;
-  is_external: boolean;
-  venue_name?: string | null;
 };
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
@@ -182,7 +169,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
     );
   }
 
-  const cards: EventCardItem[] = [
+  const cards: DiscoveryEventCardItem[] = [
     ...hypeEvents.map((event: any) => ({
       id: event.id,
       name: event.name,
@@ -196,6 +183,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       source_label: 'HypeKnight',
       is_external: false,
       venue_name: event.venue?.name || event.venue_name,
+      genre: event.music?.[0] || event.event_type || null,
+      classification: event.event_type || null,
     })),
     ...externalEvents.map((event: any) => ({
       id: event.id,
@@ -213,6 +202,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           : event.source_code || 'External',
       is_external: true,
       venue_name: event.venue_name,
+      genre: event.genre,
+      classification: event.classification || event.segment,
     })),
   ].sort((a, b) => {
     const aTime = a.event_start_at ? new Date(a.event_start_at).getTime() : Infinity;
@@ -241,7 +232,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
             name="q"
             defaultValue={q}
             placeholder="Search event, vibe, venue..."
-            className="lg:col-span-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50 lg:col-span-2"
           />
 
           <input
@@ -282,7 +273,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
           <button
             type="submit"
-            className="lg:col-span-6 rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+            className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90 lg:col-span-6"
           >
             Search Events
           </button>
@@ -297,8 +288,12 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
       {cards.length ? (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {cards.map((event) => (
-            <EventCard key={`${event.source_label}-${event.id}`} event={event} />
+          {cards.map((event, index) => (
+            <DiscoveryEventCard
+              key={`${event.source_label}-${event.id}`}
+              event={event}
+              featured={index < 3}
+            />
           ))}
         </div>
       ) : (
@@ -332,87 +327,6 @@ function getEndDate(date: string) {
   }
 
   return null;
-}
-
-function EventCard({ event }: { event: EventCardItem }) {
-  return (
-    <Link
-      href={event.href}
-      className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 hover:border-accent/40 hover:bg-white/[0.07]"
-    >
-      <div className="aspect-[16/10] bg-black/30">
-        {event.image_url ? (
-          <img
-            src={event.image_url}
-            alt={event.name}
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-white/40">
-            Event image coming soon
-          </div>
-        )}
-      </div>
-
-      <div className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-accent">
-              Event
-            </p>
-
-            <h2 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
-              {event.name}
-            </h2>
-          </div>
-
-          <div
-            className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${
-              event.is_external
-                ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
-                : 'border-accent/20 bg-accent/10 text-accent'
-            }`}
-          >
-            {event.source_label}
-          </div>
-        </div>
-
-        {event.venue_name ? (
-          <p className="mt-4 text-white/65">{event.venue_name}</p>
-        ) : null}
-
-        <p className="mt-2 text-white/60">
-          {event.city || 'City TBA'}, {event.state || 'State TBA'}
-        </p>
-
-        <p className="mt-2 text-sm text-white/55">
-          {event.event_start_at
-            ? new Date(event.event_start_at).toLocaleString()
-            : 'Date pending'}
-        </p>
-
-        {event.description ? (
-          <p className="mt-4 line-clamp-3 text-sm text-white/70">
-            {event.description}
-          </p>
-        ) : (
-          <p className="mt-4 text-sm text-white/45">
-            No description added yet.
-          </p>
-        )}
-
-        {event.is_external ? (
-          <p className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs text-yellow-100">
-            Supplemental event. Not originally hosted or managed by HypeKnight.
-          </p>
-        ) : null}
-
-        <div className="mt-6 text-sm font-medium text-accent">
-          Open event →
-        </div>
-      </div>
-    </Link>
-  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
