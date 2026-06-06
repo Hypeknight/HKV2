@@ -108,7 +108,7 @@ export default async function EventsPage() {
     .eq('status', 'active')
     .eq('is_public', true)
     .is('removed_at', null)
-    .gte('event_start_at', now)
+    //.gte('event_start_at', now)
     .order('event_start_at', { ascending: true });
 
   if (hypeError) {
