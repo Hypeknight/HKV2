@@ -84,6 +84,7 @@ import DiscoveryEventCard, {
   DiscoveryEventCardItem,
 } from '@/components/events/DiscoveryEventCard';
 import { createClient } from '@/lib/supabase/server';
+import { logDiscoverySearch } from '@/lib/discovery/log-search';
 
 type SearchParams = {
   q?: string;
@@ -213,6 +214,19 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
   const hypeCount = cards.filter((event) => !event.is_external).length;
   const externalCount = cards.filter((event) => event.is_external).length;
+
+  await logDiscoverySearch({
+  searchQuery: q,
+  city,
+  state,
+  sourceFilter: source,
+  dateFilter: date,
+  resultCount: cards.length,
+  hypeknightResultCount: hypeCount,
+  externalResultCount: externalCount,
+  pagePath: '/events',
+});
+
 
   return (
     <section className="space-y-10">

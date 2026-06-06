@@ -20,15 +20,21 @@ export default async function AdminDiscoveryPage() {
 
   if (profile?.app_role !== 'admin') redirect('/dashboard');
 
-  const nowIso = new Date().toISOString();
-  const sevenDays = new Date();
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  const sevenDays = new Date(now);
   sevenDays.setDate(sevenDays.getDate() + 7);
+
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const [
     hypeEventsResult,
     externalEventsResult,
-    venueResult,
+    venuesResult,
     subscriptionsResult,
+    searchLogsResult,
   ] = await Promise.all([
     supabase
       .from('events')
@@ -67,18 +73,38 @@ export default async function AdminDiscoveryPage() {
 
     supabase
       .from('venue_subscriptions')
-      .select('id, subscription_status, payment_due_status, last_payment_amount, created_at'),
+      .select(
+        'id, subscription_status, payment_due_status, last_payment_amount, created_at'
+      ),
+
+    supabase
+      .from('discovery_search_logs')
+      .select(`
+        id,
+        city,
+        state,
+        user_id,
+        search_query,
+        source_filter,
+        date_filter,
+        result_count,
+        hypeknight_result_count,
+        external_result_count,
+        created_at
+      `)
+      .gte('created_at', thirtyDaysAgo.toISOString()),
   ]);
 
   if (hypeEventsResult.error) throw new Error(hypeEventsResult.error.message);
   if (externalEventsResult.error) throw new Error(externalEventsResult.error.message);
-  if (venueResult.error) throw new Error(venueResult.error.message);
+  if (venuesResult.error) throw new Error(venuesResult.error.message);
   if (subscriptionsResult.error) throw new Error(subscriptionsResult.error.message);
 
   const hypeEvents = hypeEventsResult.data ?? [];
   const externalEvents = externalEventsResult.data ?? [];
-  const venues = venueResult.data ?? [];
+  const venues = venuesResult.data ?? [];
   const subscriptions = subscriptionsResult.data ?? [];
+  const searchLogs = searchLogsResult.data ?? [];
 
   const activeHypeEvents = hypeEvents.filter((event) => event.status === 'active');
   const scheduledEvents = hypeEvents.filter((event) => event.status === 'scheduled');
@@ -91,7 +117,7 @@ export default async function AdminDiscoveryPage() {
   const upcomingSevenDays = hypeEvents.filter((event) => {
     if (!event.event_start_at) return false;
     const start = new Date(event.event_start_at);
-    return start >= new Date(nowIso) && start <= sevenDays;
+    return start >= now && start <= sevenDays;
   });
 
   const activeExternalEvents = externalEvents.filter(
@@ -103,9 +129,7 @@ export default async function AdminDiscoveryPage() {
   );
 
   const eventRevenue = hypeEvents.reduce((total, event) => {
-    const paid =
-      event.is_paid === true || event.payment_status === 'paid';
-
+    const paid = event.is_paid === true || event.payment_status === 'paid';
     if (!paid) return total;
 
     return total + Number(event.payment_amount || event.total_price || 0);
@@ -128,6 +152,7 @@ export default async function AdminDiscoveryPage() {
 
   for (const event of hypeEvents) {
     if (!event.city) continue;
+
     const key = `${event.city},${event.state || ''}`.toLowerCase();
 
     const row =
@@ -147,6 +172,7 @@ export default async function AdminDiscoveryPage() {
 
   for (const event of externalEvents) {
     if (!event.city) continue;
+
     const key = `${event.city},${event.state || ''}`.toLowerCase();
 
     const row =
@@ -170,26 +196,114 @@ export default async function AdminDiscoveryPage() {
 
   const weakCities = cityRows.filter((city) => city.hype < 3).slice(0, 10);
 
+  const cityDemandMap = new Map<
+    string,
+    {
+      city: string;
+      state: string;
+      searches: number;
+      users: Set<string>;
+      results: number;
+      hypeResults: number;
+      externalResults: number;
+    }
+  >();
+
+  for (const log of searchLogs) {
+    if (!log.city) continue;
+
+    const key = `${log.city},${log.state || ''}`.toLowerCase();
+
+    const row =
+      cityDemandMap.get(key) ||
+      {
+        city: log.city,
+        state: log.state || '',
+        searches: 0,
+        users: new Set<string>(),
+        results: 0,
+        hypeResults: 0,
+        externalResults: 0,
+      };
+
+    row.searches += 1;
+    row.results += Number(log.result_count || 0);
+    row.hypeResults += Number(log.hypeknight_result_count || 0);
+    row.externalResults += Number(log.external_result_count || 0);
+
+    if (log.user_id) row.users.add(log.user_id);
+
+    cityDemandMap.set(key, row);
+  }
+
+  const topSearchedCities = Array.from(cityDemandMap.values())
+    .map((row) => ({
+      city: row.city,
+      state: row.state,
+      searches: row.searches,
+      uniqueUsers: row.users.size,
+      results: row.results,
+      hypeResults: row.hypeResults,
+      externalResults: row.externalResults,
+    }))
+    .sort((a, b) => b.searches - a.searches)
+    .slice(0, 10);
+
+  const lowResultDemandCities = topSearchedCities.filter(
+    (city) => city.searches > 0 && city.hypeResults < 3
+  );
+
+  const totalSearches = searchLogs.length;
+  const uniqueSearchingUsers = new Set(
+    searchLogs.map((log) => log.user_id).filter(Boolean)
+  ).size;
+
+  const recentSearches = searchLogs
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    .slice(0, 10);
+
   return (
     <section className="mx-auto max-w-7xl space-y-12 px-4 py-12 sm:px-6 lg:px-8">
       <div>
         <p className="text-sm uppercase tracking-[0.35em] text-accent">
           Admin
         </p>
+
         <h1 className="mt-3 text-4xl font-bold text-white">
           Discovery Nerve Center
         </h1>
+
         <p className="mt-3 max-w-3xl text-white/70">
-          Track event inventory, source coverage, payment movement, city gaps,
-          and external discovery imports from one control center.
+          Track event inventory, source coverage, payment movement, city demand,
+          user search behavior, and external discovery imports from one control center.
         </p>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Active HypeKnight Events" value={String(activeHypeEvents.length)} tone="green" />
-        <Metric label="Paid Awaiting Approval" value={String(paidAwaitingApproval.length)} tone="yellow" />
-        <Metric label="External Events" value={String(activeExternalEvents.length)} tone="accent" />
-        <Metric label="Cities Covered" value={String(cityRows.length)} tone="blue" />
+        <Metric
+          label="Active HypeKnight Events"
+          value={String(activeHypeEvents.length)}
+          tone="green"
+        />
+        <Metric
+          label="Paid Awaiting Approval"
+          value={String(paidAwaitingApproval.length)}
+          tone="yellow"
+        />
+        <Metric
+          label="External Events"
+          value={String(activeExternalEvents.length)}
+          tone="accent"
+        />
+        <Metric
+          label="Cities Covered"
+          value={String(cityRows.length)}
+          tone="blue"
+        />
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -202,8 +316,8 @@ export default async function AdminDiscoveryPage() {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Event Revenue" value={`$${eventRevenue.toFixed(2)}`} tone="accent" />
         <Metric label="Venue Revenue" value={`$${venueRevenue.toFixed(2)}`} tone="accent" />
-        <Metric label="Venues" value={String(venues.length)} tone="blue" />
-        <Metric label="Ticketmaster Events" value={String(ticketmasterEvents.length)} tone="yellow" />
+        <Metric label="Searches Last 30 Days" value={String(totalSearches)} tone="blue" />
+        <Metric label="Unique Searching Users" value={String(uniqueSearchingUsers)} tone="green" />
       </section>
 
       <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
@@ -212,9 +326,11 @@ export default async function AdminDiscoveryPage() {
             <p className="text-sm uppercase tracking-[0.35em] text-accent">
               External Discovery
             </p>
+
             <h2 className="mt-3 text-3xl font-bold text-white">
               Manual Ticketmaster Import
             </h2>
+
             <p className="mt-3 max-w-2xl text-white/70">
               Fill city gaps by importing supplemental events. These appear as
               external events and are not treated as HypeKnight-managed events.
@@ -258,8 +374,43 @@ export default async function AdminDiscoveryPage() {
         </form>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <Panel title="City Coverage" subtitle="Where HypeKnight and external events are currently visible.">
+      <section className="grid gap-6 xl:grid-cols-2">
+        <Panel
+          title="Top Searched Cities"
+          subtitle="Cities users are actively looking for on HypeKnight."
+        >
+          {topSearchedCities.length ? (
+            <div className="space-y-3">
+              {topSearchedCities.map((city) => (
+                <CityDemandRow key={`${city.city}-${city.state}`} city={city} />
+              ))}
+            </div>
+          ) : (
+            <Empty text="No city search activity yet." />
+          )}
+        </Panel>
+
+        <Panel
+          title="Demand Gaps"
+          subtitle="Cities users search for, but HypeKnight has low native event inventory."
+        >
+          {lowResultDemandCities.length ? (
+            <div className="space-y-3">
+              {lowResultDemandCities.map((city) => (
+                <CityDemandRow key={`${city.city}-${city.state}`} city={city} warning />
+              ))}
+            </div>
+          ) : (
+            <Empty text="No search demand gaps detected yet." />
+          )}
+        </Panel>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <Panel
+          title="City Coverage"
+          subtitle="Where HypeKnight and external events are currently visible."
+        >
           {cityRows.length ? (
             <div className="space-y-3">
               {cityRows.slice(0, 12).map((city) => (
@@ -271,7 +422,10 @@ export default async function AdminDiscoveryPage() {
           )}
         </Panel>
 
-        <Panel title="Weak Coverage Cities" subtitle="Cities with fewer than 3 HypeKnight events.">
+        <Panel
+          title="Weak Coverage Cities"
+          subtitle="Cities with fewer than 3 HypeKnight events."
+        >
           {weakCities.length ? (
             <div className="space-y-3">
               {weakCities.map((city) => (
@@ -284,8 +438,26 @@ export default async function AdminDiscoveryPage() {
         </Panel>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <Panel title="Event Pipeline" subtitle="Quick links into operational queues.">
+      <section className="grid gap-6 xl:grid-cols-2">
+        <Panel
+          title="Recent Searches"
+          subtitle="Recent discovery searches captured on the public event pages."
+        >
+          {recentSearches.length ? (
+            <div className="space-y-3">
+              {recentSearches.map((log) => (
+                <RecentSearchRow key={log.id} log={log} />
+              ))}
+            </div>
+          ) : (
+            <Empty text="No recent searches yet." />
+          )}
+        </Panel>
+
+        <Panel
+          title="Event Pipeline"
+          subtitle="Quick links into operational queues."
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             <AdminLink href="/admin/events" label="Event Moderation" />
             <AdminLink href="/admin/payments" label="Payments" />
@@ -293,8 +465,13 @@ export default async function AdminDiscoveryPage() {
             <AdminLink href="/admin/external-events" label="External Events" />
           </div>
         </Panel>
+      </section>
 
-        <Panel title="Recommended Next Actions" subtitle="Suggested operational priorities.">
+      <section>
+        <Panel
+          title="Recommended Next Actions"
+          subtitle="Suggested operational priorities based on event and discovery activity."
+        >
           <div className="space-y-3">
             {paidAwaitingApproval.length ? (
               <Action text={`${paidAwaitingApproval.length} paid events need admin approval.`} />
@@ -308,7 +485,14 @@ export default async function AdminDiscoveryPage() {
               <Action text={`${weakCities.length} cities need more HypeKnight inventory.`} />
             ) : null}
 
-            {!paidAwaitingApproval.length && !npnaEvents.length && !weakCities.length ? (
+            {lowResultDemandCities.length ? (
+              <Action text={`${lowResultDemandCities.length} searched cities have low HypeKnight inventory.`} />
+            ) : null}
+
+            {!paidAwaitingApproval.length &&
+            !npnaEvents.length &&
+            !weakCities.length &&
+            !lowResultDemandCities.length ? (
               <Action text="No immediate discovery issues detected." />
             ) : null}
           </div>
@@ -391,7 +575,8 @@ function CityRow({
             {city.city}, {city.state}
           </p>
           <p className="mt-1 text-sm text-white/55">
-            HypeKnight: {city.hype} • External: {city.external} • Total: {city.total}
+            HypeKnight: {city.hype} • External: {city.external} • Total:{' '}
+            {city.total}
           </p>
         </div>
 
@@ -410,6 +595,74 @@ function CityRow({
           </Link>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CityDemandRow({
+  city,
+  warning = false,
+}: {
+  city: {
+    city: string;
+    state: string;
+    searches: number;
+    uniqueUsers: number;
+    results: number;
+    hypeResults: number;
+    externalResults: number;
+  };
+  warning?: boolean;
+}) {
+  const citySlug = city.city.toLowerCase().replace(/\s+/g, '-');
+
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        warning
+          ? 'border-orange-500/20 bg-orange-500/10'
+          : 'border-white/10 bg-black/20'
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold text-white">
+            {city.city}, {city.state || '—'}
+          </p>
+          <p className="mt-1 text-sm text-white/55">
+            Searches: {city.searches} • Users: {city.uniqueUsers} • Results:{' '}
+            {city.results}
+          </p>
+          <p className="mt-1 text-xs text-white/45">
+            HypeKnight results: {city.hypeResults} • External results:{' '}
+            {city.externalResults}
+          </p>
+        </div>
+
+        <Link
+          href={`/events/city/${citySlug}`}
+          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white hover:border-accent/40"
+        >
+          View City
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function RecentSearchRow({ log }: { log: any }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="font-semibold text-white">
+        {log.city || 'No city'}, {log.state || '—'}
+      </p>
+      <p className="mt-1 text-sm text-white/55">
+        Query: {log.search_query || '—'} • Source: {log.source_filter || 'all'} •
+        Results: {log.result_count || 0}
+      </p>
+      <p className="mt-1 text-xs text-white/40">
+        {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
+      </p>
     </div>
   );
 }
