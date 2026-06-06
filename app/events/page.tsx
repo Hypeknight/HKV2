@@ -83,6 +83,18 @@ export default async function EventsPage() {
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 
+type SearchParams = {
+  q?: string;
+  city?: string;
+  state?: string;
+  source?: string;
+  date?: string;
+};
+
+type EventsPageProps = {
+  searchParams?: Promise<SearchParams>;
+};
+
 type EventCardItem = {
   id: string;
   name: string;
@@ -98,36 +110,80 @@ type EventCardItem = {
   venue_name?: string | null;
 };
 
-export default async function EventsPage() {
-  const supabase = await createClient();
-  const now = new Date().toISOString();
+export default async function EventsPage({ searchParams }: EventsPageProps) {
+  const params = searchParams ? await searchParams : {};
 
-  const { data: hypeEvents, error: hypeError } = await supabase
+  const q = params.q?.trim() || '';
+  const city = params.city?.trim() || '';
+  const state = params.state?.trim() || '';
+  const source = params.source || 'all';
+  const date = params.date || 'all';
+
+  const supabase = await createClient();
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const endDate = getEndDate(date);
+
+  let hypeQuery = supabase
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
     .eq('status', 'active')
     .eq('is_public', true)
     .is('removed_at', null)
-    .gte('event_start_at', now)
+    .gte('event_start_at', nowIso)
     .order('event_start_at', { ascending: true });
 
-  if (hypeError) {
-    throw new Error(hypeError.message);
+  if (q) {
+    hypeQuery = hypeQuery.or(
+      `name.ilike.%${q}%,description.ilike.%${q}%,venue_name.ilike.%${q}%,city.ilike.%${q}%`
+    );
   }
 
-  const { data: externalEvents, error: externalError } = await supabase
+  if (city) hypeQuery = hypeQuery.ilike('city', `%${city}%`);
+  if (state) hypeQuery = hypeQuery.ilike('state', `%${state}%`);
+  if (endDate) hypeQuery = hypeQuery.lte('event_start_at', endDate.toISOString());
+
+  let externalQuery = supabase
     .from('external_events')
     .select('*')
     .eq('status', 'active')
-    .gte('event_start_at', now)
+    .or(`event_start_at.gte.${nowIso},event_start_at.is.null`)
     .order('event_start_at', { ascending: true, nullsFirst: false });
 
-  if (externalError) {
-    throw new Error(externalError.message);
+  if (q) {
+    externalQuery = externalQuery.or(
+      `name.ilike.%${q}%,description.ilike.%${q}%,venue_name.ilike.%${q}%,city.ilike.%${q}%,genre.ilike.%${q}%,classification.ilike.%${q}%`
+    );
+  }
+
+  if (city) externalQuery = externalQuery.ilike('city', `%${city}%`);
+  if (state) externalQuery = externalQuery.ilike('state', `%${state}%`);
+  if (endDate) externalQuery = externalQuery.lte('event_start_at', endDate.toISOString());
+
+  const shouldFetchHype = source === 'all' || source === 'hypeknight';
+  const shouldFetchExternal =
+    source === 'all' || source === 'external' || source === 'ticketmaster';
+
+  const [hypeResult, externalResult] = await Promise.all([
+    shouldFetchHype ? hypeQuery : Promise.resolve({ data: [], error: null }),
+    shouldFetchExternal ? externalQuery : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (hypeResult.error) throw new Error(hypeResult.error.message);
+  if (externalResult.error) throw new Error(externalResult.error.message);
+
+  let hypeEvents = hypeResult.data ?? [];
+  let externalEvents = externalResult.data ?? [];
+
+  if (source === 'ticketmaster') {
+    externalEvents = externalEvents.filter(
+      (event: any) => event.source_code === 'ticketmaster'
+    );
   }
 
   const cards: EventCardItem[] = [
-    ...(hypeEvents ?? []).map((event) => ({
+    ...hypeEvents.map((event: any) => ({
       id: event.id,
       name: event.name,
       city: event.city,
@@ -141,7 +197,7 @@ export default async function EventsPage() {
       is_external: false,
       venue_name: event.venue?.name || event.venue_name,
     })),
-    ...(externalEvents ?? []).map((event) => ({
+    ...externalEvents.map((event: any) => ({
       id: event.id,
       name: event.name,
       city: event.city,
@@ -177,8 +233,60 @@ export default async function EventsPage() {
         </h1>
 
         <p className="mt-4 max-w-3xl text-white/70">
-          Browse active HypeKnight events and supplemental events discovered from trusted external sources.
+          Search HypeKnight events and supplemental events discovered from trusted external sources.
         </p>
+
+        <form action="/events" className="mt-8 grid gap-4 lg:grid-cols-6">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search event, vibe, venue..."
+            className="lg:col-span-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+          />
+
+          <input
+            name="city"
+            defaultValue={city}
+            placeholder="City"
+            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+          />
+
+          <input
+            name="state"
+            defaultValue={state}
+            placeholder="State"
+            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+          />
+
+          <select
+            name="source"
+            defaultValue={source}
+            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
+          >
+            <option value="all">All Sources</option>
+            <option value="hypeknight">HypeKnight</option>
+            <option value="external">External</option>
+            <option value="ticketmaster">Ticketmaster</option>
+          </select>
+
+          <select
+            name="date"
+            defaultValue={date}
+            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
+          >
+            <option value="all">Any Date</option>
+            <option value="today">Today</option>
+            <option value="week">Next 7 Days</option>
+            <option value="month">Next 30 Days</option>
+          </select>
+
+          <button
+            type="submit"
+            className="lg:col-span-6 rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+          >
+            Search Events
+          </button>
+        </form>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
           <Stat label="HypeKnight Events" value={String(hypeCount)} />
@@ -195,11 +303,35 @@ export default async function EventsPage() {
         </div>
       ) : (
         <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/70">
-          No active events are available right now.
+          No events match your filters right now.
         </div>
       )}
     </section>
   );
+}
+
+function getEndDate(date: string) {
+  const now = new Date();
+
+  if (date === 'today') {
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    return end;
+  }
+
+  if (date === 'week') {
+    const end = new Date(now);
+    end.setDate(end.getDate() + 7);
+    return end;
+  }
+
+  if (date === 'month') {
+    const end = new Date(now);
+    end.setDate(end.getDate() + 30);
+    return end;
+  }
+
+  return null;
 }
 
 function EventCard({ event }: { event: EventCardItem }) {
