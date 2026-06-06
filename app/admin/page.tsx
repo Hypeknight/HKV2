@@ -35,20 +35,26 @@ export default async function AdminPage({
           <h1 className="mt-2 text-4xl font-bold text-white">Control room</h1>
         </div>
         <div className="flex gap-3">
-          <Link href="/dashboard/venues/new/step-1/" className="rounded-full border border-white/10 px-5 py-3 hover:border-accent/40">
+          {/*<Link href="/dashboard/venues/new/step-1/" className="rounded-full border border-white/10 px-5 py-3 hover:border-accent/40">
             New venue
-          </Link>
+          </Link>*/}
           <Link href="/dashboard/events/new/step-1/" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
             New event
           </Link>
           <Link href="/admin/events" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
           Moderate Events</Link>
 
+          <Link href="/admin/discovery/" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          Discovery </Link>
+
+          <Link href="/admin/external-events/" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          External Event Portal</Link>
+
           <Link href="/admin/venue-owner-requests/" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
           Venue Owner Requests</Link>
 
-          <Link href="/admin/venues" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
-          Manage Venues</Link>
+          {/*<Link href="/admin/venues" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
+          Manage Venues</Link>*/}
 
          <Link href="/admin/djs" className="rounded-full bg-accent px-5 py-3 font-semibold text-black">
           Manage DJs
