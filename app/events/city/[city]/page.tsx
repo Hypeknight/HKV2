@@ -95,7 +95,7 @@ export default async function CityEventsPage({ params }: PageProps) {
 
 await logDiscoverySearch({
   city: cityName,
-  state: cards[0]?.state || null,
+  state: cards[0]?.state || undefined,
   resultCount: cards.length,
   hypeknightResultCount: hypeCount,
   externalResultCount: externalCount,
