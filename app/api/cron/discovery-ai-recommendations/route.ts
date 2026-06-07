@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { analyzeDiscoverySignals } from '@/lib/discovery/ai-analyzer';
 
+type DiscoverySignal = {
+  city: string;
+  state: string | null;
+  searchCount: number;
+  uniqueUsers: number;
+  hypeknightEventCount: number;
+  externalEventCount: number;
+  priorityLevel: string;
+  preferredKeywords: string[];
+};
+
 export async function GET(req: Request) {
   const secret = req.headers.get('x-cron-secret');
 
@@ -10,6 +21,20 @@ export async function GET(req: Request) {
   }
 
   const supabase = createAdminClient();
+
+  const { data: settings } = await supabase
+    .from('discovery_ai_settings')
+    .select('*')
+    .limit(1)
+    .maybeSingle();
+
+  if (settings && settings.is_enabled === false) {
+    return NextResponse.json({
+      ok: true,
+      created: 0,
+      message: 'AI discovery is disabled.',
+    });
+  }
 
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
@@ -24,133 +49,138 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: targetsError.message }, { status: 500 });
   }
 
+  const signals: DiscoverySignal[] = [];
   let created = 0;
 
   for (const target of targets ?? []) {
-    const city = target.city;
-    const state = target.state;
+    const city = String(target.city || '').trim();
+    const state = target.state ? String(target.state).trim() : null;
 
-    const { data: searches } = await supabase
+    if (!city) continue;
+
+    let searchQuery = supabase
       .from('discovery_search_logs')
       .select('id, user_id')
       .ilike('city', city)
       .gte('created_at', thirtyDaysAgo.toISOString());
 
-    const { data: hypeEvents } = await supabase
+    let hypeQuery = supabase
       .from('events')
       .select('id')
       .ilike('city', city)
       .in('status', ['scheduled', 'active', 'paid_awaiting_approval']);
 
-    const { data: externalEvents } = await supabase
+    let externalQuery = supabase
       .from('external_events')
       .select('id')
       .ilike('city', city)
       .eq('status', 'active');
 
+    if (state) {
+      searchQuery = searchQuery.ilike('state', state);
+      hypeQuery = hypeQuery.ilike('state', state);
+      externalQuery = externalQuery.ilike('state', state);
+    }
+
+    const [
+      { data: searches },
+      { data: hypeEvents },
+      { data: externalEvents },
+    ] = await Promise.all([searchQuery, hypeQuery, externalQuery]);
+
     const searchCount = searches?.length ?? 0;
-    const uniqueUsers = new Set((searches ?? []).map((s) => s.user_id).filter(Boolean)).size;
+    const uniqueUsers = new Set(
+      (searches ?? []).map((search) => search.user_id).filter(Boolean)
+    ).size;
+
     const hypeCount = hypeEvents?.length ?? 0;
     const externalCount = externalEvents?.length ?? 0;
 
-    const minHype = Number(target.min_hypeknight_events || 3);
-    const hasDemand = searchCount >= 3 || uniqueUsers >= 2;
-    const lowInventory = hypeCount < minHype;
-    const signals =[];
-    
     signals.push({
-    city,
-    state,
-    searchCount,
-    uniqueUsers,
-    hypeknightEventCount: hypeCount,
-    externalEventCount: externalCount,
-    priorityLevel: target.priority_level || 'normal',
-    preferredKeywords: target.preferred_keywords || [],
+      city,
+      state,
+      searchCount,
+      uniqueUsers,
+      hypeknightEventCount: hypeCount,
+      externalEventCount: externalCount,
+      priorityLevel: target.priority_level || 'normal',
+      preferredKeywords: target.preferred_keywords || [],
     });
-   
-    if (!hasDemand && !lowInventory) continue;
-
-   
-
-    const recommendationType = lowInventory
-      ? 'import_external_events'
-      : 'watch_trend';
-
-    const priority =
-      target.priority_level === 'critical' || (hasDemand && lowInventory && searchCount >= 10)
-        ? 'critical'
-        : hasDemand && lowInventory
-        ? 'high'
-        : target.priority_level || 'normal';
-
-    const reason = lowInventory
-      ? `${city}${state ? `, ${state}` : ''} has ${hypeCount} HypeKnight events, below the target of ${minHype}. Recent search demand: ${searchCount}.`
-      : `${city}${state ? `, ${state}` : ''} is receiving search activity. Monitor for trend movement.`;
-
-    const { data: existing } = await supabase
-      .from('discovery_ai_recommendations')
-      .select('id')
-      .eq('city', city)
-      .eq('state', state)
-      .eq('recommendation_type', recommendationType)
-      .eq('status', 'open')
-      .maybeSingle();
-
-    if (existing) continue;
-
-    const { error: insertError } = await supabase
-      .from('discovery_ai_recommendations')
-      .insert({
-        city,
-        state,
-        recommendation_type: recommendationType,
-        priority_level: priority,
-        reason,
-        search_count: searchCount,
-        hypeknight_event_count: hypeCount,
-        external_event_count: externalCount,
-        suggested_keyword: target.preferred_keywords?.[0] || 'concert',
-        status: 'open',
-      });
-
-    if (!insertError) created += 1;
   }
-const aiResult = await analyzeDiscoverySignals(signals);
 
-for (const rec of aiResult.recommendations) {
-  const { data: existing } = await supabase
-    .from('discovery_ai_recommendations')
-    .select('id')
-    .eq('city', rec.city)
-    .eq('state', rec.state)
-    .eq('recommendation_type', rec.recommendation_type)
-    .eq('status', 'open')
-    .maybeSingle();
+  if (!signals.length) {
+    return NextResponse.json({
+      ok: true,
+      created: 0,
+      message: 'No enabled discovery targets found.',
+    });
+  }
 
-  if (existing) continue;
+  try {
+    const aiResult = await analyzeDiscoverySignals(signals);
 
-  const matchingSignal = signals.find(
-    (signal) =>
-      signal.city.toLowerCase() === rec.city.toLowerCase() &&
-      (signal.state || '') === (rec.state || '')
-  );
+    const limitedRecommendations = aiResult.recommendations.slice(
+      0,
+      Number(settings?.max_recommendations_per_run || 10)
+    );
 
-  await supabase.from('discovery_ai_recommendations').insert({
-    city: rec.city,
-    state: rec.state,
-    recommendation_type: rec.recommendation_type,
-    priority_level: rec.priority_level,
-    reason: rec.reason,
-    search_count: matchingSignal?.searchCount || 0,
-    hypeknight_event_count: matchingSignal?.hypeknightEventCount || 0,
-    external_event_count: matchingSignal?.externalEventCount || 0,
-    suggested_keyword: rec.suggested_keyword,
-    status: 'open',
-  });
-}
-  return NextResponse.json({
-    ok: true,
-    created,
-  });
+    for (const rec of limitedRecommendations) {
+      const matchingSignal = signals.find(
+        (signal) =>
+          signal.city.toLowerCase() === rec.city.toLowerCase() &&
+          (signal.state || '') === (rec.state || '')
+      );
+
+      if (!matchingSignal) continue;
+
+      const { data: existing } = await supabase
+        .from('discovery_ai_recommendations')
+        .select('id')
+        .eq('city', rec.city)
+        .eq('state', rec.state)
+        .eq('recommendation_type', rec.recommendation_type)
+        .eq('status', 'open')
+        .maybeSingle();
+
+      if (existing) continue;
+
+      const { error: insertError } = await supabase
+        .from('discovery_ai_recommendations')
+        .insert({
+          city: rec.city,
+          state: rec.state,
+          recommendation_type: rec.recommendation_type,
+          priority_level: rec.priority_level,
+          reason: rec.reason,
+          search_count: matchingSignal.searchCount,
+          hypeknight_event_count: matchingSignal.hypeknightEventCount,
+          external_event_count: matchingSignal.externalEventCount,
+          suggested_keyword:
+            rec.suggested_keyword ||
+            matchingSignal.preferredKeywords?.[0] ||
+            'concert',
+          status: 'open',
+        });
+
+      if (!insertError) created += 1;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      created,
+      analyzed: signals.length,
+      mode: 'ai',
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'AI discovery recommendation scan failed.',
+      },
+      { status: 500 }
+    );
+  }
 }
