@@ -2,14 +2,11 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import {
-  calculatePromotionStart,
-  calculatePromotionEnd,
-  calculateTotalPrice,
-  derivePublicState,
-} from '@/lib/events/workflow';
+import { calculateTotalPrice } from '@/lib/events/workflow';
 
-function getOwnerType(appRole: string | null | undefined): 'user' | 'venue_owner' | 'admin' {
+function getOwnerType(
+  appRole: string | null | undefined
+): 'user' | 'venue_owner' | 'admin' {
   if (appRole === 'admin') return 'admin';
   if (appRole === 'venue_owner') return 'venue_owner';
   return 'user';
@@ -25,8 +22,41 @@ function slugify(value: string) {
     .replace(/-+/g, '-');
 }
 
+function calculatePromotionWindow({
+  eventStartAt,
+  includedPromoDays,
+  extraPromoDays,
+}: {
+  eventStartAt: string;
+  includedPromoDays: number;
+  extraPromoDays: number;
+}) {
+  const eventDate = new Date(eventStartAt);
+
+  if (Number.isNaN(eventDate.getTime())) {
+    throw new Error('Invalid event start date.');
+  }
+
+  const eventMidnight = new Date(eventDate);
+  eventMidnight.setHours(0, 0, 0, 0);
+
+  const totalPromoDays = Math.max(
+    Number(includedPromoDays || 0) + Number(extraPromoDays || 0),
+    1
+  );
+
+  const promotionStart = new Date(eventMidnight);
+  promotionStart.setDate(promotionStart.getDate() - totalPromoDays);
+
+  return {
+    promotionStartAt: promotionStart.toISOString(),
+    promotionEndAt: eventMidnight.toISOString(),
+  };
+}
+
 export async function createEventStep1(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -49,43 +79,65 @@ export async function createEventStep1(formData: FormData) {
   const endDate = String(formData.get('end_date') || '');
   const endTime = String(formData.get('end_time') || '');
   const flyerUrl = String(formData.get('flyer_url') || '');
+
   const baseSlug = slugify(`${eventName} ${city} ${state}`);
   const slug = `${baseSlug}-${Date.now()}`;
 
   const eventStartAt = new Date(`${startDate}T${startTime}`);
-  const eventEndAt = endDate && endTime
-    ? new Date(`${endDate}T${endTime}`)
-    : new Date(`${startDate}T${startTime}`);
+  const eventEndAt =
+    endDate && endTime
+      ? new Date(`${endDate}T${endTime}`)
+      : new Date(`${startDate}T${startTime}`);
+
+  if (Number.isNaN(eventStartAt.getTime())) {
+    throw new Error('Invalid event start date.');
+  }
+
+  if (Number.isNaN(eventEndAt.getTime())) {
+    throw new Error('Invalid event end date.');
+  }
+
+  const includedPromoDays = 14;
+  const extraPromoDays = 0;
+
+  const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
+    eventStartAt: eventStartAt.toISOString(),
+    includedPromoDays,
+    extraPromoDays,
+  });
 
   const { data, error } = await supabase
-  .from('events')
-  .insert({
-    owner_id: user.id,
-    owner_type: getOwnerType(profile?.app_role),
-    name: eventName,
-    slug,
-    flyer_url: flyerUrl,
-    venue_name: venueName,
-    address,
-    city,
-    state,
-    event_start_at: eventStartAt.toISOString(),
-    event_end_at: eventEndAt.toISOString(),
-    status: 'building',
-    is_public: false,
-    is_approved: false,
-    is_paid: false,
-    included_promo_days: 14,
-    extra_promo_days: 0,
-    base_price: 19.99,
-    extra_promo_price: 0,
-    linkdn_mode: 'none',
-    linkdn_price: 0,
-    total_price: 19.99,
-    current_step: 1,
-  })
-  .select('id')
-  .single();
+    .from('events')
+    .insert({
+      owner_id: user.id,
+      owner_type: getOwnerType(profile?.app_role),
+      name: eventName,
+      slug,
+      flyer_url: flyerUrl,
+      venue_name: venueName,
+      address,
+      city,
+      state,
+      event_start_at: eventStartAt.toISOString(),
+      event_end_at: eventEndAt.toISOString(),
+      promotion_start_at: promotionStartAt,
+      promotion_end_at: promotionEndAt,
+      status: 'building',
+      is_public: false,
+      is_approved: false,
+      is_paid: false,
+      included_promo_days: includedPromoDays,
+      extra_promo_days: extraPromoDays,
+      base_price: 19.99,
+      extra_promo_price: 0,
+      linkdn_mode: 'none',
+      linkdn_price: 0,
+      total_price: 19.99,
+      payment_amount: 19.99,
+      current_step: 1,
+    })
+    .select('id')
+    .single();
 
   if (error) {
     throw new Error(error.message);
@@ -96,6 +148,7 @@ export async function createEventStep1(formData: FormData) {
 
 export async function updateEventStep2(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -105,19 +158,19 @@ export async function updateEventStep2(formData: FormData) {
   const eventId = String(formData.get('event_id') || '');
 
   const payload = {
-  description: String(formData.get('description') || ''),
-  dress_code: String(formData.get('dress_code') || ''),
-  entry_price: String(formData.get('entry_price') || ''),
-  age_requirement: String(formData.get('age_requirement') || ''),
-  event_type: String(formData.get('event_type') || ''),
-  smoking_policy: String(formData.get('smoking_policy') || ''),
-  parking_notes: String(formData.get('parking_notes') || ''),
-  special_notes: String(formData.get('special_notes') || ''),
-  music_selection: formData.getAll('music_selection').map(String),
-  vibe_tags: formData.getAll('vibe_tags').map(String),
-  current_step: 2,
-  status: 'building',
-};
+    description: String(formData.get('description') || ''),
+    dress_code: String(formData.get('dress_code') || ''),
+    entry_price: String(formData.get('entry_price') || ''),
+    age_requirement: String(formData.get('age_requirement') || ''),
+    event_type: String(formData.get('event_type') || ''),
+    smoking_policy: String(formData.get('smoking_policy') || ''),
+    parking_notes: String(formData.get('parking_notes') || ''),
+    special_notes: String(formData.get('special_notes') || ''),
+    music_selection: formData.getAll('music_selection').map(String),
+    vibe_tags: formData.getAll('vibe_tags').map(String),
+    current_step: 2,
+    status: 'building',
+  };
 
   const { error } = await supabase
     .from('events')
@@ -132,6 +185,7 @@ export async function updateEventStep2(formData: FormData) {
 
 export async function updateEventStep3(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -141,12 +195,13 @@ export async function updateEventStep3(formData: FormData) {
   const eventId = String(formData.get('event_id') || '');
   const extraPromoDays = Number(formData.get('extra_promo_days') || 0);
   const extraDayPrice = Number(formData.get('extra_day_price') || 0);
-  const linkdnMode = String(formData.get('linkdn_mode') || 'none') as 'none' | 'lite' | 'full';
+  const linkdnMode = String(formData.get('linkdn_mode') || 'none') as
+    | 'none'
+    | 'lite'
+    | 'full';
 
   const linkdnPrice =
-    linkdnMode === 'full' ? 49.99 :
-    linkdnMode === 'lite' ? 9.99 :
-    0;
+    linkdnMode === 'full' ? 49.99 : linkdnMode === 'lite' ? 9.99 : 0;
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
@@ -155,15 +210,23 @@ export async function updateEventStep3(formData: FormData) {
     .eq('owner_id', user.id)
     .single();
 
-  if (fetchError || !event) throw new Error(fetchError?.message || 'Event not found');
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found');
+  }
 
-  const totalPromoDays = Number(event.included_promo_days) + extraPromoDays;
+  const includedPromoDays = Number(event.included_promo_days || 14);
+  const totalPromoDays = includedPromoDays + extraPromoDays;
+
   const extraPromoPrice = Number((extraPromoDays * extraDayPrice).toFixed(2));
-  const promotionStartAt = calculatePromotionStart(event.event_start_at, totalPromoDays);
-  const promotionEndAt = calculatePromotionEnd(event.event_end_at, event.event_start_at);
+
+  const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
+    eventStartAt: event.event_start_at,
+    includedPromoDays,
+    extraPromoDays,
+  });
 
   const totalPrice = calculateTotalPrice({
-    basePrice: Number(event.base_price),
+    basePrice: Number(event.base_price || 19.99),
     extraPromoPrice,
     linkdnPrice,
   });
@@ -171,17 +234,20 @@ export async function updateEventStep3(formData: FormData) {
   const { error } = await supabase
     .from('events')
     .update({
-  extra_promo_days: extraPromoDays,
-  extra_promo_price: extraPromoPrice,
-  promotion_start_at: promotionStartAt.toISOString(),
-  promotion_end_at: promotionEndAt.toISOString(),
-  linkdn_mode: linkdnMode,
-  linkdn_price: linkdnPrice,
-  total_price: totalPrice,
-  current_step: 3,
-  status: 'building',
-  is_public: false,
-})
+      included_promo_days: includedPromoDays,
+      extra_promo_days: extraPromoDays,
+      extra_promo_price: extraPromoPrice,
+      promotion_start_at: promotionStartAt,
+      promotion_end_at: promotionEndAt,
+      linkdn_mode: linkdnMode,
+      linkdn_price: linkdnPrice,
+      total_price: totalPrice,
+      payment_amount: totalPrice,
+      current_step: 3,
+      status: 'building',
+      is_public: false,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', eventId)
     .eq('owner_id', user.id);
 
@@ -263,6 +329,7 @@ export async function submitEventForModeration(formData: FormData) {
 
 export async function discardDraftEvent(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -287,6 +354,7 @@ export async function discardDraftEvent(formData: FormData) {
 
 export async function requestEventRemoval(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -305,10 +373,11 @@ export async function requestEventRemoval(formData: FormData) {
       removal_reason: removalReason,
       refund_requested: refundRequested,
       is_public: false,
+      updated_at: new Date().toISOString(),
     })
     .eq('id', eventId)
     .eq('owner_id', user.id)
-    .in('status', ['scheduled', 'live']);
+    .in('status', ['scheduled', 'active']);
 
   if (error) {
     throw new Error(error.message);
@@ -317,9 +386,9 @@ export async function requestEventRemoval(formData: FormData) {
   redirect('/dashboard?removal_requested=1');
 }
 
-
 export async function updateEventStep1(formData: FormData) {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -344,11 +413,19 @@ export async function updateEventStep1(formData: FormData) {
       ? new Date(`${endDate}T${endTime}`)
       : new Date(`${startDate}T${startTime}`);
 
+  if (Number.isNaN(eventStartAt.getTime())) {
+    throw new Error('Invalid event start date.');
+  }
+
+  if (Number.isNaN(eventEndAt.getTime())) {
+    throw new Error('Invalid event end date.');
+  }
+
   const baseSlug = slugify(`${eventName} ${city} ${state}`);
 
   const { data: currentEvent, error: currentEventError } = await supabase
     .from('events')
-    .select('id, slug, status')
+    .select('id, slug, status, included_promo_days, extra_promo_days')
     .eq('id', eventId)
     .eq('owner_id', user.id)
     .single();
@@ -363,6 +440,15 @@ export async function updateEventStep1(formData: FormData) {
 
   const slug = currentEvent.slug || `${baseSlug}-${Date.now()}`;
 
+  const includedPromoDays = Number(currentEvent.included_promo_days || 14);
+  const extraPromoDays = Number(currentEvent.extra_promo_days || 0);
+
+  const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
+    eventStartAt: eventStartAt.toISOString(),
+    includedPromoDays,
+    extraPromoDays,
+  });
+
   const { error } = await supabase
     .from('events')
     .update({
@@ -375,9 +461,12 @@ export async function updateEventStep1(formData: FormData) {
       state,
       event_start_at: eventStartAt.toISOString(),
       event_end_at: eventEndAt.toISOString(),
+      promotion_start_at: promotionStartAt,
+      promotion_end_at: promotionEndAt,
       current_step: 1,
       status: 'building',
       is_public: false,
+      updated_at: new Date().toISOString(),
     })
     .eq('id', eventId)
     .eq('owner_id', user.id);
