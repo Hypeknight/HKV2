@@ -8,7 +8,6 @@ import {
   runDiscoveryRecommendationScan,
 } from './actions';
 
-
 export default async function AdminAIDiscoveryPage() {
   const supabase = await createClient();
 
@@ -18,13 +17,18 @@ export default async function AdminAIDiscoveryPage() {
 
   if (!user) redirect('/auth/login');
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('app_role')
     .eq('id', user.id)
     .single();
 
-  if (profile?.app_role !== 'admin') redirect('/dashboard');
+  if (profileError || profile?.app_role !== 'admin') {
+    redirect('/dashboard');
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const [
     targetsResult,
@@ -36,30 +40,27 @@ export default async function AdminAIDiscoveryPage() {
     supabase
       .from('discovery_ai_city_targets')
       .select('*')
-      .order('priority_level', { ascending: true }),
+      .order('created_at', { ascending: false }),
 
     supabase
       .from('discovery_ai_recommendations')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50),
+      .limit(100),
 
     supabase
       .from('discovery_search_logs')
       .select('*')
-      .gte(
-        'created_at',
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      ),
+      .gte('created_at', thirtyDaysAgo.toISOString()),
 
     supabase
       .from('events')
-      .select('id, city, state, status')
+      .select('id, name, city, state, status, event_start_at')
       .in('status', ['scheduled', 'active', 'paid_awaiting_approval']),
 
     supabase
       .from('external_events')
-      .select('id, city, state, status, source_code')
+      .select('id, name, city, state, status, source_code, event_start_at')
       .eq('status', 'active'),
   ]);
 
@@ -75,118 +76,183 @@ export default async function AdminAIDiscoveryPage() {
   const hypeEvents = hypeEventsResult.data ?? [];
   const externalEvents = externalEventsResult.data ?? [];
 
+  const openRecommendations = recommendations.filter((rec) => rec.status === 'open');
+  const acceptedRecommendations = recommendations.filter((rec) => rec.status === 'accepted');
+  const completedRecommendations = recommendations.filter((rec) => rec.status === 'completed');
+  const enabledTargets = targets.filter((target) => target.is_enabled);
+  const autoImportTargets = targets.filter((target) => target.auto_import_enabled);
+
   const citySignals = targets.map((target) => {
-    const keyCity = target.city?.toLowerCase();
-    const keyState = target.state?.toLowerCase();
+    const targetCity = normalize(target.city);
+    const targetState = normalize(target.state);
 
-    const searches = searchLogs.filter(
-      (log) =>
-        log.city?.toLowerCase() === keyCity &&
-        (target.state ? log.state?.toLowerCase() === keyState : true)
-    );
+    const searches = searchLogs.filter((log) => {
+      const logCity = normalize(log.city);
+      const logState = normalize(log.state);
 
-    const hypeCount = hypeEvents.filter(
-      (event) =>
-        event.city?.toLowerCase() === keyCity &&
-        (target.state ? event.state?.toLowerCase() === keyState : true)
-    ).length;
+      if (!targetCity || !logCity) return false;
+      if (logCity !== targetCity) return false;
 
-    const externalCount = externalEvents.filter(
-      (event) =>
-        event.city?.toLowerCase() === keyCity &&
-        (target.state ? event.state?.toLowerCase() === keyState : true)
-    ).length;
+      if (targetState) return logState === targetState;
+      return true;
+    });
+
+    const hypeCount = hypeEvents.filter((event) => {
+      const eventCity = normalize(event.city);
+      const eventState = normalize(event.state);
+
+      if (!targetCity || !eventCity) return false;
+      if (eventCity !== targetCity) return false;
+
+      if (targetState) return eventState === targetState;
+      return true;
+    }).length;
+
+    const externalCount = externalEvents.filter((event) => {
+      const eventCity = normalize(event.city);
+      const eventState = normalize(event.state);
+
+      if (!targetCity || !eventCity) return false;
+      if (eventCity !== targetCity) return false;
+
+      if (targetState) return eventState === targetState;
+      return true;
+    }).length;
 
     const uniqueUsers = new Set(
       searches.map((log) => log.user_id).filter(Boolean)
     ).size;
 
-    const needsInventory = hypeCount < Number(target.min_hypeknight_events || 3);
-    const hasDemand = searches.length >= 3 || uniqueUsers >= 2;
+    const searchCount = searches.length;
+    const minHype = Number(target.min_hypeknight_events || 3);
+
+    const needsInventory = hypeCount < minHype;
+    const hasDemand = searchCount >= 3 || uniqueUsers >= 2;
+
+    const signal =
+      needsInventory && hasDemand
+        ? 'High opportunity'
+        : needsInventory
+        ? 'Needs inventory'
+        : hasDemand
+        ? 'Demand active'
+        : 'Monitoring';
+
+    const recommendation =
+      needsInventory && hasDemand
+        ? 'Import external events and recruit HypeKnight event creators.'
+        : needsInventory
+        ? 'Inventory is below target. Consider importing or recruiting.'
+        : hasDemand
+        ? 'User demand is active. Keep this city warm.'
+        : 'No urgent action needed.';
 
     return {
       ...target,
-      searchCount: searches.length,
+      searchCount,
       uniqueUsers,
       hypeCount,
       externalCount,
+      minHype,
       needsInventory,
       hasDemand,
-      recommendation:
-        needsInventory && hasDemand
-          ? 'Import external events and recruit HypeKnight events.'
-          : needsInventory
-          ? 'Watch inventory gap.'
-          : hasDemand
-          ? 'Demand is active. Keep monitoring.'
-          : 'Stable / low activity.',
+      signal,
+      recommendation,
     };
   });
 
-  const openRecommendations = recommendations.filter((rec) => rec.status === 'open');
-  const enabledTargets = targets.filter((target) => target.is_enabled);
-  const autoImportTargets = targets.filter((target) => target.auto_import_enabled);
+  const citySignalsSorted = citySignals.sort((a, b) => {
+    const scoreA = getCitySignalScore(a);
+    const scoreB = getCitySignalScore(b);
+    return scoreB - scoreA;
+  });
+
+  const recentSearches = searchLogs
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    .slice(0, 12);
 
   return (
     <section className="mx-auto max-w-7xl space-y-12 px-4 py-12 sm:px-6 lg:px-8">
-      <div>
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
-          Admin Discovery
-        </p>
-        <h1 className="mt-3 text-4xl font-bold text-white">
-          AI Discovery Control Center
-        </h1>
-        <p className="mt-3 max-w-3xl text-white/70">
-          Manage target cities, watch demand signals, and guide how HypeKnight supplements event discovery.
-        </p>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-sm uppercase tracking-[0.35em] text-accent">
+            Admin Discovery
+          </p>
+
+          <h1 className="mt-3 text-4xl font-bold text-white">
+            AI Discovery Control Center
+          </h1>
+
+          <p className="mt-3 max-w-3xl text-white/70">
+            Monitor target cities, search demand, HypeKnight inventory, external
+            coverage, and AI-assisted event discovery recommendations.
+          </p>
+        </div>
+
+        <form action={runDiscoveryRecommendationScan}>
+          <button
+            type="submit"
+            className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+          >
+            Run Discovery Scan
+          </button>
+        </form>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Target Cities" value={String(targets.length)} tone="blue" />
         <Metric label="Enabled Targets" value={String(enabledTargets.length)} tone="green" />
-        <Metric label="Auto Import Enabled" value={String(autoImportTargets.length)} tone="yellow" />
+        <Metric label="Auto Import Cities" value={String(autoImportTargets.length)} tone="yellow" />
         <Metric label="Open Recommendations" value={String(openRecommendations.length)} tone="accent" />
       </section>
 
-      <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-white">City Signals</h2>
-            <p className="mt-3 max-w-2xl text-white/70">
-              These signals compare user demand, HypeKnight event supply, and external event coverage.
-            </p>
-          </div>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Accepted" value={String(acceptedRecommendations.length)} tone="blue" />
+        <Metric label="Completed" value={String(completedRecommendations.length)} tone="green" />
+        <Metric label="Search Logs 30 Days" value={String(searchLogs.length)} tone="yellow" />
+        <Metric label="Tracked Hype Events" value={String(hypeEvents.length)} tone="accent" />
+      </section>
 
-          <Link
-            href="/admin/discovery"
-            className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
-          >
-            Back to Nerve Center
-          </Link>
-        </div>
-
-<form action={runDiscoveryRecommendationScan}>
-  <button
-    type="submit"
-    className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
-  >
-    Run AI Discovery Scan
-  </button>
-</form>
-
-        <div className="mt-8 space-y-4">
-          {citySignals.length ? (
-            citySignals.map((city) => <CitySignalCard key={city.id} city={city} />)
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Panel
+          title="Target City Signals"
+          subtitle="Cities ranked by demand, weak inventory, and admin priority."
+        >
+          {citySignalsSorted.length ? (
+            <div className="space-y-4">
+              {citySignalsSorted.map((city) => (
+                <CitySignalCard key={city.id} city={city} />
+              ))}
+            </div>
           ) : (
-            <Empty text="No target cities configured yet." />
+            <Empty text="No target cities configured. Add records to discovery_ai_city_targets." />
           )}
-        </div>
+        </Panel>
+
+        <Panel
+          title="Recent Search Activity"
+          subtitle="Public searches and city page lookups from the last 30 days."
+        >
+          {recentSearches.length ? (
+            <div className="space-y-3">
+              {recentSearches.map((log) => (
+                <RecentSearchRow key={log.id} log={log} />
+              ))}
+            </div>
+          ) : (
+            <Empty text="No discovery searches have been logged yet." />
+          )}
+        </Panel>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
         <Panel
-          title="Open AI Recommendations"
-          subtitle="System-generated or admin-guided discovery actions."
+          title="Open Recommendations"
+          subtitle="AI-assisted recommendations awaiting admin action."
         >
           {openRecommendations.length ? (
             <div className="space-y-4">
@@ -195,51 +261,104 @@ export default async function AdminAIDiscoveryPage() {
               ))}
             </div>
           ) : (
-            <Empty text="No open recommendations yet." />
+            <Empty text="No open recommendations. Run a discovery scan to generate suggestions." />
           )}
         </Panel>
 
         <Panel
-          title="Admin-Guided Automation Rules"
-          subtitle="How the future import/recommendation engine should behave."
+          title="Closed Recommendations"
+          subtitle="Accepted, dismissed, or completed recommendations."
         >
-          <div className="space-y-3">
-            <Rule text="Auto-import only runs for cities where auto_import_enabled is true." />
-            <Rule text="External events should supplement weak city inventory, not replace HypeKnight events." />
-            <Rule text="Recommendations should be created before large automatic imports." />
-            <Rule text="Public cards must clearly identify Ticketmaster/external source." />
+          {recommendations.filter((rec) => rec.status !== 'open').length ? (
+            <div className="space-y-4">
+              {recommendations
+                .filter((rec) => rec.status !== 'open')
+                .slice(0, 12)
+                .map((rec) => (
+                  <RecommendationCard key={rec.id} rec={rec} compact />
+                ))}
+            </div>
+          ) : (
+            <Empty text="No closed recommendations yet." />
+          )}
+        </Panel>
+      </section>
+
+      <section>
+        <Panel
+          title="Automation Rules"
+          subtitle="Current guardrails for AI-assisted discovery."
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <Rule text="Auto-import should only run for cities where auto_import_enabled is true." />
+            <Rule text="External events supplement HypeKnight inventory but do not replace native events." />
+            <Rule text="Imported events must remain labeled by source on public event cards." />
+            <Rule text="Admin recommendations should be reviewed before large-scale imports." />
           </div>
         </Panel>
+      </section>
+
+      <section className="flex flex-wrap gap-3">
+        <Link
+          href="/admin/discovery"
+          className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
+        >
+          Back to Discovery Nerve Center
+        </Link>
+
+        <Link
+          href="/admin/external-events"
+          className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
+        >
+          External Event Manager
+        </Link>
+
+        <Link
+          href="/events"
+          className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+        >
+          Public Events
+        </Link>
       </section>
     </section>
   );
 }
 
+function normalize(value?: string | null) {
+  return value?.trim().toLowerCase() || '';
+}
+
+function getCitySignalScore(city: any) {
+  let score = 0;
+
+  score += city.searchCount * 3;
+  score += city.uniqueUsers * 5;
+
+  if (city.needsInventory) score += 20;
+  if (city.hasDemand) score += 15;
+  if (city.auto_import_enabled) score += 10;
+
+  if (city.priority_level === 'critical') score += 40;
+  if (city.priority_level === 'high') score += 25;
+  if (city.priority_level === 'normal') score += 10;
+
+  return score;
+}
+
 function CitySignalCard({ city }: { city: any }) {
-  const priorityTone =
-    city.priority_level === 'critical'
-      ? 'border-red-500/20 bg-red-500/10 text-red-200'
-      : city.priority_level === 'high'
-      ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
-      : 'border-white/10 bg-black/20 text-white/70';
+  const citySlug = city.city.toLowerCase().replace(/\s+/g, '-');
 
   return (
     <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap gap-2">
-            <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${priorityTone}`}>
-              {city.priority_level}
-            </span>
-
+            <PriorityChip priority={city.priority_level} />
+            <StateChip label={city.signal} active={city.hasDemand || city.needsInventory} />
             {city.auto_import_enabled ? (
-              <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs uppercase tracking-[0.15em] text-accent">
-                Auto Import
-              </span>
+              <StateChip label="Auto Import" active />
             ) : (
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/60">
-                Manual
-              </span>
+              <StateChip label="Manual" />
             )}
           </div>
 
@@ -251,18 +370,19 @@ function CitySignalCard({ city }: { city: any }) {
         </div>
 
         <Link
-          href={`/events/city/${city.city.toLowerCase().replace(/\s+/g, '-')}`}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white hover:border-accent/40"
+          href={`/events/city/${citySlug}`}
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-center text-white hover:border-accent/40"
         >
           View City
         </Link>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Info label="Searches" value={String(city.searchCount)} />
         <Info label="Unique Users" value={String(city.uniqueUsers)} />
-        <Info label="HypeKnight Events" value={String(city.hypeCount)} />
+        <Info label="Hype Events" value={String(city.hypeCount)} />
         <Info label="External Events" value={String(city.externalCount)} />
+        <Info label="Target Hype" value={String(city.minHype)} />
       </div>
 
       {city.preferred_keywords?.length ? (
@@ -276,12 +396,18 @@ function CitySignalCard({ city }: { city: any }) {
   );
 }
 
-function RecommendationCard({ rec }: { rec: any }) {
+function RecommendationCard({
+  rec,
+  compact = false,
+}: {
+  rec: any;
+  compact?: boolean;
+}) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
       <div className="flex flex-wrap items-center gap-2">
         <Tag label={rec.recommendation_type} />
-        <Tag label={rec.priority_level} />
+        <PriorityChip priority={rec.priority_level} />
         <Tag label={rec.status} />
       </div>
 
@@ -291,45 +417,66 @@ function RecommendationCard({ rec }: { rec: any }) {
 
       <p className="mt-3 text-white/70">{rec.reason}</p>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <Info label="Searches" value={String(rec.search_count || 0)} />
-        <Info label="Hype Events" value={String(rec.hypeknight_event_count || 0)} />
-        <Info label="External Events" value={String(rec.external_event_count || 0)} />
-      </div>
+      {!compact ? (
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <Info label="Searches" value={String(rec.search_count || 0)} />
+            <Info label="Hype Events" value={String(rec.hypeknight_event_count || 0)} />
+            <Info label="External Events" value={String(rec.external_event_count || 0)} />
+          </div>
 
-      {rec.status === 'open' ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <form action={acceptRecommendation}>
-            <input type="hidden" name="recommendation_id" value={rec.id} />
-            <button
-              type="submit"
-              className="w-full rounded-2xl bg-accent px-4 py-3 font-semibold text-black hover:opacity-90"
-            >
-              Accept
-            </button>
-          </form>
+          {rec.status === 'open' ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <form action={acceptRecommendation}>
+                <input type="hidden" name="recommendation_id" value={rec.id} />
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-accent px-4 py-3 font-semibold text-black hover:opacity-90"
+                >
+                  Accept
+                </button>
+              </form>
 
-          <form action={importFromRecommendation}>
-            <input type="hidden" name="recommendation_id" value={rec.id} />
-            <button
-              type="submit"
-              className="w-full rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 font-semibold text-green-200 hover:border-green-500/40"
-            >
-              Import Events
-            </button>
-          </form>
+              <form action={importFromRecommendation}>
+                <input type="hidden" name="recommendation_id" value={rec.id} />
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 font-semibold text-green-200 hover:border-green-500/40"
+                >
+                  Import Events
+                </button>
+              </form>
 
-          <form action={dismissRecommendation}>
-            <input type="hidden" name="recommendation_id" value={rec.id} />
-            <button
-              type="submit"
-              className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 font-semibold text-red-200 hover:border-red-500/40"
-            >
-              Dismiss
-            </button>
-          </form>
-        </div>
+              <form action={dismissRecommendation}>
+                <input type="hidden" name="recommendation_id" value={rec.id} />
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 font-semibold text-red-200 hover:border-red-500/40"
+                >
+                  Dismiss
+                </button>
+              </form>
+            </div>
+          ) : null}
+        </>
       ) : null}
+    </div>
+  );
+}
+
+function RecentSearchRow({ log }: { log: any }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="font-semibold text-white">
+        {log.city || 'No city'}, {log.state || '—'}
+      </p>
+      <p className="mt-1 text-sm text-white/55">
+        Query: {log.search_query || '—'} • Source: {log.source_filter || 'all'} •
+        Results: {log.result_count || 0}
+      </p>
+      <p className="mt-1 text-xs text-white/40">
+        {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
+      </p>
     </div>
   );
 }
@@ -382,14 +529,49 @@ function Info({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
-      <p className="mt-2 text-white">{value || '—'}</p>
+      <p className="mt-2 break-words text-white">{value || '—'}</p>
     </div>
   );
 }
 
-function Tag({ label }: { label: string }) {
+function Tag({ label }: { label?: string | null }) {
   return (
     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
+      {label || '—'}
+    </span>
+  );
+}
+
+function PriorityChip({ priority }: { priority?: string | null }) {
+  const tone =
+    priority === 'critical'
+      ? 'border-red-500/20 bg-red-500/10 text-red-200'
+      : priority === 'high'
+      ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
+      : priority === 'low'
+      ? 'border-white/10 bg-white/5 text-white/60'
+      : 'border-blue-500/20 bg-blue-500/10 text-blue-200';
+
+  return (
+    <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${tone}`}>
+      {priority || 'normal'}
+    </span>
+  );
+}
+
+function StateChip({
+  label,
+  active = false,
+}: {
+  label: string;
+  active?: boolean;
+}) {
+  const tone = active
+    ? 'border-accent/20 bg-accent/10 text-accent'
+    : 'border-white/10 bg-white/5 text-white/60';
+
+  return (
+    <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${tone}`}>
       {label}
     </span>
   );
