@@ -3,6 +3,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import { createClient } from '@/lib/supabase/server';
 import { getProfile } from '@/lib/data';
+import Footer from '@/components/Footer';
 
 export default async function RootLayout({
   children,
@@ -25,6 +26,7 @@ export default async function RootLayout({
           initialRole={role}
         />
         <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+        <Footer />
       </body>
     </html>
   );
