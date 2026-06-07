@@ -373,7 +373,12 @@ export default async function AdminDiscoveryPage() {
           </button>
         </form>
       </section>
-
+<Link
+  href="/admin/discovery/ai"
+  className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center text-white hover:border-accent/40"
+>
+  AI Discovery Control
+</Link>
       <section className="grid gap-6 xl:grid-cols-2">
         <Panel
           title="Top Searched Cities"
