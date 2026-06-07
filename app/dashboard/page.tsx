@@ -64,7 +64,9 @@ export default async function DashboardPage() {
 
         <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
           <h2 className="text-2xl font-bold text-white">Quick actions</h2>
-          <Link href="/events/recommended">Recommended</Link>
+          <Link href="/events/recommended" className="block rounded-2xl border border-white/10 bg-black/20 p-4 hover:border-accent/40">
+            Recommended By Hypeknight
+          </Link>
           <div className="mt-6 space-y-3">
             <Link
               href="/dashboard/events/new/step-1"
