@@ -23,7 +23,18 @@ export async function POST(req: Request) {
 
   const { data: event, error } = await supabase
     .from('events')
-    .select('id, name, owner_id, total_price, payment_amount, payment_required')
+    .select(`
+      id,
+      name,
+      owner_id,
+      total_price,
+      payment_amount,
+      discounted_total,
+      discount_amount,
+      coupon_code,
+      payment_status,
+      is_paid
+    `)
     .eq('id', eventId)
     .single();
 
@@ -35,16 +46,49 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const amount = Number(event.payment_amount || event.total_price || 0);
+  if (event.is_paid || event.payment_status === 'paid') {
+    return NextResponse.json(
+      { error: 'Event is already paid.' },
+      { status: 400 }
+    );
+  }
+
+  const amount = Number(
+    event.discounted_total ?? event.payment_amount ?? event.total_price ?? 0
+  );
 
   if (!amount || amount <= 0) {
-    return NextResponse.json({ error: 'Invalid event payment amount' }, { status: 400 });
+    const nowIso = new Date().toISOString();
+
+    const { error: updateError } = await supabase
+      .from('events')
+      .update({
+        payment_status: 'paid',
+        is_paid: true,
+        paid_at: nowIso,
+        status: 'paid_awaiting_approval',
+        updated_at: nowIso,
+      })
+      .eq('id', eventId)
+      .eq('owner_id', user.id);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      paid: true,
+      url: `/dashboard/events/${eventId}/review?paid=1`,
+    });
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
   if (!siteUrl) {
-    return NextResponse.json({ error: 'Missing NEXT_PUBLIC_SITE_URL' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Missing NEXT_PUBLIC_SITE_URL' },
+      { status: 500 }
+    );
   }
 
   const session = await stripe.checkout.sessions.create({
@@ -57,6 +101,8 @@ export async function POST(req: Request) {
       event_id: eventId,
       owner_id: user.id,
       stripe_mode: mode,
+      coupon_code: event.coupon_code || '',
+      discount_amount: String(event.discount_amount || 0),
     },
     line_items: [
       {
@@ -64,13 +110,17 @@ export async function POST(req: Request) {
           currency: 'usd',
           product_data: {
             name: `${event.name} event promotion`,
+            metadata: {
+              event_id: eventId,
+              coupon_code: event.coupon_code || '',
+            },
           },
           unit_amount: Math.round(amount * 100),
         },
         quantity: 1,
       },
     ],
-    allow_promotion_codes: true,
+    allow_promotion_codes: false,
   });
 
   const { error: updateError } = await supabase
@@ -79,9 +129,10 @@ export async function POST(req: Request) {
       payment_status: 'pending',
       stripe_checkout_session_id: session.id,
       payment_amount: amount,
-      payment_due_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
-    .eq('id', eventId);
+    .eq('id', eventId)
+    .eq('owner_id', user.id);
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
