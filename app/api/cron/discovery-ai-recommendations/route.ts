@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { analyzeDiscoverySignals } from '@/lib/discovery/ai-analyzer';
 
 export async function GET(req: Request) {
   const secret = req.headers.get('x-cron-secret');
@@ -55,8 +56,22 @@ export async function GET(req: Request) {
     const minHype = Number(target.min_hypeknight_events || 3);
     const hasDemand = searchCount >= 3 || uniqueUsers >= 2;
     const lowInventory = hypeCount < minHype;
-
+    const signals =[];
+    
+    signals.push({
+    city,
+    state,
+    searchCount,
+    uniqueUsers,
+    hypeknightEventCount: hypeCount,
+    externalEventCount: externalCount,
+    priorityLevel: target.priority_level || 'normal',
+    preferredKeywords: target.preferred_keywords || [],
+    });
+   
     if (!hasDemand && !lowInventory) continue;
+
+   
 
     const recommendationType = lowInventory
       ? 'import_external_events'
@@ -101,7 +116,39 @@ export async function GET(req: Request) {
 
     if (!insertError) created += 1;
   }
+const aiResult = await analyzeDiscoverySignals(signals);
 
+for (const rec of aiResult.recommendations) {
+  const { data: existing } = await supabase
+    .from('discovery_ai_recommendations')
+    .select('id')
+    .eq('city', rec.city)
+    .eq('state', rec.state)
+    .eq('recommendation_type', rec.recommendation_type)
+    .eq('status', 'open')
+    .maybeSingle();
+
+  if (existing) continue;
+
+  const matchingSignal = signals.find(
+    (signal) =>
+      signal.city.toLowerCase() === rec.city.toLowerCase() &&
+      (signal.state || '') === (rec.state || '')
+  );
+
+  await supabase.from('discovery_ai_recommendations').insert({
+    city: rec.city,
+    state: rec.state,
+    recommendation_type: rec.recommendation_type,
+    priority_level: rec.priority_level,
+    reason: rec.reason,
+    search_count: matchingSignal?.searchCount || 0,
+    hypeknight_event_count: matchingSignal?.hypeknightEventCount || 0,
+    external_event_count: matchingSignal?.externalEventCount || 0,
+    suggested_keyword: rec.suggested_keyword,
+    status: 'open',
+  });
+}
   return NextResponse.json({
     ok: true,
     created,
