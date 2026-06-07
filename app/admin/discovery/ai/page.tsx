@@ -1,6 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import {
+  acceptRecommendation,
+  dismissRecommendation,
+  importFromRecommendation,
+  runDiscoveryRecommendationScan,
+} from './actions';
+
 
 export default async function AdminAIDiscoveryPage() {
   const supabase = await createClient();
@@ -158,6 +165,15 @@ export default async function AdminAIDiscoveryPage() {
           </Link>
         </div>
 
+<form action={runDiscoveryRecommendationScan}>
+  <button
+    type="submit"
+    className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+  >
+    Run AI Discovery Scan
+  </button>
+</form>
+
         <div className="mt-8 space-y-4">
           {citySignals.length ? (
             citySignals.map((city) => <CitySignalCard key={city.id} city={city} />)
@@ -280,6 +296,40 @@ function RecommendationCard({ rec }: { rec: any }) {
         <Info label="Hype Events" value={String(rec.hypeknight_event_count || 0)} />
         <Info label="External Events" value={String(rec.external_event_count || 0)} />
       </div>
+
+      {rec.status === 'open' ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <form action={acceptRecommendation}>
+            <input type="hidden" name="recommendation_id" value={rec.id} />
+            <button
+              type="submit"
+              className="w-full rounded-2xl bg-accent px-4 py-3 font-semibold text-black hover:opacity-90"
+            >
+              Accept
+            </button>
+          </form>
+
+          <form action={importFromRecommendation}>
+            <input type="hidden" name="recommendation_id" value={rec.id} />
+            <button
+              type="submit"
+              className="w-full rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 font-semibold text-green-200 hover:border-green-500/40"
+            >
+              Import Events
+            </button>
+          </form>
+
+          <form action={dismissRecommendation}>
+            <input type="hidden" name="recommendation_id" value={rec.id} />
+            <button
+              type="submit"
+              className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 font-semibold text-red-200 hover:border-red-500/40"
+            >
+              Dismiss
+            </button>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
