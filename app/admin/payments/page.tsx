@@ -688,8 +688,8 @@ function RefundRequestCard({ event }: { event: any }) {
             Reason: {event.refund_reason || event.removal_reason || 'No reason provided.'}
           </p>
           <p className="mt-2 text-white/50">
-            Amount: $
-            {Number(event.payment_amount || event.total_price || 0).toFixed(2)}
+            Actual Paid: $
+{Number(event.payment_amount ?? event.discounted_total ?? 0).toFixed(2)}
           </p>
           <p className="mt-2 text-xs text-white/40">
             Payment Intent: {event.stripe_payment_intent_id || '—'}
@@ -699,6 +699,16 @@ function RefundRequestCard({ event }: { event: any }) {
         <div className="grid min-w-[260px] gap-3">
           <form action={approveRefundRequest} className="space-y-3">
             <input type="hidden" name="event_id" value={event.id} />
+            <input
+              name="refund_amount_approved"
+              type="number"
+              min="0"
+              step="0.01"
+              max={Number(event.payment_amount ?? event.discounted_total ?? 0)}
+              defaultValue={Number(event.payment_amount ?? event.discounted_total ?? 0)}
+              placeholder="Refund amount"
+              className="input"
+            />
             <textarea
               name="refund_admin_note"
               rows={2}
@@ -731,6 +741,25 @@ function RefundRequestCard({ event }: { event: any }) {
 
           <form action={markManualRefundComplete} className="space-y-3">
             <input type="hidden" name="event_id" value={event.id} />
+
+            <input
+              name="refund_amount_refunded"
+              type="number"
+              min="0"
+              step="0.01"
+              max={Number(event.payment_amount ?? event.discounted_total ?? 0)}
+              defaultValue={
+                Number(
+                  event.refund_amount_approved ??
+                  event.payment_amount ??
+                  event.discounted_total ??
+                  0
+                )
+              }
+              placeholder="Amount refunded"
+              className="input"
+            />
+
             <input
               name="stripe_refund_id"
               placeholder="Stripe refund ID optional"

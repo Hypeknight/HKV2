@@ -67,13 +67,37 @@ export async function approveRefundRequest(formData: FormData) {
 
   const eventId = String(formData.get('event_id') || '');
   const adminNote = String(formData.get('refund_admin_note') || '').trim();
+  const requestedAmount = Number(formData.get('refund_amount_approved') || 0);
 
   if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('payment_amount, discounted_total, total_price')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  const actualPaidAmount = Number(
+    event.payment_amount ?? event.discounted_total ?? 0
+  );
+
+  if (requestedAmount < 0) {
+    throw new Error('Refund amount cannot be negative.');
+  }
+
+  if (requestedAmount > actualPaidAmount) {
+    throw new Error('Refund amount cannot exceed the actual amount paid.');
+  }
 
   const { error } = await supabase
     .from('events')
     .update({
       refund_status: 'approved',
+      refund_amount_approved: requestedAmount,
       refund_reviewed_at: new Date().toISOString(),
       refund_reviewed_by: user.id,
       refund_admin_note: adminNote || null,
@@ -118,6 +142,7 @@ export async function markManualRefundComplete(formData: FormData) {
   const eventId = String(formData.get('event_id') || '');
   const stripeRefundId = String(formData.get('stripe_refund_id') || '').trim();
   const adminNote = String(formData.get('refund_admin_note') || '').trim();
+  const refundedAmount = Number(formData.get('refund_amount_refunded') || 0);
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -125,13 +150,12 @@ export async function markManualRefundComplete(formData: FormData) {
     .from('events')
     .update({
       refund_status: 'refunded',
+      refund_amount_refunded: refundedAmount,
       refunded_at: new Date().toISOString(),
       refund_reviewed_at: new Date().toISOString(),
       refund_reviewed_by: user.id,
       stripe_refund_id: stripeRefundId || null,
       refund_admin_note: adminNote || null,
-      is_public: false,
-      status: 'removed',
       updated_at: new Date().toISOString(),
     })
     .eq('id', eventId);
