@@ -386,6 +386,8 @@ import {
   denyRefundRequest,
   markManualRefundComplete,
   updateStripeMode,
+  approveRemovalRequest,
+  denyRemovalRequest,
 } from './actions';
 
 export default async function AdminPaymentsPage() {
@@ -422,6 +424,10 @@ export default async function AdminPaymentsPage() {
         discount_amount,
         coupon_code,
         paid_at,
+        removal_requested_at,
+        removal_reason,
+        removal_admin_note,
+        refund_requested,
         refund_status,
         refund_requested_at,
         refund_reason,
@@ -448,6 +454,10 @@ export default async function AdminPaymentsPage() {
 
   const refundRequests = rows.filter(
     (event) => event.refund_status === 'requested'
+  );
+
+  const removalRequests = rows.filter(
+    (event) => event.status === 'removal_requested'
   );
 
   const refundedEvents = rows.filter(
@@ -485,8 +495,8 @@ export default async function AdminPaymentsPage() {
             Payment Control Center
           </h1>
           <p className="mt-3 max-w-3xl text-white/70">
-            Control Stripe mode, track event payments, monitor coupons, and
-            manage refund requests.
+            Control Stripe mode, track event payments, monitor coupons, review
+            removals, and manage refund requests.
           </p>
         </div>
 
@@ -543,22 +553,31 @@ export default async function AdminPaymentsPage() {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Event Revenue" value={`$${revenue.toFixed(2)}`} />
         <Metric label="Paid Events" value={String(paidEvents.length)} />
-        <Metric
-          label="Pending Payments"
-          value={String(pendingPayments.length)}
-        />
-        <Metric
-          label="Refund Requests"
-          value={String(refundRequests.length)}
-        />
+        <Metric label="Pending Payments" value={String(pendingPayments.length)} />
+        <Metric label="Removal Requests" value={String(removalRequests.length)} />
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Refund Requests" value={String(refundRequests.length)} />
         <Metric label="Refunded" value={String(refundedEvents.length)} />
         <Metric label="Coupons Used" value={String(couponEvents.length)} />
         <Metric label="Discounts Given" value={`$${discounts.toFixed(2)}`} />
-        <Metric label="Total Records" value={String(rows.length)} />
       </section>
+
+      <Panel
+        title="Removal Requests"
+        subtitle="Events users requested to remove from HypeKnight."
+      >
+        {removalRequests.length ? (
+          <div className="space-y-4">
+            {removalRequests.map((event) => (
+              <RemovalRequestCard key={event.id} event={event} />
+            ))}
+          </div>
+        ) : (
+          <Empty text="No removal requests right now." />
+        )}
+      </Panel>
 
       <Panel
         title="Refund Requests"
@@ -577,7 +596,7 @@ export default async function AdminPaymentsPage() {
 
       <Panel
         title="Recent Payment Records"
-        subtitle="Latest event payment, coupon, and refund activity."
+        subtitle="Latest event payment, coupon, removal, and refund activity."
       >
         {rows.length ? (
           <div className="space-y-4">
@@ -590,6 +609,71 @@ export default async function AdminPaymentsPage() {
         )}
       </Panel>
     </section>
+  );
+}
+
+function RemovalRequestCard({ event }: { event: any }) {
+  return (
+    <div className="rounded-[2rem] border border-orange-500/20 bg-orange-500/10 p-6">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="text-2xl font-bold text-white">{event.name}</h3>
+
+          <p className="mt-2 text-orange-100/80">
+            Requested:{' '}
+            {event.removal_requested_at
+              ? new Date(event.removal_requested_at).toLocaleString()
+              : '—'}
+          </p>
+
+          <p className="mt-2 text-white/70">
+            Reason: {event.removal_reason || 'No reason provided.'}
+          </p>
+
+          <p className="mt-2 text-white/50">
+            Refund requested: {event.refund_requested ? 'Yes' : 'No'}
+          </p>
+
+          <p className="mt-2 text-white/50">
+            Refund status: {event.refund_status || 'none'}
+          </p>
+        </div>
+
+        <div className="grid min-w-[260px] gap-3">
+          <form action={approveRemovalRequest} className="space-y-3">
+            <input type="hidden" name="event_id" value={event.id} />
+            <textarea
+              name="admin_note"
+              rows={2}
+              placeholder="Admin note"
+              className="input"
+            />
+            <button
+              type="submit"
+              className="w-full rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-green-200 hover:border-green-500/40"
+            >
+              Approve Removal
+            </button>
+          </form>
+
+          <form action={denyRemovalRequest} className="space-y-3">
+            <input type="hidden" name="event_id" value={event.id} />
+            <textarea
+              name="admin_note"
+              rows={2}
+              placeholder="Denial note"
+              className="input"
+            />
+            <button
+              type="submit"
+              className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-200 hover:border-red-500/40"
+            >
+              Deny Removal
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -608,7 +692,7 @@ function RefundRequestCard({ event }: { event: any }) {
           </p>
 
           <p className="mt-2 text-white/70">
-            Reason: {event.refund_reason || 'No reason provided.'}
+            Reason: {event.refund_reason || event.removal_reason || 'No reason provided.'}
           </p>
 
           <p className="mt-2 text-white/50">
@@ -695,12 +779,13 @@ function PaymentRow({ event }: { event: any }) {
               tone={paid ? 'green' : 'yellow'}
             />
 
-            <Chip label={event.refund_status || 'none'} tone="gray" />
+            <Chip label={event.status || 'unknown'} tone="gray" />
+
+            <Chip label={`Refund: ${event.refund_status || 'none'}`} tone="gray" />
           </div>
 
           <p className="mt-2 text-white/60">
-            Status: {event.status} • Payment:{' '}
-            {event.payment_status || 'pending'}
+            Payment: {event.payment_status || 'pending'}
           </p>
 
           <p className="mt-1 text-white/50">

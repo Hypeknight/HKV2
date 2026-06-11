@@ -125,3 +125,49 @@ export async function updateStripeMode(formData: FormData) {
 
   redirect('/admin/payments?saved=1');
 }
+export async function approveRemovalRequest(formData: FormData) {
+  const user = await requireAdmin();
+  const supabase = createAdminClient();
+
+  const eventId = String(formData.get('event_id') || '');
+  const adminNote = String(formData.get('admin_note') || '');
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'removed',
+      is_public: false,
+      removed_at: new Date().toISOString(),
+      removed_by: user.id,
+      removal_admin_note: adminNote || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect('/admin/payments?removal=approved');
+}
+export async function denyRemovalRequest(formData: FormData) {
+  const user = await requireAdmin();
+  const supabase = createAdminClient();
+
+  const eventId = String(formData.get('event_id') || '');
+  const adminNote = String(formData.get('admin_note') || '');
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'scheduled',
+      is_public: false,
+      removal_reviewed_at: new Date().toISOString(),
+      removal_reviewed_by: user.id,
+      removal_admin_note: adminNote || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect('/admin/payments?removal=denied');
+}
