@@ -377,7 +377,6 @@ function Empty({ text }: { text: string }) {
     </div>
   );
 }*/
-
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
@@ -452,12 +451,12 @@ export default async function AdminPaymentsPage() {
     (event) => !event.is_paid && event.payment_status !== 'paid'
   );
 
-  const refundRequests = rows.filter(
-    (event) => event.refund_status === 'requested'
-  );
-
   const removalRequests = rows.filter(
     (event) => event.status === 'removal_requested'
+  );
+
+  const refundRequests = rows.filter(
+    (event) => event.refund_status === 'requested'
   );
 
   const refundedEvents = rows.filter(
@@ -495,7 +494,7 @@ export default async function AdminPaymentsPage() {
             Payment Control Center
           </h1>
           <p className="mt-3 max-w-3xl text-white/70">
-            Control Stripe mode, track event payments, monitor coupons, review
+            Control Stripe mode, track payments, monitor coupons, process
             removals, and manage refund requests.
           </p>
         </div>
@@ -596,7 +595,7 @@ export default async function AdminPaymentsPage() {
 
       <Panel
         title="Recent Payment Records"
-        subtitle="Latest event payment, coupon, removal, and refund activity."
+        subtitle="Latest payment, coupon, removal, and refund activity."
       >
         {rows.length ? (
           <div className="space-y-4">
@@ -618,22 +617,18 @@ function RemovalRequestCard({ event }: { event: any }) {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h3 className="text-2xl font-bold text-white">{event.name}</h3>
-
           <p className="mt-2 text-orange-100/80">
             Requested:{' '}
             {event.removal_requested_at
               ? new Date(event.removal_requested_at).toLocaleString()
               : '—'}
           </p>
-
           <p className="mt-2 text-white/70">
             Reason: {event.removal_reason || 'No reason provided.'}
           </p>
-
           <p className="mt-2 text-white/50">
             Refund requested: {event.refund_requested ? 'Yes' : 'No'}
           </p>
-
           <p className="mt-2 text-white/50">
             Refund status: {event.refund_status || 'none'}
           </p>
@@ -645,7 +640,7 @@ function RemovalRequestCard({ event }: { event: any }) {
             <textarea
               name="admin_note"
               rows={2}
-              placeholder="Admin note"
+              placeholder="Approval note"
               className="input"
             />
             <button
@@ -683,23 +678,19 @@ function RefundRequestCard({ event }: { event: any }) {
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h3 className="text-2xl font-bold text-white">{event.name}</h3>
-
           <p className="mt-2 text-yellow-100/80">
             Requested:{' '}
             {event.refund_requested_at
               ? new Date(event.refund_requested_at).toLocaleString()
               : '—'}
           </p>
-
           <p className="mt-2 text-white/70">
             Reason: {event.refund_reason || event.removal_reason || 'No reason provided.'}
           </p>
-
           <p className="mt-2 text-white/50">
             Amount: $
             {Number(event.payment_amount || event.total_price || 0).toFixed(2)}
           </p>
-
           <p className="mt-2 text-xs text-white/40">
             Payment Intent: {event.stripe_payment_intent_id || '—'}
           </p>
@@ -773,14 +764,8 @@ function PaymentRow({ event }: { event: any }) {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-xl font-bold text-white">{event.name}</h3>
-
-            <Chip
-              label={paid ? 'Paid' : 'Pending'}
-              tone={paid ? 'green' : 'yellow'}
-            />
-
+            <Chip label={paid ? 'Paid' : 'Pending'} tone={paid ? 'green' : 'yellow'} />
             <Chip label={event.status || 'unknown'} tone="gray" />
-
             <Chip label={`Refund: ${event.refund_status || 'none'}`} tone="gray" />
           </div>
 
@@ -789,8 +774,7 @@ function PaymentRow({ event }: { event: any }) {
           </p>
 
           <p className="mt-1 text-white/50">
-            Amount: $
-            {Number(event.payment_amount || event.total_price || 0).toFixed(2)}
+            Amount: ${Number(event.payment_amount || event.total_price || 0).toFixed(2)}
             {event.coupon_code ? ` • Coupon: ${event.coupon_code}` : ''}
           </p>
 

@@ -24,12 +24,49 @@ async function requireAdmin() {
   return user;
 }
 
+export async function updateStripeMode(formData: FormData) {
+  await requireAdmin();
+  const supabase = createAdminClient();
+
+  const stripeMode = String(formData.get('stripe_mode') || 'test');
+
+  if (!['test', 'live'].includes(stripeMode)) {
+    throw new Error('Invalid Stripe mode.');
+  }
+
+  const { data: existing } = await supabase
+    .from('payment_settings')
+    .select('id')
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await supabase
+      .from('payment_settings')
+      .update({
+        stripe_mode: stripeMode,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from('payment_settings').insert({
+      stripe_mode: stripeMode,
+    });
+
+    if (error) throw new Error(error.message);
+  }
+
+  redirect('/admin/payments?mode=updated');
+}
+
 export async function approveRefundRequest(formData: FormData) {
   const user = await requireAdmin();
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
-  const adminNote = String(formData.get('refund_admin_note') || '');
+  const adminNote = String(formData.get('refund_admin_note') || '').trim();
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -54,7 +91,7 @@ export async function denyRefundRequest(formData: FormData) {
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
-  const adminNote = String(formData.get('refund_admin_note') || '');
+  const adminNote = String(formData.get('refund_admin_note') || '').trim();
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -79,8 +116,8 @@ export async function markManualRefundComplete(formData: FormData) {
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
-  const stripeRefundId = String(formData.get('stripe_refund_id') || '');
-  const adminNote = String(formData.get('refund_admin_note') || '');
+  const stripeRefundId = String(formData.get('stripe_refund_id') || '').trim();
+  const adminNote = String(formData.get('refund_admin_note') || '').trim();
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -103,34 +140,15 @@ export async function markManualRefundComplete(formData: FormData) {
 
   redirect('/admin/payments?refund=completed');
 }
-export async function updateStripeMode(formData: FormData) {
-  const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
-  const stripeMode = String(formData.get('stripe_mode') || 'test');
-
-  await supabase
-    .from('payment_settings')
-    .update({
-      stripe_mode: stripeMode,
-      updated_at: new Date().toISOString(),
-      updated_by: user.id,
-    })
-    .neq('id', '00000000-0000-0000-0000-000000000000');
-
-  redirect('/admin/payments?saved=1');
-}
 export async function approveRemovalRequest(formData: FormData) {
   const user = await requireAdmin();
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
-  const adminNote = String(formData.get('admin_note') || '');
+  const adminNote = String(formData.get('admin_note') || '').trim();
+
+  if (!eventId) throw new Error('Missing event id.');
 
   const { error } = await supabase
     .from('events')
@@ -139,6 +157,8 @@ export async function approveRemovalRequest(formData: FormData) {
       is_public: false,
       removed_at: new Date().toISOString(),
       removed_by: user.id,
+      removal_reviewed_at: new Date().toISOString(),
+      removal_reviewed_by: user.id,
       removal_admin_note: adminNote || null,
       updated_at: new Date().toISOString(),
     })
@@ -148,18 +168,45 @@ export async function approveRemovalRequest(formData: FormData) {
 
   redirect('/admin/payments?removal=approved');
 }
+
 export async function denyRemovalRequest(formData: FormData) {
   const user = await requireAdmin();
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
-  const adminNote = String(formData.get('admin_note') || '');
+  const adminNote = String(formData.get('admin_note') || '').trim();
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('promotion_start_at, promotion_end_at')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  const now = new Date();
+  const promoStart = event.promotion_start_at
+    ? new Date(event.promotion_start_at)
+    : null;
+  const promoEnd = event.promotion_end_at
+    ? new Date(event.promotion_end_at)
+    : null;
+
+  const shouldBeActive =
+    promoStart &&
+    promoEnd &&
+    now >= promoStart &&
+    now <= promoEnd;
 
   const { error } = await supabase
     .from('events')
     .update({
-      status: 'scheduled',
-      is_public: false,
+      status: shouldBeActive ? 'active' : 'scheduled',
+      is_public: shouldBeActive,
       removal_reviewed_at: new Date().toISOString(),
       removal_reviewed_by: user.id,
       removal_admin_note: adminNote || null,
