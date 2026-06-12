@@ -358,9 +358,9 @@ export default async function EventDetailPage({ params }: Props) {
       )
     `)
     .eq('slug', slug)
-    .eq('is_public', true)
-    .is('removed_at', null)
-    .single();
+    .in('status', ['active', 'scheduled'])
+    .neq('status', 'removed')
+    .maybeSingle();
 
   if (error || !event) notFound();
 
