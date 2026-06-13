@@ -80,123 +80,100 @@ export default async function EventsPage() {
 }
   */
 
-import DiscoveryEventCard, {
-  DiscoveryEventCardItem,
-} from '@/components/events/DiscoveryEventCard';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { logDiscoverySearch } from '@/lib/discovery/log-search';
+import DiscoveryEventCard from '@/components/events/DiscoveryEventCard';
 
-type SearchParams = {
-  q?: string;
-  city?: string;
-  state?: string;
-  source?: string;
-  date?: string;
+type Props = {
+  searchParams?: Promise<{
+    q?: string;
+    city?: string;
+    state?: string;
+  }>;
 };
 
-type EventsPageProps = {
-  searchParams?: Promise<SearchParams>;
-};
+export default async function EventsPage({ searchParams }: Props) {
+  const query = searchParams ? await searchParams : {};
 
-export default async function EventsPage({ searchParams }: EventsPageProps) {
-  const params = searchParams ? await searchParams : {};
-
-  const q = params.q?.trim() || '';
-  const city = params.city?.trim() || '';
-  const state = params.state?.trim() || '';
-  const source = params.source || 'all';
-  const date = params.date || 'all';
+  const search = String(query.q || '').trim().toLowerCase();
+  const city = String(query.city || '').trim().toLowerCase();
+  const state = String(query.state || '').trim().toLowerCase();
 
   const supabase = await createClient();
-
   const now = new Date();
-  const nowIso = now.toISOString();
-  const endDate = getEndDate(date);
 
-  let hypeQuery = supabase
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+  const startOfDayAfterTomorrow = new Date(startOfToday);
+  startOfDayAfterTomorrow.setDate(startOfDayAfterTomorrow.getDate() + 2);
+
+  const endOfThisWeek = new Date(startOfToday);
+  endOfThisWeek.setDate(endOfThisWeek.getDate() + 7);
+
+  const endOfNextWeek = new Date(startOfToday);
+  endOfNextWeek.setDate(endOfNextWeek.getDate() + 14);
+
+  const { data: hypeEvents, error: hypeError } = await supabase
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
-    .eq('status', 'active')
+    .in('status', ['scheduled', 'active'])
     .eq('is_public', true)
     .is('removed_at', null)
-    .gte('event_start_at', nowIso)
+    .lte('promotion_start_at', now.toISOString())
+    .gte('promotion_end_at', now.toISOString())
     .order('event_start_at', { ascending: true });
 
-  if (q) {
-    hypeQuery = hypeQuery.or(
-      `name.ilike.%${q}%,description.ilike.%${q}%,venue_name.ilike.%${q}%,city.ilike.%${q}%`
-    );
-  }
+  if (hypeError) throw new Error(hypeError.message);
 
-  if (city) hypeQuery = hypeQuery.ilike('city', `%${city}%`);
-  if (state) hypeQuery = hypeQuery.ilike('state', `%${state}%`);
-  if (endDate) hypeQuery = hypeQuery.lte('event_start_at', endDate.toISOString());
-
-  let externalQuery = supabase
+  const { data: externalEvents, error: externalError } = await supabase
     .from('external_events')
     .select('*')
     .eq('status', 'active')
-    .or(`event_start_at.gte.${nowIso},event_start_at.is.null`)
-    .order('event_start_at', { ascending: true, nullsFirst: false });
+    .or(
+      `event_end_at.gte.${now.toISOString()},and(event_end_at.is.null,event_start_at.gte.${new Date(
+        now.getTime() - 24 * 60 * 60 * 1000
+      ).toISOString()})`
+    )
+    .order('event_start_at', { ascending: true });
 
-  if (q) {
-    externalQuery = externalQuery.or(
-      `name.ilike.%${q}%,description.ilike.%${q}%,venue_name.ilike.%${q}%,city.ilike.%${q}%,genre.ilike.%${q}%,classification.ilike.%${q}%`
-    );
-  }
+  if (externalError) throw new Error(externalError.message);
 
-  if (city) externalQuery = externalQuery.ilike('city', `%${city}%`);
-  if (state) externalQuery = externalQuery.ilike('state', `%${state}%`);
-  if (endDate) externalQuery = externalQuery.lte('event_start_at', endDate.toISOString());
-
-  const shouldFetchHype = source === 'all' || source === 'hypeknight';
-  const shouldFetchExternal =
-    source === 'all' || source === 'external' || source === 'ticketmaster';
-
-  const [hypeResult, externalResult] = await Promise.all([
-    shouldFetchHype ? hypeQuery : Promise.resolve({ data: [], error: null }),
-    shouldFetchExternal ? externalQuery : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  if (hypeResult.error) throw new Error(hypeResult.error.message);
-  if (externalResult.error) throw new Error(externalResult.error.message);
-
-  let hypeEvents = hypeResult.data ?? [];
-  let externalEvents = externalResult.data ?? [];
-
-  if (source === 'ticketmaster') {
-    externalEvents = externalEvents.filter(
-      (event: any) => event.source_code === 'ticketmaster'
-    );
-  }
-
-  const cards: DiscoveryEventCardItem[] = [
-    ...hypeEvents.map((event: any) => ({
+  let cards = [
+    ...(hypeEvents ?? []).map((event: any) => ({
       id: event.id,
       name: event.name,
-      city: event.city,
-      state: event.state,
+      city: event.city || event.venue?.city,
+      state: event.state || event.venue?.state,
       description: event.description,
       event_start_at: event.event_start_at,
-      image_url: event.flyer_url,
+      event_end_at: event.event_end_at,
+      image_url: event.flyer_url || event.image_url,
       href: `/events/${event.slug}`,
-      status: event.status || 'active',
+      status: event.status,
       source_label: 'HypeKnight',
       is_external: false,
-      venue_name: event.venue?.name || event.venue_name,
-      genre: event.music?.[0] || event.event_type || null,
-      classification: event.event_type || null,
+      venue_name: event.venue_name || event.venue?.name,
+      genre: Array.isArray(event.music_selection)
+        ? event.music_selection?.[0]
+        : event.event_type,
+      classification: event.event_type,
     })),
-    ...externalEvents.map((event: any) => ({
+
+    ...(externalEvents ?? []).map((event: any) => ({
       id: event.id,
       name: event.name,
       city: event.city,
       state: event.state,
       description: event.description,
       event_start_at: event.event_start_at,
+      event_end_at: event.event_end_at,
       image_url: event.image_url,
       href: `/events/external/${event.id}`,
-      status: event.status || 'active',
+      status: event.status,
       source_label:
         event.source_code === 'ticketmaster'
           ? 'Ticketmaster'
@@ -206,144 +183,202 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       genre: event.genre,
       classification: event.classification || event.segment,
     })),
-  ].sort((a, b) => {
+  ];
+
+  cards = cards.filter((event) => {
+    const haystack = [
+      event.name,
+      event.city,
+      event.state,
+      event.description,
+      event.venue_name,
+      event.genre,
+      event.classification,
+      event.source_label,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    const matchesSearch = search ? haystack.includes(search) : true;
+    const matchesCity = city ? String(event.city || '').toLowerCase().includes(city) : true;
+    const matchesState = state ? String(event.state || '').toLowerCase().includes(state) : true;
+
+    return matchesSearch && matchesCity && matchesState;
+  });
+
+  cards.sort((a, b) => {
     const aTime = a.event_start_at ? new Date(a.event_start_at).getTime() : Infinity;
     const bTime = b.event_start_at ? new Date(b.event_start_at).getTime() : Infinity;
     return aTime - bTime;
   });
 
-  const hypeCount = cards.filter((event) => !event.is_external).length;
-  const externalCount = cards.filter((event) => event.is_external).length;
-
-  await logDiscoverySearch({
-  searchQuery: q,
-  city,
-  state,
-  sourceFilter: source,
-  dateFilter: date,
-  resultCount: cards.length,
-  hypeknightResultCount: hypeCount,
-  externalResultCount: externalCount,
-  pagePath: '/events',
-});
-
+  const liveEvents = cards.filter((event) => isLiveNow(event, now));
+  const tonightEvents = cards.filter((event) =>
+    isSameWindow(event.event_start_at, startOfToday, startOfTomorrow)
+  );
+  const tomorrowEvents = cards.filter((event) =>
+    isSameWindow(event.event_start_at, startOfTomorrow, startOfDayAfterTomorrow)
+  );
+  const thisWeekEvents = cards.filter((event) =>
+    isSameWindow(event.event_start_at, startOfDayAfterTomorrow, endOfThisWeek)
+  );
+  const nextWeekEvents = cards.filter((event) =>
+    isSameWindow(event.event_start_at, endOfThisWeek, endOfNextWeek)
+  );
 
   return (
-    <section className="space-y-10">
-      <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-10">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">Events</p>
+    <section className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:px-6 lg:px-8">
+      <section className="rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-8 sm:p-10">
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          Event Discovery
+        </p>
 
-        <h1 className="mt-3 text-4xl font-bold text-white">
-          Discover Events on HypeKnight
+        <h1 className="mt-3 text-5xl font-black text-white">
+          What’s going on tonight?
         </h1>
 
         <p className="mt-4 max-w-3xl text-white/70">
-          Search HypeKnight events and supplemental events discovered from trusted external sources.
+          Search HypeKnight events and supplemental external events by city,
+          state, vibe, venue, music, or event name.
         </p>
 
-        <form action="/events" className="mt-8 grid gap-4 lg:grid-cols-6">
+        <form className="mt-8 grid gap-3 lg:grid-cols-[1fr_220px_160px_140px]">
           <input
             name="q"
-            defaultValue={q}
-            placeholder="Search event, vibe, venue..."
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50 lg:col-span-2"
+            defaultValue={query.q || ''}
+            placeholder="Search events, music, venues, vibes..."
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
 
           <input
             name="city"
-            defaultValue={city}
+            defaultValue={query.city || ''}
             placeholder="City"
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
 
           <input
             name="state"
-            defaultValue={state}
+            defaultValue={query.state || ''}
             placeholder="State"
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
-
-          <select
-            name="source"
-            defaultValue={source}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-          >
-            <option value="all">All Sources</option>
-            <option value="hypeknight">HypeKnight</option>
-            <option value="external">External</option>
-            <option value="ticketmaster">Ticketmaster</option>
-          </select>
-
-          <select
-            name="date"
-            defaultValue={date}
-            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-          >
-            <option value="all">Any Date</option>
-            <option value="today">Today</option>
-            <option value="week">Next 7 Days</option>
-            <option value="month">Next 30 Days</option>
-          </select>
 
           <button
             type="submit"
-            className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90 lg:col-span-6"
+            className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
           >
-            Search Events
+            Search
           </button>
         </form>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <Stat label="HypeKnight Events" value={String(hypeCount)} />
-          <Stat label="External Events" value={String(externalCount)} />
-          <Stat label="Total Results" value={String(cards.length)} />
+        {(search || city || state) ? (
+          <div className="mt-4">
+            <Link href="/events" className="text-sm text-white/55 hover:text-accent">
+              Clear filters
+            </Link>
+          </div>
+        ) : null}
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric label="Live Now" value={String(liveEvents.length)} />
+          <Metric label="Tonight" value={String(tonightEvents.length)} />
+          <Metric label="Tomorrow" value={String(tomorrowEvents.length)} />
+          <Metric label="This Week" value={String(thisWeekEvents.length)} />
+          <Metric label="Next Week" value={String(nextWeekEvents.length)} />
         </div>
+      </section>
+
+      <EventSection
+        eyebrow="Now"
+        title="Live right now"
+        text="Events that are currently happening or within their active event window."
+        events={liveEvents}
+        featured
+      />
+
+      <EventSection
+        eyebrow="Tonight"
+        title="Tonight’s events"
+        text="Events scheduled for today and tonight."
+        events={tonightEvents}
+      />
+
+      <EventSection
+        eyebrow="Tomorrow"
+        title="Tomorrow’s move"
+        text="Events happening tomorrow."
+        events={tomorrowEvents}
+      />
+
+      <EventSection
+        eyebrow="This Week"
+        title="Coming up this week"
+        text="Events after tomorrow through the next 7 days."
+        events={thisWeekEvents}
+      />
+
+      <EventSection
+        eyebrow="Next Week"
+        title="Next week’s lineup"
+        text="Events scheduled 7 to 14 days out."
+        events={nextWeekEvents}
+      />
+
+      <EventSection
+        eyebrow="All"
+        title="All discoverable events"
+        text="All events currently inside their HypeKnight or external discovery window."
+        events={cards}
+      />
+    </section>
+  );
+}
+
+function EventSection({
+  eyebrow,
+  title,
+  text,
+  events,
+  featured = false,
+}: {
+  eyebrow: string;
+  title: string;
+  text: string;
+  events: any[];
+  featured?: boolean;
+}) {
+  return (
+    <section>
+      <div className="max-w-3xl">
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          {eyebrow}
+        </p>
+        <h2 className="mt-3 text-3xl font-bold text-white">{title}</h2>
+        <p className="mt-3 text-white/70">{text}</p>
       </div>
 
-      {cards.length ? (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {cards.map((event, index) => (
+      {events.length ? (
+        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {events.map((event, index) => (
             <DiscoveryEventCard
-              key={`${event.source_label}-${event.id}`}
+              key={`${event.source_label}-${event.id}-${index}`}
               event={event}
-              featured={index < 3}
+              featured={featured && index < 3}
             />
           ))}
         </div>
       ) : (
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/70">
-          No events match your filters right now.
+        <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
+          No events found in this window.
         </div>
       )}
     </section>
   );
 }
 
-function getEndDate(date: string) {
-  const now = new Date();
-
-  if (date === 'today') {
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    return end;
-  }
-
-  if (date === 'week') {
-    const end = new Date(now);
-    end.setDate(end.getDate() + 7);
-    return end;
-  }
-
-  if (date === 'month') {
-    const end = new Date(now);
-    end.setDate(end.getDate() + 30);
-    return end;
-  }
-
-  return null;
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">
@@ -352,4 +387,27 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="mt-3 text-3xl font-bold text-white">{value}</p>
     </div>
   );
+}
+
+function isSameWindow(
+  value: string | null | undefined,
+  start: Date,
+  end: Date
+) {
+  if (!value) return false;
+
+  const date = new Date(value);
+
+  return date >= start && date < end;
+}
+
+function isLiveNow(event: any, now: Date) {
+  if (!event.event_start_at) return false;
+
+  const start = new Date(event.event_start_at);
+  const end = event.event_end_at
+    ? new Date(event.event_end_at)
+    : new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+  return now >= start && now <= end;
 }
