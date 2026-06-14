@@ -505,16 +505,6 @@ function Hero() {
               className="h-full w-full object-contain p-4"
             />
           </div>
-
-          <p className="mt-5 text-sm uppercase tracking-[0.3em] text-accent">
-            Logo Ready
-          </p>
-          <p className="mt-3 text-white/65">
-            Place your logo image at:
-          </p>
-          <code className="mt-3 block rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white/70">
-            public/hypeknight-logo.png
-          </code>
         </div>
       </div>
     </section>
