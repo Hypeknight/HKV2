@@ -11,6 +11,8 @@ import {
   rejectCouponRequest,
   disableCouponRequest,
 } from './actions';
+import { createAdminClient } from '@/lib/supabase/admin';
+const adminSupabase = createAdminClient();
 
 export default async function AdminAmbassadorsPage() {
   const supabase = await createClient();
@@ -35,19 +37,19 @@ export default async function AdminAmbassadorsPage() {
     { data: couponRequests },
     { data: commissions },
   ] = await Promise.all([
-    supabase
+    adminSupabase
       .from('ambassador_applications')
       .select('*')
       .order('created_at', { ascending: false }),
-    supabase
+    adminSupabase
       .from('ambassador_profiles')
       .select('*')
       .order('created_at', { ascending: false }),
-    supabase
+    adminSupabase
       .from('ambassador_coupon_requests')
       .select('*')
       .order('created_at', { ascending: false }),
-    supabase
+    adminSupabase
       .from('ambassador_commissions')
       .select('*')
       .order('created_at', { ascending: false }),

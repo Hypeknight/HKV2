@@ -11,6 +11,20 @@ export default async function DashboardAmbassadorApplyPage() {
 
   if (!user) redirect('/auth/login');
 
+  const { data: existingApplication } = await supabase
+  .from('ambassador_applications')
+  .select('id, status')
+  .eq('user_id', user.id)
+  .in('status', ['pending', 'approved', 'suspended'])
+  .order('submitted_at', { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+if (existingApplication) {
+  redirect('/ambassadors/dashboard');
+}
+
+
   return (
     <section className="mx-auto max-w-5xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
       <div className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8 sm:p-10">
