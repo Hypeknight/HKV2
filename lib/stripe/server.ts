@@ -24,7 +24,7 @@ export async function getStripeForCurrentMode() {
   if (!secretKey) {
     throw new Error(`Missing Stripe ${mode} secret key`);
   }
-
+const stripe = new Stripe(secretKey);
   /*const stripe = new Stripe(secretKey, {
     apiVersion: '2026-05-27.dahlia',
   });*/

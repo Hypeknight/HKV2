@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-
+const stripe = new Stripe(secretKey);
   /*const stripe = new Stripe(secretKey, {
     apiVersion: '2026-05-27.dahlia',
   });*/
