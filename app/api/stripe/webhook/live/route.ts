@@ -14,8 +14,10 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-const stripe = new Stripe(secretKey);
-  
+
+  const stripe = new Stripe(secretKey, {
+    apiVersion: '2026-03-25.dahlia',
+  });
 
   const body = await req.text();
   const signature = (await headers()).get('stripe-signature');
