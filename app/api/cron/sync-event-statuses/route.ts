@@ -36,8 +36,6 @@ export async function GET(req: Request) {
   const supabase = createAdminClient();
 
   try {
-    const nowIso = new Date().toISOString();
-
     const { data: beforeEvents, error: beforeError } = await supabase
       .from('events')
       .select('id, status')
@@ -52,38 +50,24 @@ export async function GET(req: Request) {
 
     if (beforeExternalError) throw new Error(beforeExternalError.message);
 
-    const { error: syncError } = await supabase.rpc('sync_event_statuses');
+    const { error: eventSyncError } = await supabase.rpc('sync_event_statuses');
 
-    if (syncError) throw new Error(syncError.message);
+    if (eventSyncError) throw new Error(eventSyncError.message);
 
-    const { error: externalBackfillError } = await supabase
-      .from('external_events')
-      .update({
-        event_end_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-        updated_at: nowIso,
-      })
-      .is('event_end_at', null)
-      .not('event_start_at', 'is', null);
+    const { data: externalUpdated, error: externalSyncError } =
+      await supabase.rpc('sync_external_event_statuses');
 
-    if (externalBackfillError) throw new Error(externalBackfillError.message);
-
-    const { data: expiredExternal, error: expiredExternalError } = await supabase
-      .from('external_events')
-      .update({
-        status: 'expired',
-        updated_at: nowIso,
-      })
-      .eq('status', 'active')
-      .not('event_start_at', 'is', null)
-      .lt('event_end_at', nowIso)
-      .select('id');
-
-    if (expiredExternalError) throw new Error(expiredExternalError.message);
+    if (externalSyncError) throw new Error(externalSyncError.message);
 
     const { data: afterEvents, error: afterError } = await supabase
       .from('events')
       .select('id, status')
-      .in('status', ['scheduled', 'active', 'completed', 'paid_awaiting_approval']);
+      .in('status', [
+        'scheduled',
+        'active',
+        'completed',
+        'paid_awaiting_approval',
+      ]);
 
     if (afterError) throw new Error(afterError.message);
 
@@ -96,7 +80,7 @@ export async function GET(req: Request) {
         beforeMap.get(event.id) && beforeMap.get(event.id) !== event.status
     ).length;
 
-    const externalRecordsUpdated = expiredExternal?.length ?? 0;
+    const externalRecordsUpdated = Number(externalUpdated || 0);
 
     await completeCronLog({
       logId: cronLog?.id,
@@ -104,7 +88,7 @@ export async function GET(req: Request) {
       recordsProcessed:
         (beforeEvents?.length ?? 0) + (beforeExternal?.length ?? 0),
       recordsUpdated: eventRecordsUpdated + externalRecordsUpdated,
-      notes: `HypeKnight events synced. External expired: ${externalRecordsUpdated}.`,
+      notes: `HypeKnight events synced. External events expired: ${externalRecordsUpdated}.`,
     });
 
     return NextResponse.json({

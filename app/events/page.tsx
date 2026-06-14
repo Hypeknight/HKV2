@@ -79,7 +79,6 @@ export default async function EventsPage() {
   );
 }
   */
-
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import DiscoveryEventCard from '@/components/events/DiscoveryEventCard';
@@ -117,6 +116,8 @@ export default async function EventsPage({ searchParams }: Props) {
   const endOfNextWeek = new Date(startOfToday);
   endOfNextWeek.setDate(endOfNextWeek.getDate() + 14);
 
+  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+
   const { data: hypeEvents, error: hypeError } = await supabase
     .from('events')
     .select('*, venue:venues(name, slug, city, state)')
@@ -133,10 +134,9 @@ export default async function EventsPage({ searchParams }: Props) {
     .from('external_events')
     .select('*')
     .eq('status', 'active')
+    .not('event_start_at', 'is', null)
     .or(
-      `event_end_at.gte.${now.toISOString()},and(event_end_at.is.null,event_start_at.gte.${new Date(
-        now.getTime() - 4 * 60 * 60 * 1000
-      ).toISOString()})`
+      `event_end_at.gte.${now.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
     )
     .order('event_start_at', { ascending: true });
 
@@ -201,28 +201,45 @@ export default async function EventsPage({ searchParams }: Props) {
       .toLowerCase();
 
     const matchesSearch = search ? haystack.includes(search) : true;
-    const matchesCity = city ? String(event.city || '').toLowerCase().includes(city) : true;
-    const matchesState = state ? String(event.state || '').toLowerCase().includes(state) : true;
+    const matchesCity = city
+      ? String(event.city || '').toLowerCase().includes(city)
+      : true;
+    const matchesState = state
+      ? String(event.state || '').toLowerCase().includes(state)
+      : true;
 
     return matchesSearch && matchesCity && matchesState;
   });
 
   cards.sort((a, b) => {
-    const aTime = a.event_start_at ? new Date(a.event_start_at).getTime() : Infinity;
-    const bTime = b.event_start_at ? new Date(b.event_start_at).getTime() : Infinity;
+    const aTime = a.event_start_at
+      ? new Date(a.event_start_at).getTime()
+      : Infinity;
+    const bTime = b.event_start_at
+      ? new Date(b.event_start_at).getTime()
+      : Infinity;
+
     return aTime - bTime;
   });
 
   const liveEvents = cards.filter((event) => isLiveNow(event, now));
+
   const tonightEvents = cards.filter((event) =>
     isSameWindow(event.event_start_at, startOfToday, startOfTomorrow)
   );
+
   const tomorrowEvents = cards.filter((event) =>
-    isSameWindow(event.event_start_at, startOfTomorrow, startOfDayAfterTomorrow)
+    isSameWindow(
+      event.event_start_at,
+      startOfTomorrow,
+      startOfDayAfterTomorrow
+    )
   );
+
   const thisWeekEvents = cards.filter((event) =>
     isSameWindow(event.event_start_at, startOfDayAfterTomorrow, endOfThisWeek)
   );
+
   const nextWeekEvents = cards.filter((event) =>
     isSameWindow(event.event_start_at, endOfThisWeek, endOfNextWeek)
   );
@@ -275,7 +292,10 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {(search || city || state) ? (
           <div className="mt-4">
-            <Link href="/events" className="text-sm text-white/55 hover:text-accent">
+            <Link
+              href="/events"
+              className="text-sm text-white/55 hover:text-accent"
+            >
               Clear filters
             </Link>
           </div>
@@ -293,7 +313,7 @@ export default async function EventsPage({ searchParams }: Props) {
       <EventSection
         eyebrow="Now"
         title="Live right now"
-        text="Events that are currently happening or within their active event window."
+        text="Events currently happening. If no end time was provided, HypeKnight keeps it live for 4 hours after start."
         events={liveEvents}
         featured
       />
