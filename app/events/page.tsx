@@ -135,7 +135,7 @@ export default async function EventsPage({ searchParams }: Props) {
     .eq('status', 'active')
     .or(
       `event_end_at.gte.${now.toISOString()},and(event_end_at.is.null,event_start_at.gte.${new Date(
-        now.getTime() - 24 * 60 * 60 * 1000
+        now.getTime() - 4 * 60 * 60 * 1000
       ).toISOString()})`
     )
     .order('event_start_at', { ascending: true });
@@ -407,7 +407,7 @@ function isLiveNow(event: any, now: Date) {
   const start = new Date(event.event_start_at);
   const end = event.event_end_at
     ? new Date(event.event_end_at)
-    : new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    : new Date(start.getTime() + 4 * 60 * 60 * 1000);
 
   return now >= start && now <= end;
 }
