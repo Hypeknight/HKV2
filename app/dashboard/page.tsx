@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { signOutAction } from './actions';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -64,25 +65,47 @@ export default async function DashboardPage() {
   return (
     <section className="mx-auto max-w-7xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
       <section className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
-          My HypeKnight
-        </p>
+  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <p className="text-sm uppercase tracking-[0.35em] text-accent">
+        My HypeKnight
+      </p>
 
-        <h1 className="mt-3 text-4xl font-black text-white">
-          {profile?.display_name || user.email || 'Welcome'}
-        </h1>
+      <h1 className="mt-3 text-4xl font-black text-white">
+        {profile?.display_name || user.email || 'Welcome'}
+      </h1>
 
-        <p className="mt-3 max-w-3xl text-white/70">
-          Your HypeKnight profile changes based on the access HypeKnight has approved
-          for your account.
-        </p>
+      <p className="mt-3 max-w-3xl text-white/70">
+        Your HypeKnight profile changes based on the access HypeKnight has
+        approved for your account.
+      </p>
 
-        <div className="mt-6 flex flex-wrap gap-2">
-          {roles.map((role) => (
-            <RolePill key={role} label={role} />
-          ))}
-        </div>
-      </section>
+      <div className="mt-6 flex flex-wrap gap-2">
+        {roles.map((role) => (
+          <RolePill key={role} label={role} />
+        ))}
+      </div>
+    </div>
+
+    <div className="flex flex-wrap gap-3">
+      <Link
+        href="/dashboard/profile"
+        className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
+      >
+        Edit Profile
+      </Link>
+
+      <form action={signOutAction}>
+        <button
+          type="submit"
+          className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-red-200 hover:border-red-500/40"
+        >
+          Sign Out
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Current Role" value={profile?.app_role || 'user'} />
