@@ -1,0 +1,1 @@
+import { submitAmbassadorApplication } from '@/app/ambassadors/actions';

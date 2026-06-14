@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { submitAmbassadorApplication } from '../actions';
+import { submitAmbassadorApplication } from '@/app/ambassadors/actions';
 
 export default async function AmbassadorApplyPage() {
   const supabase = await createClient();
