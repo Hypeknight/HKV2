@@ -449,7 +449,7 @@ export default async function HomePage() {
             Start Discovering
           </Link>
           <Link
-            href="/auth/register"
+            href="/auth/sign-up"
             className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-white hover:border-accent/40"
           >
             Create Profile
