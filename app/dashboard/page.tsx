@@ -102,7 +102,7 @@ export default async function DashboardPage() {
         <ProfileCard
           title="Personal Preferences"
           text="Set your city, music, vibe, and event preferences for better recommendations."
-          href="/events/recommended/onboarding"
+          href="/dashboard/preferences"
           action="Update Preferences"
         />
 
