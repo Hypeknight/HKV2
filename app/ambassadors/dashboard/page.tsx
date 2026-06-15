@@ -16,7 +16,7 @@ export default async function AmbassadorDashboardPage() {
       .from('ambassador_applications')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+      .order('submitted_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase

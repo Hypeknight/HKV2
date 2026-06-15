@@ -40,7 +40,7 @@ export default async function AdminAmbassadorsPage() {
     adminSupabase
       .from('ambassador_applications')
       .select('*')
-      .order('created_at', { ascending: false }),
+      .order('submitted_at', { ascending: false }),
     adminSupabase
       .from('ambassador_profiles')
       .select('*')
