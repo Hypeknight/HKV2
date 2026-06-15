@@ -105,6 +105,11 @@ export default async function AdminPage() {
             description="Approve, reject, review, and monitor HypeKnight events."
             href="/admin/events"
           />
+          <AdminCard
+            title="Ambassador Management"
+            description="Approve, reject, review, and monitor ambassador applications and coupons."
+            href="/admin/ambassadors"
+          />
 
           <AdminCard
             title="Venue Management"
