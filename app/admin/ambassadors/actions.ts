@@ -141,35 +141,84 @@ export async function suspendAmbassador(formData: FormData) {
     throw new Error(fetchError?.message || 'Ambassador not found.');
   }
 
-  const { error: ambassadorError } = await supabase
-    .from('ambassador_profiles')
-    .update({
-      status: 'suspended',
-      suspended_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq('id', ambassadorId);
-
-  if (ambassadorError) throw new Error(ambassadorError.message);
-
   await supabase
-    .from('ambassador_applications')
-    .update({
-      status: 'suspended',
-      admin_notes: adminNotes || null,
-      updated_at: nowIso,
-    })
-    .eq('user_id', ambassador.user_id);
+  .from('ambassador_applications')
+  .update({
+    status: 'suspended',
+    admin_notes: adminNotes || null,
+    updated_at: nowIso,
+  })
+  .eq('user_id', ambassador.user_id);
 
-  await supabase
-    .from('ambassador_coupon_requests')
+const { data: activeCouponRequests, error: activeCouponFetchError } = await supabase
+  .from('ambassador_coupon_requests')
+  .select('id, requested_code, status')
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'active');
+
+if (activeCouponFetchError) {
+  throw new Error(activeCouponFetchError.message);
+}
+
+const activeCodes = (activeCouponRequests ?? [])
+  .map((request) => request.requested_code)
+  .filter(Boolean);
+
+if (activeCodes.length) {
+  const { error: deactivateCouponsError } = await supabase
+    .from('event_coupons')
     .update({
-      status: 'disabled',
-      admin_notes: adminNotes || null,
+      is_active: false,
       updated_at: nowIso,
     })
-    .eq('ambassador_id', ambassadorId)
-    .in('status', ['pending', 'approved', 'active']);
+    .in('code', activeCodes);
+
+  if (deactivateCouponsError) {
+    throw new Error(deactivateCouponsError.message);
+  }
+}
+
+const { error: suspendPendingError } = await supabase
+  .from('ambassador_coupon_requests')
+  .update({
+    status: 'Spending',
+    admin_notes: adminNotes || null,
+    updated_at: nowIso,
+  })
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'pending');
+
+if (suspendPendingError) {
+  throw new Error(suspendPendingError.message);
+}
+
+const { error: suspendApprovedError } = await supabase
+  .from('ambassador_coupon_requests')
+  .update({
+    status: 'Sapproved',
+    admin_notes: adminNotes || null,
+    updated_at: nowIso,
+  })
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'approved');
+
+if (suspendApprovedError) {
+  throw new Error(suspendApprovedError.message);
+}
+
+const { error: suspendActiveError } = await supabase
+  .from('ambassador_coupon_requests')
+  .update({
+    status: 'suspended',
+    admin_notes: adminNotes || null,
+    updated_at: nowIso,
+  })
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'active');
+
+if (suspendActiveError) {
+  throw new Error(suspendActiveError.message);
+}
 
   redirect('/admin/ambassadors?ambassador=suspended');
 }
@@ -194,32 +243,74 @@ export async function reactivateAmbassador(formData: FormData) {
 
   const nowIso = new Date().toISOString();
 
-  const { error } = await supabase
-    .from('ambassador_profiles')
-    .update({
-      status: 'active',
-      suspended_at: null,
-      updated_at: nowIso,
-    })
-    .eq('id', ambassadorId);
-
-  if (error) throw new Error(error.message);
-
+  const { data: suspendedCouponRequests, error: suspendedCouponFetchError } =
   await supabase
-    .from('ambassador_applications')
-    .update({
-      status: 'approved',
-      updated_at: nowIso,
-    })
-    .eq('user_id', ambassador.user_id);
+    .from('ambassador_coupon_requests')
+    .select('id, requested_code, status')
+    .eq('ambassador_id', ambassadorId)
+    .in('status', ['Spending', 'Sapproved', 'suspended']);
 
-  await supabase
-    .from('profiles')
+if (suspendedCouponFetchError) {
+  throw new Error(suspendedCouponFetchError.message);
+}
+
+const suspendedActiveCodes = (suspendedCouponRequests ?? [])
+  .filter((request) => request.status === 'suspended')
+  .map((request) => request.requested_code)
+  .filter(Boolean);
+
+if (suspendedActiveCodes.length) {
+  const { error: reactivateCouponsError } = await supabase
+    .from('event_coupons')
     .update({
-      app_role: 'ambassador',
+      is_active: true,
       updated_at: nowIso,
     })
-    .eq('id', ambassador.user_id);
+    .in('code', suspendedActiveCodes);
+
+  if (reactivateCouponsError) {
+    throw new Error(reactivateCouponsError.message);
+  }
+}
+
+const { error: restorePendingError } = await supabase
+  .from('ambassador_coupon_requests')
+  .update({
+    status: 'pending',
+    updated_at: nowIso,
+  })
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'Spending');
+
+if (restorePendingError) {
+  throw new Error(restorePendingError.message);
+}
+
+const { error: restoreApprovedError } = await supabase
+  .from('ambassador_coupon_requests')
+  .update({
+    status: 'approved',
+    updated_at: nowIso,
+  })
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'Sapproved');
+
+if (restoreApprovedError) {
+  throw new Error(restoreApprovedError.message);
+}
+
+const { error: restoreActiveError } = await supabase
+  .from('ambassador_coupon_requests')
+  .update({
+    status: 'active',
+    updated_at: nowIso,
+  })
+  .eq('ambassador_id', ambassadorId)
+  .eq('status', 'suspended');
+
+if (restoreActiveError) {
+  throw new Error(restoreActiveError.message);
+}
 
   redirect('/admin/ambassadors?ambassador=reactivated');
 }
