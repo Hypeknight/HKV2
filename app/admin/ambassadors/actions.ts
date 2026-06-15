@@ -326,26 +326,22 @@ export async function approveCouponRequest(formData: FormData) {
   const nowIso = new Date().toISOString();
 
   const { data: coupon, error: couponError } = await supabase
-    .from('event_coupons')
-    .insert({
-      code,
-      discount_type: 'percent',
-      discount_value: request.discount_percent,
-      max_uses: request.usage_limit,
-      times_used: 0,
-      is_active: true,
-      applies_to: 'events',
-      source: 'ambassador',
-      created_by: admin.id,
-      starts_at: nowIso,
-      metadata: {
-        ambassador_id: request.ambassador_id,
-        ambassador_user_id: request.user_id,
-        commission_rate: request.ambassador.commission_rate || 30,
-      },
-    })
-    .select('id')
-    .single();
+  .from('event_coupons')
+  .insert({
+    code,
+    name: `${code} Ambassador Code`,
+    description: `Ambassador coupon for ${request.discount_percent}% off HypeKnight event promotion.`,
+    discount_type: 'percent',
+    discount_amount: null,
+    discount_percent: request.discount_percent,
+    max_redemptions: request.usage_limit,
+    starts_at: nowIso,
+    expires_at: null,
+    is_active: true,
+    created_by: admin.id,
+  })
+  .select('id')
+  .single();
 
   if (couponError) throw new Error(couponError.message);
 
