@@ -331,10 +331,13 @@ function Tag({ children }: { children: React.ReactNode }) {
 }
   */
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import {
+  startEventRevision,
+  requestEventRemovalOrRefund,
+} from '@/app/dashboard/events/actions';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -343,6 +346,18 @@ type Props = {
 export default async function EventDetailPage({ params }: Props) {
   const { slug } = await params;
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: viewerProfile } = user
+    ? await supabase
+        .from('profiles')
+        .select('app_role')
+        .eq('id', user.id)
+        .maybeSingle()
+    : { data: null };
 
   const { data: event, error } = await supabase
     .from('events')
@@ -354,31 +369,50 @@ export default async function EventDetailPage({ params }: Props) {
         slug,
         city,
         state,
-        address
+        address,
+        owner_id
       )
     `)
     .eq('slug', slug)
-    .in('status', ['active', 'scheduled'])
-    .neq('status', 'removed')
     .maybeSingle();
 
   if (error || !event) notFound();
 
+  const isOwner = user?.id === event.owner_id;
+  const isVenueOwner = user?.id === event.venue?.owner_id;
+  const isAdmin = viewerProfile?.app_role === 'admin';
+  const canSeeControls = isOwner || isVenueOwner || isAdmin;
+
+  const now = new Date();
+  const promotionStart = event.promotion_start_at
+    ? new Date(event.promotion_start_at)
+    : null;
+
+  const isBeforePromotionWindow =
+    promotionStart && now < promotionStart;
+
+  const canOwnerRequestRevision =
+    isOwner &&
+    isBeforePromotionWindow &&
+    ['scheduled', 'paid_awaiting_approval', 'active'].includes(event.status);
+
+  const canRequestRemoval =
+    isOwner &&
+    !['completed', 'removed', 'removal_requested'].includes(event.status);
+
   const imageUrl = event.flyer_url || event.image_url || null;
 
-  const locationLine = cleanJoin([
-    event.venue_name || event.venue?.name,
-    event.address || event.venue?.address,
-    cleanJoin([event.city || event.venue?.city, event.state || event.venue?.state], ', '),
-  ], ' • ');
-
-  const music = Array.isArray(event.music_selection)
-    ? event.music_selection
-    : [];
-
-  const vibes = Array.isArray(event.vibe_tags)
-    ? event.vibe_tags
-    : [];
+  const locationLine = cleanJoin(
+    [
+      event.venue_name || event.venue?.name,
+      event.address || event.venue?.address,
+      cleanJoin(
+        [event.city || event.venue?.city, event.state || event.venue?.state],
+        ', '
+      ),
+    ],
+    ' • '
+  );
 
   return (
     <section className="mx-auto max-w-7xl space-y-10 px-4 py-10 sm:px-6 lg:px-8">
@@ -386,25 +420,34 @@ export default async function EventDetailPage({ params }: Props) {
         ← Back to Events
       </Link>
 
+      {canSeeControls ? (
+        <EventControlPanel
+          event={event}
+          isAdmin={isAdmin}
+          isOwner={isOwner}
+          canOwnerRequestRevision={Boolean(canOwnerRequestRevision)}
+          canRequestRemoval={Boolean(canRequestRemoval)}
+        />
+      ) : null}
+
       <section className="overflow-hidden rounded-[2.75rem] border border-white/10 bg-white/5">
         {imageUrl ? (
-          <div className="relative min-h-[320px] w-full overflow-hidden bg-black sm:min-h-[480px]">
-            <Image
+          <div className="relative w-full overflow-hidden bg-black">
+            <img
               src={imageUrl}
               alt={event.name}
-              fill
-              priority
-              className="object-cover"
+              className="max-h-[560px] w-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
           </div>
         ) : null}
 
         <div className="p-8 sm:p-10">
           <div className="flex flex-wrap gap-2">
             <Chip label="HypeKnight Event" tone="accent" />
-            {event.status ? <Chip label={event.status} tone="gray" /> : null}
-            {event.event_type ? <Chip label={event.event_type} tone="gray" /> : null}
+            <Chip label={event.status || 'unknown'} tone="gray" />
+            {event.payment_status ? (
+              <Chip label={`Payment: ${event.payment_status}`} tone="gray" />
+            ) : null}
           </div>
 
           <h1 className="mt-5 text-4xl font-black text-white sm:text-6xl">
@@ -432,9 +475,7 @@ export default async function EventDetailPage({ params }: Props) {
               />
             ) : null}
 
-            {locationLine ? (
-              <InfoCard label="Location" value={locationLine} />
-            ) : null}
+            {locationLine ? <InfoCard label="Location" value={locationLine} /> : null}
 
             {event.entry_price ? (
               <InfoCard label="Entry" value={event.entry_price} />
@@ -442,30 +483,6 @@ export default async function EventDetailPage({ params }: Props) {
           </div>
         </div>
       </section>
-
-      {(music.length || vibes.length) ? (
-        <section className="grid gap-6 lg:grid-cols-2">
-          {music.length ? (
-            <Panel title="Music">
-              <div className="flex flex-wrap gap-2">
-                {music.map((item: string) => (
-                  <Chip key={item} label={item} tone="gray" />
-                ))}
-              </div>
-            </Panel>
-          ) : null}
-
-          {vibes.length ? (
-            <Panel title="Vibe">
-              <div className="flex flex-wrap gap-2">
-                {vibes.map((item: string) => (
-                  <Chip key={item} label={item} tone="gray" />
-                ))}
-              </div>
-            </Panel>
-          ) : null}
-        </section>
-      ) : null}
 
       <section className="grid gap-6 lg:grid-cols-3">
         <DetailPanel
@@ -475,6 +492,7 @@ export default async function EventDetailPage({ params }: Props) {
             ['Age Requirement', event.age_requirement],
             ['Smoking Policy', event.smoking_policy],
             ['Parking', event.parking_notes],
+            ['Special Notes', event.special_notes],
           ]}
         />
 
@@ -483,15 +501,23 @@ export default async function EventDetailPage({ params }: Props) {
           items={[
             ['Venue', event.venue_name || event.venue?.name],
             ['Address', event.address || event.venue?.address],
-            ['City', cleanJoin([event.city || event.venue?.city, event.state || event.venue?.state], ', ')],
+            [
+              'City',
+              cleanJoin(
+                [event.city || event.venue?.city, event.state || event.venue?.state],
+                ', '
+              ),
+            ],
           ]}
         />
 
         <DetailPanel
-          title="Notes"
+          title="Promotion Window"
           items={[
-            ['Special Notes', event.special_notes],
-            ['Linkd’N Mode', event.linkdn_mode && event.linkdn_mode !== 'none' ? event.linkdn_mode : null],
+            ['Promotion Starts', formatDate(event.promotion_start_at)],
+            ['Promotion Ends', formatDate(event.promotion_end_at)],
+            ['Revision Status', event.revision_reason],
+            ['Removal Status', event.removal_reason],
           ]}
         />
       </section>
@@ -527,6 +553,163 @@ export default async function EventDetailPage({ params }: Props) {
   );
 }
 
+function EventControlPanel({
+  event,
+  isAdmin,
+  isOwner,
+  canOwnerRequestRevision,
+  canRequestRemoval,
+}: {
+  event: any;
+  isAdmin: boolean;
+  isOwner: boolean;
+  canOwnerRequestRevision: boolean;
+  canRequestRemoval: boolean;
+}) {
+  return (
+    <section className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm uppercase tracking-[0.35em] text-accent">
+            Event Control Panel
+          </p>
+          <h2 className="mt-3 text-3xl font-bold text-white">
+            Current Status: {event.status}
+          </h2>
+          <p className="mt-3 max-w-3xl text-white/70">
+            Available actions are based on your permissions and where this event is
+            in the HypeKnight pipeline.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {isOwner ? <Chip label="Owner View" tone="accent" /> : null}
+          {isAdmin ? <Chip label="Admin View" tone="accent" /> : null}
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-5 lg:grid-cols-2">
+        {isOwner ? (
+          <OwnerActions
+            event={event}
+            canOwnerRequestRevision={canOwnerRequestRevision}
+            canRequestRemoval={canRequestRemoval}
+          />
+        ) : null}
+
+        {isAdmin ? <AdminActions event={event} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function OwnerActions({
+  event,
+  canOwnerRequestRevision,
+  canRequestRemoval,
+}: {
+  event: any;
+  canOwnerRequestRevision: boolean;
+  canRequestRemoval: boolean;
+}) {
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6">
+      <h3 className="text-2xl font-bold text-white">Owner Options</h3>
+
+      <div className="mt-5 space-y-4">
+        {canOwnerRequestRevision ? (
+          <form action={startEventRevision}>
+            <input type="hidden" name="event_id" value={event.id} />
+            <button className="w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
+              Request Edit / Revision
+            </button>
+          </form>
+        ) : (
+          <Notice text="Full event editing is only available before the promotion window begins." />
+        )}
+
+        {event.status === 'revision_draft' ? (
+          <Link
+            href={`/dashboard/events/${event.id}/edit`}
+            className="block w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center text-white hover:border-accent/40"
+          >
+            Continue Revision Draft
+          </Link>
+        ) : null}
+
+        {canRequestRemoval ? (
+          <form action={requestEventRemovalOrRefund} className="space-y-3">
+            <input type="hidden" name="event_id" value={event.id} />
+
+            <textarea
+              name="removal_reason"
+              rows={3}
+              placeholder="Why are you requesting removal?"
+              className="input"
+            />
+
+            <label className="flex gap-2 text-sm text-white/70">
+              <input type="checkbox" name="wants_refund" />
+              Request refund review
+            </label>
+
+            <textarea
+              name="refund_reason"
+              rows={3}
+              placeholder="Refund reason, if different"
+              className="input"
+            />
+
+            <button className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-red-200 hover:border-red-500/40">
+              Request Removal / Refund
+            </button>
+          </form>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AdminActions({ event }: { event: any }) {
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6">
+      <h3 className="text-2xl font-bold text-white">Admin Options</h3>
+
+      <div className="mt-5 grid gap-3">
+        <Link
+          href={`/admin/events?focus=${event.id}`}
+          className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
+        >
+          Open in Admin Events
+        </Link>
+
+        <Link
+          href="/admin/payments"
+          className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center text-white hover:border-accent/40"
+        >
+          Payments / Refund Center
+        </Link>
+
+        {event.status === 'revision_submitted' ? (
+          <Notice text="This event has a submitted revision and needs admin review." />
+        ) : null}
+
+        {event.status === 'removal_requested' ? (
+          <Notice text="This event has a removal/refund request waiting for admin review." />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function Notice({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/65">
+      {text}
+    </div>
+  );
+}
+
 function cleanJoin(values: Array<string | null | undefined>, separator = ' ') {
   return values
     .map((value) => value?.trim())
@@ -534,31 +717,19 @@ function cleanJoin(values: Array<string | null | undefined>, separator = ' ') {
     .join(separator);
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return null;
+  return new Date(value).toLocaleString();
+}
+
 function InfoCard({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
 
   return (
     <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-        {label}
-      </p>
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
       <p className="mt-3 break-words text-white">{value}</p>
     </div>
-  );
-}
-
-function Panel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
-      <h2 className="text-2xl font-bold text-white">{title}</h2>
-      <div className="mt-5">{children}</div>
-    </section>
   );
 }
 
