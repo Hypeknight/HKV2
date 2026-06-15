@@ -141,14 +141,16 @@ export async function suspendAmbassador(formData: FormData) {
     throw new Error(fetchError?.message || 'Ambassador not found.');
   }
 
-  await supabase
-  .from('ambassador_applications')
+const { error: ambassadorError } = await supabase
+  .from('ambassador_profiles')
   .update({
     status: 'suspended',
-    admin_notes: adminNotes || null,
+    suspended_at: nowIso,
     updated_at: nowIso,
   })
-  .eq('user_id', ambassador.user_id);
+  .eq('id', ambassadorId);
+
+if (ambassadorError) throw new Error(ambassadorError.message);
 
 const { data: activeCouponRequests, error: activeCouponFetchError } = await supabase
   .from('ambassador_coupon_requests')
@@ -272,6 +274,16 @@ if (suspendedActiveCodes.length) {
     throw new Error(reactivateCouponsError.message);
   }
 }
+const { error } = await supabase
+  .from('ambassador_profiles')
+  .update({
+    status: 'active',
+    suspended_at: null,
+    updated_at: nowIso,
+  })
+  .eq('id', ambassadorId);
+
+if (error) throw new Error(error.message);
 
 const { error: restorePendingError } = await supabase
   .from('ambassador_coupon_requests')
