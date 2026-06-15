@@ -273,22 +273,42 @@ function AmbassadorCard({ ambassador }: { ambassador: any }) {
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-2xl font-bold text-white">
+            <Link
+              href={`/admin/users/${ambassador.user_id}`}
+              className="text-2xl font-bold text-white hover:text-accent"
+            >
               Ambassador {ambassador.id.slice(0, 8)}
-            </h3>
+            </Link>
+
             <Chip label={ambassador.status} />
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
             <Info label="Commission" value={`${ambassador.commission_rate}%`} />
-            <Info label="Sales" value={`$${Number(ambassador.total_sales || 0).toFixed(2)}`} />
-            <Info label="Commission" value={`$${Number(ambassador.total_commission || 0).toFixed(2)}`} />
-            <Info label="Paid" value={`$${Number(ambassador.total_paid || 0).toFixed(2)}`} />
+            <Info
+              label="Sales"
+              value={`$${Number(ambassador.total_sales || 0).toFixed(2)}`}
+            />
+            <Info
+              label="Commission"
+              value={`$${Number(ambassador.total_commission || 0).toFixed(2)}`}
+            />
+            <Info
+              label="Paid"
+              value={`$${Number(ambassador.total_paid || 0).toFixed(2)}`}
+            />
           </div>
 
           <p className="mt-4 break-all text-sm text-white/40">
             User ID: {ambassador.user_id}
           </p>
+
+          <Link
+            href={`/admin/users/${ambassador.user_id}`}
+            className="mt-4 inline-flex text-sm font-medium text-accent hover:opacity-80"
+          >
+            Open user profile →
+          </Link>
         </div>
 
         <div className="grid gap-3">

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { updateUserRole } from '../actions';
 
 type Props = {
@@ -9,6 +10,7 @@ type Props = {
 
 export default async function AdminUserDetailPage({ params }: Props) {
   const { id } = await params;
+
   const supabase = await createClient();
 
   const {
@@ -25,50 +27,95 @@ export default async function AdminUserDetailPage({ params }: Props) {
 
   if (adminProfile?.app_role !== 'admin') redirect('/dashboard');
 
+  const adminSupabase = createAdminClient();
+
   const [
     { data: profile, error: profileError },
+    { data: authUser },
     { data: preferences },
     { data: events },
+    { data: venues },
+    { data: ambassadorApplication },
+    { data: ambassadorProfile },
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
-    supabase.from('user_event_preferences').select('*').eq('user_id', id).maybeSingle(),
-    supabase
+    adminSupabase.from('profiles').select('*').eq('id', id).maybeSingle(),
+
+    adminSupabase.auth.admin.getUserById(id),
+
+    adminSupabase
+      .from('user_event_preferences')
+      .select('*')
+      .eq('user_id', id)
+      .maybeSingle(),
+
+    adminSupabase
       .from('events')
-      .select(`
-        id,
-        name,
-        slug,
-        status,
-        is_public,
-        is_approved,
-        is_paid,
-        payment_status,
-        total_price,
-        payment_amount,
-        discounted_total,
-        coupon_code,
-        discount_amount,
-        event_start_at,
-        event_end_at,
-        promotion_start_at,
-        promotion_end_at,
-        city,
-        state,
-        venue_name,
-        created_at
-      `)
+      .select('*')
       .eq('owner_id', id)
       .order('created_at', { ascending: false }),
+
+    adminSupabase
+      .from('venues')
+      .select('*')
+      .eq('owner_id', id)
+      .order('created_at', { ascending: false }),
+
+    adminSupabase
+      .from('ambassador_applications')
+      .select('*')
+      .eq('user_id', id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+
+    adminSupabase
+      .from('ambassador_profiles')
+      .select('*')
+      .eq('user_id', id)
+      .maybeSingle(),
   ]);
 
   if (profileError || !profile) notFound();
 
+  const ambassadorId = ambassadorProfile?.id;
+
+  const [{ data: couponRequests }, { data: commissions }] = ambassadorId
+    ? await Promise.all([
+        adminSupabase
+          .from('ambassador_coupon_requests')
+          .select('*')
+          .eq('ambassador_id', ambassadorId)
+          .order('created_at', { ascending: false }),
+
+        adminSupabase
+          .from('ambassador_commissions')
+          .select('*')
+          .eq('ambassador_id', ambassadorId)
+          .order('created_at', { ascending: false }),
+      ])
+    : [{ data: [] }, { data: [] }];
+
   const eventRows = events ?? [];
+  const venueRows = venues ?? [];
+  const couponRows = couponRequests ?? [];
+  const commissionRows = commissions ?? [];
+
   const paidEvents = eventRows.filter(
     (event) => event.is_paid || event.payment_status === 'paid'
   );
+
   const activeEvents = eventRows.filter((event) =>
     ['scheduled', 'active'].includes(event.status)
+  );
+
+  const generatedSales = commissionRows.reduce(
+    (sum, row) => sum + Number(row.net_paid_amount || 0),
+    0
+  );
+
+  const commissionTotal = commissionRows.reduce(
+    (sum, row) => sum + Number(row.commission_amount || 0),
+    0
   );
 
   const isSelf = user.id === id;
@@ -87,16 +134,26 @@ export default async function AdminUserDetailPage({ params }: Props) {
             </p>
 
             <h1 className="mt-3 text-4xl font-bold text-white">
-              {profile.display_name || 'Unnamed User'}
+              {profile.display_name || authUser?.user?.email || 'Unnamed User'}
             </h1>
 
             <p className="mt-3 break-all text-white/50">User ID: {profile.id}</p>
 
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Chip label={`Role: ${profile.app_role || 'user'}`} />
+              {ambassadorProfile ? (
+                <Chip label={`Ambassador: ${ambassadorProfile.status}`} />
+              ) : null}
+              {ambassadorApplication ? (
+                <Chip label={`Application: ${ambassadorApplication.status}`} />
+              ) : null}
+            </div>
+
             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Metric label="Role" value={profile.app_role || 'user'} />
               <Metric label="Events" value={String(eventRows.length)} />
               <Metric label="Paid Events" value={String(paidEvents.length)} />
-              <Metric label="Active Pipeline" value={String(activeEvents.length)} />
+              <Metric label="Active Events" value={String(activeEvents.length)} />
+              <Metric label="Venues" value={String(venueRows.length)} />
             </div>
           </div>
 
@@ -111,6 +168,8 @@ export default async function AdminUserDetailPage({ params }: Props) {
             >
               <option value="user">User</option>
               <option value="venue_owner">Venue Owner</option>
+              <option value="ambassador">Ambassador</option>
+              <option value="dj">DJ</option>
               <option value="admin">Admin</option>
             </select>
 
@@ -126,13 +185,16 @@ export default async function AdminUserDetailPage({ params }: Props) {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <Panel title="User Information">
+        <Panel title="Contact & Profile Information">
           <InfoList
             items={[
+              ['Email', authUser?.user?.email || profile.email],
+              ['Phone', profile.phone],
               ['Display Name', profile.display_name],
-              ['Role', profile.app_role],
+              ['Username', profile.username],
               ['City', profile.city],
               ['State', profile.state],
+              ['Role', profile.app_role],
               ['Created', formatDate(profile.created_at)],
               ['Updated', formatDate(profile.updated_at)],
             ]}
@@ -145,19 +207,134 @@ export default async function AdminUserDetailPage({ params }: Props) {
               items={[
                 ['Preferred City', preferences.preferred_city],
                 ['Preferred State', preferences.preferred_state],
-                ['Max Distance', preferences.max_distance_miles ? `${preferences.max_distance_miles} miles` : null],
+                [
+                  'Max Distance',
+                  preferences.max_distance_miles
+                    ? `${preferences.max_distance_miles} miles`
+                    : null,
+                ],
                 ['Music Genres', joinArray(preferences.music_genres)],
                 ['Event Types', joinArray(preferences.event_types)],
                 ['Vibe Tags', joinArray(preferences.vibe_tags)],
-                ['Sources', joinArray(preferences.preferred_sources)],
-                ['Onboarding', preferences.onboarding_completed ? 'Complete' : 'Incomplete'],
+                ['Preferred Sources', joinArray(preferences.preferred_sources)],
+                [
+                  'Onboarding',
+                  preferences.onboarding_completed ? 'Complete' : 'Incomplete',
+                ],
               ]}
             />
           ) : (
-            <Empty text="This user has not created preferences yet." />
+            <Empty text="This user has not created event preferences yet." />
           )}
         </Panel>
       </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Ambassador Application">
+          {ambassadorApplication ? (
+            <InfoList
+              items={[
+                [
+                  'Legal Name',
+                  `${ambassadorApplication.first_name || ''} ${
+                    ambassadorApplication.last_name || ''
+                  }`,
+                ],
+                ['Application Status', ambassadorApplication.status],
+                ['Email', ambassadorApplication.email],
+                ['Phone', ambassadorApplication.phone],
+                ['Platform Username', ambassadorApplication.platform_username],
+                ['City', ambassadorApplication.city],
+                ['State', ambassadorApplication.state],
+                ['Instagram', ambassadorApplication.instagram_url],
+                ['Facebook', ambassadorApplication.facebook_url],
+                ['TikTok', ambassadorApplication.tiktok_url],
+                ['YouTube', ambassadorApplication.youtube_url],
+                ['Website', ambassadorApplication.website_url],
+                [
+                  'Estimated Followers',
+                  ambassadorApplication.estimated_followers
+                    ? String(ambassadorApplication.estimated_followers)
+                    : null,
+                ],
+                ['Promotion Plan', ambassadorApplication.promotion_plan],
+                ['Admin Notes', ambassadorApplication.admin_notes],
+                ['Submitted', formatDate(ambassadorApplication.submitted_at)],
+                ['Reviewed', formatDate(ambassadorApplication.reviewed_at)],
+              ]}
+            />
+          ) : (
+            <Empty text="This user has not submitted an ambassador application." />
+          )}
+        </Panel>
+
+        <Panel title="Ambassador Profile">
+          {ambassadorProfile ? (
+            <InfoList
+              items={[
+                ['Status', ambassadorProfile.status],
+                [
+                  'Commission Rate',
+                  ambassadorProfile.commission_rate
+                    ? `${ambassadorProfile.commission_rate}%`
+                    : null,
+                ],
+                [
+                  'Total Sales',
+                  `$${Number(ambassadorProfile.total_sales || 0).toFixed(2)}`,
+                ],
+                [
+                  'Total Commission',
+                  `$${Number(ambassadorProfile.total_commission || 0).toFixed(2)}`,
+                ],
+                [
+                  'Total Paid',
+                  `$${Number(ambassadorProfile.total_paid || 0).toFixed(2)}`,
+                ],
+                ['Approved', formatDate(ambassadorProfile.approved_at)],
+                ['Suspended', formatDate(ambassadorProfile.suspended_at)],
+                ['Removed', formatDate(ambassadorProfile.removed_at)],
+              ]}
+            />
+          ) : (
+            <Empty text="This user does not have an active ambassador profile record." />
+          )}
+        </Panel>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Coupon Requests" value={String(couponRows.length)} />
+        <Metric label="Generated Sales" value={`$${generatedSales.toFixed(2)}`} />
+        <Metric label="Commission Total" value={`$${commissionTotal.toFixed(2)}`} />
+        <Metric label="Commission Rows" value={String(commissionRows.length)} />
+      </section>
+
+      <Panel title="Ambassador Coupons">
+        {couponRows.length ? (
+          <div className="space-y-4">
+            {couponRows.map((coupon) => (
+              <div key={coupon.id} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-bold text-white">
+                    {coupon.requested_code}
+                  </h3>
+                  <Chip label={coupon.status} />
+                </div>
+
+                <p className="mt-2 text-white/60">
+                  {coupon.discount_percent}% off • Limit {coupon.usage_limit}
+                </p>
+
+                <p className="mt-1 text-xs text-white/40">
+                  Created coupon ID: {coupon.created_coupon_id || '—'}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="No ambassador coupon requests yet." />
+        )}
+      </Panel>
 
       <Panel title="Posted Events">
         {eventRows.length ? (
@@ -170,12 +347,57 @@ export default async function AdminUserDetailPage({ params }: Props) {
           <Empty text="This user has not posted events yet." />
         )}
       </Panel>
+
+      <Panel title="Venues">
+        {venueRows.length ? (
+          <div className="space-y-4">
+            {venueRows.map((venue) => (
+              <div key={venue.id} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <h3 className="text-xl font-bold text-white">
+                  {venue.name || 'Unnamed Venue'}
+                </h3>
+                <p className="mt-2 text-white/60">
+                  {[venue.city, venue.state].filter(Boolean).join(', ') || 'No location'}
+                </p>
+                <p className="mt-1 text-xs text-white/40">
+                  Status: {venue.status || 'unknown'}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="This user has no venue records." />
+        )}
+      </Panel>
+
+      <Panel title="Commission Activity">
+        {commissionRows.length ? (
+          <div className="space-y-4">
+            {commissionRows.map((row) => (
+              <div key={row.id} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-bold text-white">{row.coupon_code}</h3>
+                  <Chip label={row.status} />
+                </div>
+                <p className="mt-2 text-white/60">
+                  Net paid: ${Number(row.net_paid_amount || 0).toFixed(2)} •
+                  Commission: ${Number(row.commission_amount || 0).toFixed(2)}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="No commission activity yet." />
+        )}
+      </Panel>
     </section>
   );
 }
 
 function EventRow({ event }: { event: any }) {
-  const amount = Number(event.payment_amount ?? event.discounted_total ?? event.total_price ?? 0);
+  const amount = Number(
+    event.payment_amount ?? event.discounted_total ?? event.total_price ?? 0
+  );
 
   return (
     <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5">
@@ -188,16 +410,13 @@ function EventRow({ event }: { event: any }) {
           </div>
 
           <p className="mt-2 text-white/60">
-            {event.venue_name || 'No venue'} • {[event.city, event.state].filter(Boolean).join(', ') || 'No location'}
+            {event.venue_name || 'No venue'} •{' '}
+            {[event.city, event.state].filter(Boolean).join(', ') || 'No location'}
           </p>
 
           <p className="mt-1 text-white/50">
             Starts: {formatDate(event.event_start_at)} • Amount: ${amount.toFixed(2)}
             {event.coupon_code ? ` • Coupon: ${event.coupon_code}` : ''}
-          </p>
-
-          <p className="mt-1 text-xs text-white/40">
-            Promo: {formatDate(event.promotion_start_at)} → {formatDate(event.promotion_end_at)}
           </p>
         </div>
 
@@ -210,13 +429,6 @@ function EventRow({ event }: { event: any }) {
               Public Page
             </Link>
           ) : null}
-
-          <Link
-            href={`/admin/events`}
-            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white hover:border-accent/40"
-          >
-            Admin Events
-          </Link>
         </div>
       </div>
     </div>
@@ -232,7 +444,11 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function InfoList({ items }: { items: Array<[string, string | null | undefined]> }) {
+function InfoList({
+  items,
+}: {
+  items: Array<[string, string | null | undefined]>;
+}) {
   const visible = items.filter(([, value]) => value && String(value).trim());
 
   if (!visible.length) return <Empty text="No details available." />;
@@ -241,7 +457,9 @@ function InfoList({ items }: { items: Array<[string, string | null | undefined]>
     <div className="space-y-4">
       {visible.map(([label, value]) => (
         <div key={label} className="border-b border-white/10 pb-4 last:border-0">
-          <p className="text-xs uppercase tracking-[0.25em] text-white/45">{label}</p>
+          <p className="text-xs uppercase tracking-[0.25em] text-white/45">
+            {label}
+          </p>
           <p className="mt-2 break-words text-white/75">{value}</p>
         </div>
       ))}
