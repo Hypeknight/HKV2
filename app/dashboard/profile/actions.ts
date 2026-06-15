@@ -31,15 +31,15 @@ export async function updateProfile(formData: FormData) {
     .update({
       display_name: displayName,
       username: username || null,
-      phone: phone || null,
+      //phone: phone || null,
       city: city || null,
       state: state || null,
       bio: bio || null,
-      instagram_url: instagramUrl || null,
-      facebook_url: facebookUrl || null,
-      tiktok_url: tiktokUrl || null,
-      website_url: websiteUrl || null,
-      updated_at: new Date().toISOString(),
+      //instagram_url: instagramUrl || null,
+      //facebook_url: facebookUrl || null,
+      //tiktok_url: tiktokUrl || null,
+      //website_url: websiteUrl || null,
+      //updated_at: new Date().toISOString(),
     })
     .eq('id', user.id);
 

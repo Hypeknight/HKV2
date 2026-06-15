@@ -489,6 +489,158 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { calculateTotalPrice } from '@/lib/events/workflow';
 
+async function requireUser() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect('/auth/login');
+
+  return { supabase, user };
+}
+
+function canEditBeforePromotion(event: any) {
+  if (!event.promotion_start_at) return false;
+
+  const now = new Date();
+  const promoStart = new Date(event.promotion_start_at);
+
+  return now < promoStart;
+}
+
+export async function startEventRevision(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = String(formData.get('event_id') || '');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status, promotion_start_at')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.owner_id !== user.id) {
+    throw new Error('You do not have permission to edit this event.');
+  }
+
+  if (!['scheduled', 'paid_awaiting_approval', 'active'].includes(event.status)) {
+    throw new Error('This event is not eligible for revision.');
+  }
+
+  if (!canEditBeforePromotion(event)) {
+    throw new Error('This event can no longer be edited because it is inside its promotion window.');
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'revision_draft',
+      is_public: false,
+      original_status_before_revision: event.status,
+      revision_requested_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect(`/dashboard/events/${eventId}/edit`);
+}
+
+export async function submitEventRevision(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = String(formData.get('event_id') || '');
+  const revisionReason = String(formData.get('revision_reason') || '').trim();
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.owner_id !== user.id) {
+    throw new Error('You do not have permission to submit this revision.');
+  }
+
+  if (event.status !== 'revision_draft') {
+    throw new Error('This event is not in revision draft status.');
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'revision_submitted',
+      is_public: false,
+      revision_reason: revisionReason || null,
+      revision_submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect('/dashboard');
+}
+
+export async function requestEventRemovalOrRefund(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = String(formData.get('event_id') || '');
+  const removalReason = String(formData.get('removal_reason') || '').trim();
+  const refundReason = String(formData.get('refund_reason') || '').trim();
+  const wantsRefund = formData.get('wants_refund') === 'on';
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.owner_id !== user.id) {
+    throw new Error('You do not have permission to request removal.');
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'removal_requested',
+      is_public: false,
+      removal_requested_at: new Date().toISOString(),
+      removal_reason: removalReason || null,
+      refund_requested: wantsRefund,
+      refund_status: wantsRefund ? 'requested' : null,
+      refund_requested_at: wantsRefund ? new Date().toISOString() : null,
+      refund_reason: wantsRefund ? refundReason || removalReason || null : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect('/dashboard');
+}
+
 function getOwnerType(
   appRole: string | null | undefined
 ): 'user' | 'venue_owner' | 'admin' {
