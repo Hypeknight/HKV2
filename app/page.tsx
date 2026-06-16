@@ -322,6 +322,7 @@ function EmptyCard({ text }: { text: string }) {
   */
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import ShareButton from '@/components/ShareButton';
 
 const LOGO_URL = '/hypeknight-logo.jpeg';
 
@@ -387,6 +388,13 @@ export default async function HomePage() {
           value="Now"
           text="Built around here and now."
         />
+        
+        <ShareButton
+        title="HypeKnight"
+        text="Find what’s happening here and now on HypeKnight."
+        path="/"
+        />
+
       </section>
 
       <section className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
