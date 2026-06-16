@@ -320,23 +320,45 @@ function EmptyCard({ text }: { text: string }) {
   );
 }
   */
-
 import Link from 'next/link';
-import { getFeaturedVenues, getLiveOrTonightEvents, getUpcomingEvents } from '@/lib/data';
+import { createClient } from '@/lib/supabase/server';
 
 const LOGO_URL = '/hypeknight-logo.jpeg';
 
 export default async function HomePage() {
-  const [liveEvents, upcomingEvents, featuredVenues] = await Promise.all([
-    getLiveOrTonightEvents(),
-    getUpcomingEvents(),
-    getFeaturedVenues(),
-  ]);
+  const supabase = await createClient();
 
-  const totalEvents = liveEvents.length + upcomingEvents.length;
+  const now = new Date();
+  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+
+  const { data: hypeEvents } = await supabase
+    .from('events')
+    .select('*')
+    .in('status', ['scheduled', 'active'])
+    .eq('is_public', true)
+    .is('removed_at', null)
+    .lte('promotion_start_at', now.toISOString())
+    .gte('promotion_end_at', now.toISOString())
+    .order('event_start_at', { ascending: true })
+    .limit(6);
+
+  const { data: externalEvents } = await supabase
+    .from('external_events')
+    .select('*')
+    .eq('status', 'active')
+    .not('event_start_at', 'is', null)
+    .or(
+      `event_end_at.gte.${now.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
+    )
+    .order('event_start_at', { ascending: true })
+    .limit(6);
+
+  const internalEvents = hypeEvents ?? [];
+  const supplementalEvents = externalEvents ?? [];
+
   const cities = new Set(
-    [...liveEvents, ...upcomingEvents]
-      .map((event: any) => `${event.city || ''}-${event.state || ''}`)
+    [...internalEvents, ...supplementalEvents]
+      .map((event: any) => [event.city, event.state].filter(Boolean).join(', '))
       .filter(Boolean)
   );
 
@@ -345,89 +367,150 @@ export default async function HomePage() {
       <Hero />
 
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <FunMetric label="Events in Motion" value={String(totalEvents)} text="Live, tonight, and upcoming." />
-        <FunMetric label="Cities Spotted" value={String(cities.size)} text="Places with event energy." />
-        <FunMetric label="Active Venues" value={String(featuredVenues.length)} text="Venues ready to be found." />
-        <FunMetric label="Vibe Check" value="24/7" text="Discovery never clocks out." />
+        <FunMetric
+          label="HypeKnight Events"
+          value={String(internalEvents.length)}
+          text="Internal events are the priority."
+        />
+        <FunMetric
+          label="External Events"
+          value={String(supplementalEvents.length)}
+          text="Supplemental listings keep the site alive."
+        />
+        <FunMetric
+          label="Cities Showing"
+          value={String(cities.size)}
+          text="Places with event energy."
+        />
+        <FunMetric
+          label="Discovery Mode"
+          value="Now"
+          text="Built around here and now."
+        />
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
-          <p className="text-sm uppercase tracking-[0.35em] text-accent">
-            Discover
-          </p>
-          <h2 className="mt-3 text-3xl font-bold text-white">
-            Find what fits your night
-          </h2>
-          <p className="mt-4 text-white/70">
-            Search events by city, music, venue, timing, vibe, and source. HypeKnight
-            is built for people asking, “What’s going on tonight?”
-          </p>
+      <section className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          Quick Search
+        </p>
+        <h2 className="mt-3 text-3xl font-bold text-white">
+          Find what’s going on tonight
+        </h2>
+        <p className="mt-3 max-w-3xl text-white/70">
+          Search by city, state, music, venue, vibe, or event name. HypeKnight is
+          built around helping people find what is happening here and now.
+        </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/events"
-              className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
-            >
-              Explore Events
-            </Link>
-            <Link
-              href="/events/recommended"
-              className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
-            >
-              Recommended For You
-            </Link>
-          </div>
-        </div>
+        <form
+          action="/events"
+          className="mt-8 grid gap-3 lg:grid-cols-[1fr_220px_160px_140px]"
+        >
+          <input
+            name="q"
+            placeholder="Search events, music, venues, vibes..."
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+          />
 
-        <div className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
-          <p className="text-sm uppercase tracking-[0.35em] text-accent">
-            Promote
-          </p>
-          <h2 className="mt-3 text-3xl font-bold text-white">
-            Put your event in the mix
-          </h2>
-          <p className="mt-4 text-white/75">
-            Promoters can add events, upload images, apply coupons, submit for review,
-            and get listed inside HypeKnight’s discovery flow.
-          </p>
+          <input
+            name="city"
+            placeholder="City"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+          />
 
-          <Link
-            href="/dashboard/events/new/step-1"
-            className="mt-8 inline-flex rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
-          >
-            Add an Event
-          </Link>
-        </div>
+          <input
+            name="state"
+            placeholder="State"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+          />
+
+          <button className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
+            Search
+          </button>
+        </form>
       </section>
-
-      <EventSection
-        eyebrow="Now / Tonight"
-        title="Events happening soon"
-        text="Live and near-term events currently visible on HypeKnight."
-        events={liveEvents}
-      />
-
-      <EventSection
-        eyebrow="Next Up"
-        title="Upcoming events"
-        text="More events coming through the discovery pipeline."
-        events={upcomingEvents.slice(0, 6)}
-      />
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <InfoPanel
-          title="Search by vibe"
-          text="Users can scan for the kind of night they actually want, not just a random event list."
+        <FeatureCard
+          title="Find Events"
+          text="Explore live, tonight, tomorrow, this week, and upcoming events around your area."
+          href="/events"
+          action="Explore Events"
         />
-        <InfoPanel
-          title="Built for promoters"
-          text="HypeKnight gives event owners a focused path to list, pay, promote, and get reviewed."
+
+        <FeatureCard
+          title="Promote Events"
+          text="Promoters can create event listings, use coupons, submit for review, and get placed into discovery."
+          href="/dashboard/events/new/step-1"
+          action="Add an Event"
         />
-        <InfoPanel
-          title="Powered by discovery"
-          text="The platform can grow city by city using HypeKnight events and supplemental external listings."
+
+        <FeatureCard
+          title="Ambassador Program"
+          text="Approved ambassadors can request personal coupon codes, promote HypeKnight, and track eligible performance."
+          href="/ambassadors"
+          action="View Program"
         />
+      </section>
+
+      <EventSection
+        eyebrow="Priority"
+        title="HypeKnight events"
+        text="Internal HypeKnight events are shown first because they are the core of the platform."
+        events={internalEvents}
+        source="hypeknight"
+      />
+
+      <EventSection
+        eyebrow="Supplemental"
+        title="More events around the area"
+        text="External events help keep discovery active while HypeKnight grows city by city."
+        events={supplementalEvents}
+        source="external"
+      />
+
+      <section className="rounded-[2.75rem] border border-accent/20 bg-accent/10 p-10">
+        <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
+          <div>
+            <p className="text-sm uppercase tracking-[0.35em] text-accent">
+              HypeKnight Ambassador Program
+            </p>
+
+            <h2 className="mt-3 text-4xl font-black text-white">
+              Help move the nightlife network.
+            </h2>
+
+            <p className="mt-4 max-w-3xl text-white/75">
+              Ambassadors help bring promoters, venues, DJs, creators, and
+              nightlife communities into HypeKnight. Approval is required before
+              coupon tools unlock.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/ambassadors"
+                className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
+              >
+                Learn About Ambassadors
+              </Link>
+
+              <Link
+                href="/dashboard/ambassador/apply"
+                className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
+              >
+                Apply From Dashboard
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-black/20 p-8 text-center">
+            <p className="text-4xl font-black text-white">20–70%</p>
+            <p className="mt-2 text-white/65">Coupon request range</p>
+            <p className="mt-5 text-sm text-white/55">
+              Commission is only eligible after a referred event completes the
+              HypeKnight pipeline without refund, removal, or chargeback.
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-10 text-center">
@@ -438,7 +521,8 @@ export default async function HomePage() {
           The night starts with knowing where to go.
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-white/70">
-          Explore what’s live, what’s tonight, what’s coming next, and what matches your vibe.
+          Explore what’s live, what’s tonight, what’s coming next, and what
+          matches your vibe.
         </p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -472,12 +556,12 @@ function Hero() {
           </p>
 
           <h1 className="mt-4 text-5xl font-black tracking-tight text-white sm:text-7xl">
-            Find the night that fits you.
+            Find what’s happening here and now.
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg text-white/75">
-            Discover live events, tonight’s moves, upcoming experiences, and local energy
-            without guessing where the night is going.
+            Discover live events, tonight’s moves, upcoming experiences, and
+            local energy without guessing where the night is going.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -489,10 +573,10 @@ function Hero() {
             </Link>
 
             <Link
-              href="/dashboard"
+              href="/ambassadors"
               className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
             >
-              My Dashboard
+              Ambassador Program
             </Link>
           </div>
         </div>
@@ -516,31 +600,39 @@ function EventSection({
   title,
   text,
   events,
+  source,
 }: {
   eyebrow: string;
   title: string;
   text: string;
   events: any[];
+  source: 'hypeknight' | 'external';
 }) {
   return (
     <section>
       <div className="max-w-3xl">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">{eyebrow}</p>
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          {eyebrow}
+        </p>
         <h2 className="mt-3 text-3xl font-bold text-white">{title}</h2>
         <p className="mt-3 text-white/70">{text}</p>
       </div>
 
       {events.length ? (
         <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {events.map((event) => (
+          {events.map((event: any) => (
             <Link
               key={event.id}
-              href={`/events/${event.slug}`}
+              href={
+                source === 'hypeknight'
+                  ? `/events/${event.slug}`
+                  : `/events/external/${event.id}`
+              }
               className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07]"
             >
-              {event.flyer_url ? (
+              {event.flyer_url || event.image_url ? (
                 <img
-                  src={event.flyer_url}
+                  src={event.flyer_url || event.image_url}
                   alt={event.name}
                   className="h-52 w-full object-cover"
                 />
@@ -548,7 +640,9 @@ function EventSection({
 
               <div className="p-6">
                 <p className="text-xs uppercase tracking-[0.25em] text-accent">
-                  HypeKnight Event
+                  {source === 'hypeknight'
+                    ? 'HypeKnight Event'
+                    : event.source_code || 'External Event'}
                 </p>
 
                 <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
@@ -556,7 +650,9 @@ function EventSection({
                 </h3>
 
                 <p className="mt-3 text-white/60">
-                  {[event.city, event.state].filter(Boolean).join(', ')}
+                  {[event.city, event.state].filter(Boolean).join(', ') ||
+                    event.venue_name ||
+                    'Location TBA'}
                 </p>
 
                 {event.event_start_at ? (
@@ -587,6 +683,31 @@ function EventSection({
   );
 }
 
+function FeatureCard({
+  title,
+  text,
+  href,
+  action,
+}: {
+  title: string;
+  text: string;
+  href: string;
+  action: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-[2rem] border border-white/10 bg-white/5 p-8 transition hover:border-accent/40 hover:bg-white/[0.07]"
+    >
+      <h2 className="text-2xl font-bold text-white group-hover:text-accent">
+        {title}
+      </h2>
+      <p className="mt-4 text-white/65">{text}</p>
+      <p className="mt-6 text-sm font-medium text-accent">{action} →</p>
+    </Link>
+  );
+}
+
 function FunMetric({
   label,
   value,
@@ -603,15 +724,6 @@ function FunMetric({
       </p>
       <p className="mt-3 text-4xl font-black text-white">{value}</p>
       <p className="mt-2 text-sm text-white/60">{text}</p>
-    </div>
-  );
-}
-
-function InfoPanel({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-      <h3 className="text-2xl font-bold text-white">{title}</h3>
-      <p className="mt-4 text-white/70">{text}</p>
     </div>
   );
 }
