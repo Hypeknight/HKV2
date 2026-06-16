@@ -938,9 +938,6 @@ export default async function EventDetailPage({ params }: Props) {
               tone="gray"
             />
 
-            {event.payment_status ? (
-              <Chip label={`Payment: ${event.payment_status}`} tone="gray" />
-            ) : null}
           </div>
 
           <h1 className="mt-5 text-4xl font-black text-white sm:text-6xl">
@@ -1032,15 +1029,7 @@ export default async function EventDetailPage({ params }: Props) {
           ]}
         />
 
-        <DetailPanel
-          title="Promotion Window"
-          items={[
-            ['Promotion Starts', formatDate(event.promotion_start_at)],
-            ['Promotion Ends', formatDate(event.promotion_end_at)],
-            ['Revision Status', event.revision_reason],
-            ['Removal Status', event.removal_reason],
-          ]}
-        />
+        
       </section>
 
       {(event.ticket_url || event.venue?.slug) ? (
