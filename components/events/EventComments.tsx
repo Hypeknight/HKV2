@@ -67,7 +67,7 @@ export default function EventComments({
             >
               <p className="text-white/80">{comment.body}</p>
               <p className="mt-3 text-xs text-white/40">
-                {comment.profiles?.display_name || 'HypeKnight User'} •{' '}
+                {comment.display_name || comment.username || 'HypeKnight User'} •{' '}
                 {new Date(comment.created_at).toLocaleString()}
               </p>
             </div>

@@ -842,21 +842,16 @@ export default async function EventDetailPage({ params }: Props) {
 
   if (error || !event) notFound();
 
-  const { data: comments } = await supabase
-    .from('event_comments')
-    .select(`
-      id,
-      body,
-      created_at,
-      user_id,
-      profiles:user_id(
-        display_name,
-        username
-      )
-    `)
-    .eq('event_id', event.id)
-    .eq('status', 'visible')
-    .order('created_at', { ascending: false });
+  const { data: comments, error: commentsError } = await supabase
+  .from('event_comments')
+  .select('*')
+  .eq('event_id', event.id)
+  .eq('status', 'visible')
+  .order('created_at', { ascending: false });
+
+if (commentsError) {
+  console.error('Comments fetch error:', commentsError.message);
+}
 
   const commentCount = comments?.length ?? 0;
 
