@@ -20,13 +20,40 @@ export async function submitAmbassadorApplication(formData: FormData) {
 
   if (!user) redirect('/auth/login');
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const agreementChecks = {
+    ambassador_agreement: formData.get('ambassador_agreement') === 'on',
+    terms_of_service: formData.get('terms_of_service') === 'on',
+    privacy_policy: formData.get('privacy_policy') === 'on',
+    commission_policy: formData.get('commission_policy') === 'on',
+    contractor_acknowledgement:
+      formData.get('contractor_acknowledgement') === 'on',
+  };
+
+  if (
+    !agreementChecks.ambassador_agreement ||
+    !agreementChecks.terms_of_service ||
+    !agreementChecks.privacy_policy ||
+    !agreementChecks.commission_policy ||
+    !agreementChecks.contractor_acknowledgement
+  ) {
+    throw new Error('You must agree to all ambassador program agreements.');
+  }
+
   const payload = {
     user_id: user.id,
     first_name: String(formData.get('first_name') || '').trim(),
     last_name: String(formData.get('last_name') || '').trim(),
-    email: String(formData.get('email') || '').trim(),
+    email: String(formData.get('email') || user.email || '').trim(),
     phone: String(formData.get('phone') || '').trim() || null,
-    platform_username: String(formData.get('platform_username') || '').trim(),
+    platform_username:
+      profile?.display_name ||
+      String(formData.get('platform_username') || '').trim(),
     city: String(formData.get('city') || '').trim(),
     state: String(formData.get('state') || '').trim(),
     instagram_url: String(formData.get('instagram_url') || '').trim() || null,
@@ -34,9 +61,12 @@ export async function submitAmbassadorApplication(formData: FormData) {
     tiktok_url: String(formData.get('tiktok_url') || '').trim() || null,
     youtube_url: String(formData.get('youtube_url') || '').trim() || null,
     website_url: String(formData.get('website_url') || '').trim() || null,
-    estimated_followers: Number(formData.get('estimated_followers') || 0) || null,
+    estimated_followers:
+      Number(formData.get('estimated_followers') || 0) || null,
     promotion_plan: String(formData.get('promotion_plan') || '').trim() || null,
     status: 'pending',
+    agreements_completed: true,
+    payout_profile_started: true,
   };
 
   if (!payload.first_name || !payload.last_name || !payload.email) {
@@ -47,20 +77,56 @@ export async function submitAmbassadorApplication(formData: FormData) {
     throw new Error('Username, city, and state are required.');
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('ambassador_applications')
     .select('id, status')
     .eq('user_id', user.id)
     .in('status', ['pending', 'approved', 'suspended'])
     .maybeSingle();
 
+  if (existingError) throw new Error(existingError.message);
+
   if (existing) {
     redirect('/ambassadors/dashboard');
   }
 
-  const { error } = await supabase.from('ambassador_applications').insert(payload);
+  const { data: application, error } = await supabase
+    .from('ambassador_applications')
+    .insert(payload)
+    .select('id')
+    .single();
 
   if (error) throw new Error(error.message);
+
+  const { error: agreementError } = await supabase
+    .from('ambassador_agreements')
+    .insert({
+      user_id: user.id,
+      application_id: application.id,
+      ...agreementChecks,
+      agreement_version: 'v1.0',
+    });
+
+  if (agreementError) throw new Error(agreementError.message);
+
+  const { error: payoutError } = await supabase
+    .from('ambassador_payout_profiles')
+    .upsert(
+      {
+        user_id: user.id,
+        legal_first_name: payload.first_name,
+        legal_last_name: payload.last_name,
+        email: payload.email,
+        phone: payload.phone,
+        city: payload.city,
+        state: payload.state,
+        tax_status: 'not_requested',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    );
+
+  if (payoutError) throw new Error(payoutError.message);
 
   redirect('/ambassadors/dashboard?application=submitted');
 }

@@ -34,6 +34,9 @@ export default function Footer() {
               <FooterLink href="/contact" label="Contact" />
               <FooterLink href="/terms" label="Terms of Service" />
               <FooterLink href="/privacy" label="Privacy Policy" />
+              <FooterLink href="/ambassador-agreement" label="Ambassador Agreement" />
+              <FooterLink href="/payout-policy" label="Payout Policy" />
+              <FooterLink href="/commission-policy" label="Commission Policy" />
             </div>
           </div>
         </div>

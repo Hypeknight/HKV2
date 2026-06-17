@@ -11,7 +11,7 @@ export default async function DashboardAmbassadorApplyPage() {
 
   if (!user) redirect('/auth/login');
 
-  const { data: existingApplication } = await supabase
+  const { data: existingApplication,  error: existingApplicationError } = await supabase
   .from('ambassador_applications')
   .select('id, status')
   .eq('user_id', user.id)
@@ -20,10 +20,13 @@ export default async function DashboardAmbassadorApplyPage() {
   .limit(1)
   .maybeSingle();
 
+  if (existingApplicationError) {
+  throw new Error(existingApplicationError.message);
+}
+
 if (existingApplication) {
   redirect('/ambassadors/dashboard');
 }
-
 
   return (
     <section className="mx-auto max-w-5xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
@@ -101,14 +104,34 @@ if (existingApplication) {
           />
         </FormSection>
 
-        <label className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/70">
-          <input type="checkbox" required className="mt-1" />
-          <span>
-            I understand that ambassador approval, coupon activation,
-            commission eligibility, and payouts are subject to HypeKnight
-            review.
-          </span>
-        </label>
+        <FormSection title="Ambassador Agreements">
+  <div className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-white/70">
+    <AgreementBox
+      name="ambassador_agreement"
+      label="I agree to the HypeKnight Ambassador Program Agreement."
+    />
+
+    <AgreementBox
+      name="terms_of_service"
+      label="I agree to HypeKnight's Terms of Service."
+    />
+
+    <AgreementBox
+      name="privacy_policy"
+      label="I agree to HypeKnight's Privacy Policy."
+    />
+
+    <AgreementBox
+      name="commission_policy"
+      label="I understand commissions are calculated from HypeKnight profit and are not earned on refunds, removals, chargebacks, cancelled events, or transactions with no profit."
+    />
+
+    <AgreementBox
+      name="contractor_acknowledgement"
+      label="I understand that ambassadors are independent contractors, not employees, and are responsible for their own taxes."
+    />
+  </div>
+</FormSection>
 
         <button
           type="submit"
@@ -159,6 +182,20 @@ function Input({
         defaultValue={defaultValue}
         className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
       />
+    </label>
+  );
+}
+function AgreementBox({
+  name,
+  label,
+}: {
+  name: string;
+  label: string;
+}) {
+  return (
+    <label className="flex gap-3">
+      <input name={name} type="checkbox" required className="mt-1" />
+      <span>{label}</span>
     </label>
   );
 }
