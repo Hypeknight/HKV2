@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     siteName: 'HypeKnight',
     images: [
       {
-        url: '/hypeknight_logo.jpeg',
+        url: '/hypeknight-logo.jpeg',
         width: 1200,
         height: 1200,
         alt: 'HypeKnight Logo',
@@ -40,13 +40,13 @@ export const metadata: Metadata = {
     title: 'HypeKnight | Find What’s Happening Tonight',
     description:
       'Discover live events, nightlife, promoters, venues, and what is happening here and now.',
-    images: ['/hypeknight_logo.jpeg'],
+    images: ['/hypeknight-logo.jpeg'],
   },
 
   icons: {
-    icon: '/hypeknight_logo.jpeg',
-    shortcut: '/hypeknight_logo.jpeg',
-    apple: '/hypeknight_logo.jpeg',
+    icon: '/hypeknight-logo.jpeg',
+    shortcut: '/hypeknight-logo.jpeg',
+    apple: '/hypeknight-logo.jpeg',
   },
 };
 
