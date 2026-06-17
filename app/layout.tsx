@@ -8,12 +8,15 @@ import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://hypeknight.fun'),
+
   title: {
     default: 'HypeKnight | Find What’s Happening Tonight',
     template: '%s | HypeKnight',
   },
+
   description:
     'HypeKnight helps people discover live events, nightlife, promoters, venues, and what is happening here and now.',
+
   openGraph: {
     title: 'HypeKnight | Find What’s Happening Tonight',
     description:
@@ -22,25 +25,28 @@ export const metadata: Metadata = {
     siteName: 'HypeKnight',
     images: [
       {
-        url: '/icon.jpeg',
+        url: '/hypeknight_logo.jpeg',
         width: 1200,
-        height: 630,
-        alt: 'HypeKnight',
+        height: 1200,
+        alt: 'HypeKnight Logo',
       },
     ],
     locale: 'en_US',
     type: 'website',
   },
+
   twitter: {
     card: 'summary_large_image',
     title: 'HypeKnight | Find What’s Happening Tonight',
     description:
       'Discover live events, nightlife, promoters, venues, and what is happening here and now.',
-    images: ['/icon.jpeg'],
+    images: ['/hypeknight_logo.jpeg'],
   },
+
   icons: {
-    icon: '/icon.jpeg',
-    apple: '/apple-icon.png',
+    icon: '/hypeknight_logo.jpeg',
+    shortcut: '/hypeknight_logo.jpeg',
+    apple: '/hypeknight_logo.jpeg',
   },
 };
 
