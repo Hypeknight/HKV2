@@ -225,3 +225,79 @@ export async function applyPaymentOverride(formData: FormData) {
 
   redirect('/admin/events?override=1');
 }
+export async function approveEventRevision(formData: FormData) {
+  const admin = await requireAdmin();
+  const supabase = createAdminClient();
+
+  const eventId = String(formData.get('event_id') || '');
+  const adminNote = String(formData.get('admin_note') || '').trim();
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, status, original_status_before_revision')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.status !== 'revision_submitted') {
+    throw new Error('This event is not waiting for revision approval.');
+  }
+
+  const restoredStatus =
+    event.original_status_before_revision &&
+    ['scheduled', 'active', 'paid_awaiting_approval'].includes(
+      event.original_status_before_revision
+    )
+      ? event.original_status_before_revision
+      : 'scheduled';
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: restoredStatus,
+      is_public: ['scheduled', 'active'].includes(restoredStatus),
+      is_approved: true,
+      revision_admin_note: adminNote || null,
+      revision_reviewed_at: new Date().toISOString(),
+      revision_reviewed_by: admin.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect('/admin/events?revision=approved');
+}
+
+export async function rejectEventRevision(formData: FormData) {
+  const admin = await requireAdmin();
+  const supabase = createAdminClient();
+
+  const eventId = String(formData.get('event_id') || '');
+  const adminNote = String(formData.get('admin_note') || '').trim();
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'revision_draft',
+      is_public: false,
+      is_approved: false,
+      revision_admin_note: adminNote || 'Revision rejected for changes.',
+      revision_reviewed_at: new Date().toISOString(),
+      revision_reviewed_by: admin.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId)
+    .eq('status', 'revision_submitted');
+
+  if (error) throw new Error(error.message);
+
+  redirect('/admin/events?revision=rejected');
+}

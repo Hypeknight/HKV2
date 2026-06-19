@@ -1130,3 +1130,103 @@ export async function updateEventStep1(formData: FormData) {
 
   redirect(`/dashboard/events/${eventId}/edit/step-2`);
 }
+
+export async function updateEventRevision(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = String(formData.get('event_id') || '');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.owner_id !== user.id) {
+    throw new Error('You do not have permission to edit this event.');
+  }
+
+  if (event.status !== 'revision_draft') {
+    throw new Error('This event is not open for revision editing.');
+  }
+
+  const payload = {
+    name: String(formData.get('name') || '').trim(),
+    venue_name: String(formData.get('venue_name') || '').trim() || null,
+    address: String(formData.get('address') || '').trim() || null,
+    city: String(formData.get('city') || '').trim() || null,
+    state: String(formData.get('state') || '').trim() || null,
+    event_start_at: String(formData.get('event_start_at') || '') || null,
+    event_end_at: String(formData.get('event_end_at') || '') || null,
+    flyer_url: String(formData.get('flyer_url') || '').trim() || null,
+    description: String(formData.get('description') || '').trim() || null,
+    dress_code: String(formData.get('dress_code') || '').trim() || null,
+    entry_price: String(formData.get('entry_price') || '').trim() || null,
+    age_requirement: String(formData.get('age_requirement') || '').trim() || null,
+    event_type: String(formData.get('event_type') || '').trim() || null,
+    smoking_policy: String(formData.get('smoking_policy') || '').trim() || null,
+    parking_notes: String(formData.get('parking_notes') || '').trim() || null,
+    special_notes: String(formData.get('special_notes') || '').trim() || null,
+    revision_reason: String(formData.get('revision_reason') || '').trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!payload.name) throw new Error('Event name is required.');
+
+  const { error } = await supabase
+    .from('events')
+    .update(payload)
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect(`/dashboard/events/${eventId}/edit`);
+}
+
+export async function submitEventRevision(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = String(formData.get('event_id') || '');
+  const revisionReason = String(formData.get('revision_reason') || '').trim();
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.owner_id !== user.id) {
+    throw new Error('You do not have permission to submit this revision.');
+  }
+
+  if (event.status !== 'revision_draft') {
+    throw new Error('This event is not in revision draft.');
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'revision_submitted',
+      is_public: false,
+      revision_reason: revisionReason || null,
+      revision_submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  redirect(`/dashboard/events/${eventId}/review`);
+}
