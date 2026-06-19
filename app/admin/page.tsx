@@ -191,6 +191,12 @@ export default async function AdminPage() {
             description="Cron status, automation health, and diagnostics."
             href="/admin/system"
           />
+          <AdminCard
+            title="Platform Settings"
+            description="Control pricing, packages, homepage modules, and ambassador rules."
+            href="/admin/settings"
+          />
+
         </div>
       </section>
     </section>
