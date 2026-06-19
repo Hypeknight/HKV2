@@ -1057,6 +1057,18 @@ function getPipelineTone(status: string, urgency: 'high' | 'medium' | 'normal') 
   return 'border-white/10 bg-white/5';
 }
 
+function getRevisionTone(urgency: 'high' | 'medium' | 'normal') {
+  if (urgency === 'high') {
+    return 'border-red-500/20 bg-red-500/10';
+  }
+
+  if (urgency === 'medium') {
+    return 'border-yellow-500/20 bg-yellow-500/10';
+  }
+
+  return 'border-accent/20 bg-accent/10';
+}
+
 function AdminSection({
   title,
   subtitle,
