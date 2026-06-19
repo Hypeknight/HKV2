@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getPlatformSettings } from '@/lib/settings';
 
 function cleanCode(value: string) {
   return value
@@ -13,6 +14,11 @@ function cleanCode(value: string) {
 
 export async function submitAmbassadorApplication(formData: FormData) {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
+
+  if (!settings.ambassador_program_enabled) {
+    throw new Error('The HypeKnight Ambassador Program is currently paused.');
+  }
 
   const {
     data: { user },
@@ -133,6 +139,11 @@ export async function submitAmbassadorApplication(formData: FormData) {
 
 export async function requestAmbassadorCoupon(formData: FormData) {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
+
+  if (!settings.ambassador_program_enabled) {
+    throw new Error('The HypeKnight Ambassador Program is currently paused.');
+  }
 
   const {
     data: { user },
@@ -141,13 +152,19 @@ export async function requestAmbassadorCoupon(formData: FormData) {
   if (!user) redirect('/auth/login');
 
   const requestedCode = cleanCode(String(formData.get('requested_code') || ''));
-  const discountPercent = Number(formData.get('discount_percent') || 20);
+  const discountPercent = Number(formData.get('discount_percent') || 0);
   const usageLimit = Number(formData.get('usage_limit') || 100);
+
+  const minDiscount = Number(settings.ambassador_min_discount || 20);
+  const maxDiscount = Number(settings.ambassador_max_discount || 70);
+  const commissionPercent = Number(settings.ambassador_commission_percent || 30);
 
   if (!requestedCode) throw new Error('Coupon code is required.');
 
-  if (discountPercent < 20 || discountPercent > 70) {
-    throw new Error('Discount must be between 20% and 70%.');
+  if (discountPercent < minDiscount || discountPercent > maxDiscount) {
+    throw new Error(
+      `Discount must be between ${minDiscount}% and ${maxDiscount}%.`
+    );
   }
 
   if (usageLimit < 1 || usageLimit > 1000) {
@@ -194,6 +211,7 @@ export async function requestAmbassadorCoupon(formData: FormData) {
     requested_code: requestedCode,
     discount_percent: discountPercent,
     usage_limit: usageLimit,
+    commission_percent: commissionPercent,
     status: 'pending',
   });
 
