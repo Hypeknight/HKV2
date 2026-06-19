@@ -325,7 +325,7 @@ import { createClient } from '@/lib/supabase/server';
 import ShareButton from '@/components/ShareButton';
 import { getPlatformSettings } from '@/lib/settings';
 
-const LOGO_URL = '/hypeknight_logo.jpeg';
+const LOGO_URL = '/hypeknight-logo.jpeg';
 
 export default async function HomePage() {
   const supabase = await createClient();
