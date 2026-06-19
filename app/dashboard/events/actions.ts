@@ -578,7 +578,7 @@ export async function submitEventRevision(formData: FormData) {
   }
 
   if (event.status !== 'revision_draft') {
-    throw new Error('This event is not in revision draft status.');
+    throw new Error('This event is not in revision draft.');
   }
 
   const { error } = await supabase
@@ -594,7 +594,7 @@ export async function submitEventRevision(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
-  redirect('/dashboard');
+  redirect(`/dashboard/events/${eventId}/review`);
 }
 
 export async function requestEventRemovalOrRefund(formData: FormData) {
@@ -1189,44 +1189,3 @@ export async function updateEventRevision(formData: FormData) {
   redirect(`/dashboard/events/${eventId}/edit`);
 }
 
-export async function submitEventRevision(formData: FormData) {
-  const { supabase, user } = await requireUser();
-
-  const eventId = String(formData.get('event_id') || '');
-  const revisionReason = String(formData.get('revision_reason') || '').trim();
-
-  if (!eventId) throw new Error('Missing event id.');
-
-  const { data: event, error: fetchError } = await supabase
-    .from('events')
-    .select('id, owner_id, status')
-    .eq('id', eventId)
-    .single();
-
-  if (fetchError || !event) {
-    throw new Error(fetchError?.message || 'Event not found.');
-  }
-
-  if (event.owner_id !== user.id) {
-    throw new Error('You do not have permission to submit this revision.');
-  }
-
-  if (event.status !== 'revision_draft') {
-    throw new Error('This event is not in revision draft.');
-  }
-
-  const { error } = await supabase
-    .from('events')
-    .update({
-      status: 'revision_submitted',
-      is_public: false,
-      revision_reason: revisionReason || null,
-      revision_submitted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', eventId);
-
-  if (error) throw new Error(error.message);
-
-  redirect(`/dashboard/events/${eventId}/review`);
-}
