@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
 import {
   requestEventRemovalOrRefund,
   startEventRevision,
   submitEventForModeration,
 } from '@/app/dashboard/events/actions';
-import { createClient } from '@/lib/supabase/server';
 
 type ReviewPageProps = {
   params: Promise<{
@@ -44,6 +44,7 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
   if (!isOwner && !isAdmin) redirect('/dashboard');
 
   const now = new Date();
+
   const promotionStart = event.promotion_start_at
     ? new Date(event.promotion_start_at)
     : null;
@@ -57,8 +58,7 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
     );
 
   const canSubmitForModeration =
-    isOwner &&
-    ['building', 'draft', 'rejected', 'NPNA'].includes(event.status);
+    isOwner && ['building', 'draft', 'rejected', 'NPNA'].includes(event.status);
 
   const canOwnerRequestRevision =
     isOwner &&
@@ -71,227 +71,252 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
     isOwner &&
     !['completed', 'removed', 'removal_requested'].includes(event.status);
 
+  const imageUrl = event.flyer_url || event.image_url || null;
+
   return (
-    <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
-          Event Review
-        </p>
-        <h1 className="mt-3 text-4xl font-bold text-white">
-          Review Your Event
-        </h1>
-        <p className="mt-3 max-w-2xl text-white/70">
-          Review your event details and available actions based on the event’s
-          current pipeline status.
-        </p>
+    <section className="mx-auto max-w-7xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
+      <Link href="/dashboard" className="text-sm text-white/60 hover:text-accent">
+        ← Back to Dashboard
+      </Link>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Chip label={`Status: ${event.status || 'unknown'}`} />
-          {event.payment_status ? (
-            <Chip label={`Payment: ${event.payment_status}`} />
+      <section className="overflow-hidden rounded-[2.75rem] border border-white/10 bg-white/5">
+        {imageUrl ? (
+          <div className="overflow-hidden bg-black">
+            <img
+              src={imageUrl}
+              alt={event.name || 'Event flyer'}
+              className="max-h-[560px] w-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="flex min-h-[240px] items-center justify-center bg-black/30 text-white/45">
+            No event image uploaded.
+          </div>
+        )}
+
+        <div className="p-8 sm:p-10">
+          <div className="flex flex-wrap gap-2">
+            <Chip label={`Status: ${event.status || 'unknown'}`} />
+            {event.payment_status ? <Chip label={`Payment: ${event.payment_status}`} /> : null}
+            {event.is_public ? <Chip label="Public" /> : <Chip label="Hidden" />}
+            {isOwner ? <Chip label="Owner View" /> : null}
+            {isAdmin ? <Chip label="Admin View" /> : null}
+          </div>
+
+          <h1 className="mt-5 text-4xl font-black text-white sm:text-6xl">
+            {event.name || 'Untitled Event'}
+          </h1>
+
+          {event.description ? (
+            <p className="mt-5 max-w-4xl text-lg text-white/75">
+              {event.description}
+            </p>
           ) : null}
-          {isOwner ? <Chip label="Owner" /> : null}
-          {isAdmin ? <Chip label="Admin" /> : null}
-        </div>
-      </div>
 
-      <EventControlPanel
+          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Info label="Venue" value={event.venue_name} />
+            <Info label="Location" value={[event.city, event.state].filter(Boolean).join(', ')} />
+            <Info
+              label="Starts"
+              value={event.event_start_at ? new Date(event.event_start_at).toLocaleString() : null}
+            />
+            <Info
+              label="Ends"
+              value={event.event_end_at ? new Date(event.event_end_at).toLocaleString() : null}
+            />
+          </div>
+        </div>
+      </section>
+
+      <OwnerCommandPanel
         event={event}
-        isAdmin={isAdmin}
+        canStepEdit={canStepEdit}
+        canSubmitForModeration={canSubmitForModeration}
         canOwnerRequestRevision={Boolean(canOwnerRequestRevision)}
         canContinueRevision={Boolean(canContinueRevision)}
         canRequestRemoval={Boolean(canRequestRemoval)}
         isBeforePromotionWindow={Boolean(isBeforePromotionWindow)}
       />
 
-      <div className="mt-8 space-y-6">
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <h2 className="text-2xl font-bold text-white">Basic Information</h2>
+      <section className="grid gap-6 lg:grid-cols-3">
+        <DetailPanel
+          title="Public Event Details"
+          items={[
+            ['Event Type', event.event_type],
+            ['Dress Code', event.dress_code],
+            ['Entry Price', event.entry_price],
+            ['Age Requirement', event.age_requirement],
+            ['Smoking Policy', event.smoking_policy],
+            ['Parking Notes', event.parking_notes],
+            ['Special Notes', event.special_notes],
+          ]}
+        />
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Info label="Event Name" value={event.name} />
-            <Info label="Venue Name" value={event.venue_name} />
-            <Info label="Address" value={event.address} />
-            <Info label="City" value={event.city} />
-            <Info label="State" value={event.state} />
-            <Info
-              label="Start"
-              value={
-                event.event_start_at
-                  ? new Date(event.event_start_at).toLocaleString()
-                  : ''
-              }
+        <DetailPanel
+          title="Promotion + Pricing"
+          items={[
+            ['Base Price', `$${Number(event.base_price || 0).toFixed(2)}`],
+            ['Included Promo Days', String(event.included_promo_days || 14)],
+            ['Extra Promo Days', String(event.extra_promo_days || 0)],
+            ['Extra Promo Price', `$${Number(event.extra_promo_price || 0).toFixed(2)}`],
+            ['Linkd’N Mode', event.linkdn_mode],
+            ['Linkd’N Price', `$${Number(event.linkdn_price || 0).toFixed(2)}`],
+            ['Total Price', `$${Number(event.total_price || 0).toFixed(2)}`],
+          ]}
+        />
+
+        <DetailPanel
+          title="Pipeline"
+          items={[
+            ['Status', event.status],
+            ['Approved', event.is_approved ? 'Yes' : 'No'],
+            ['Paid', event.is_paid ? 'Yes' : 'No'],
+            ['Public', event.is_public ? 'Yes' : 'No'],
+            ['Promotion Start', formatDate(event.promotion_start_at)],
+            ['Promotion End', formatDate(event.promotion_end_at)],
+            ['Revision Requested', formatDate(event.revision_requested_at)],
+            ['Revision Submitted', formatDate(event.revision_submitted_at)],
+            ['Revision Note', event.revision_reason],
+            ['Admin Note', event.revision_admin_note],
+          ]}
+        />
+      </section>
+    </section>
+  );
+}
+
+function OwnerCommandPanel({
+  event,
+  canStepEdit,
+  canSubmitForModeration,
+  canOwnerRequestRevision,
+  canContinueRevision,
+  canRequestRemoval,
+  isBeforePromotionWindow,
+}: {
+  event: any;
+  canStepEdit: boolean;
+  canSubmitForModeration: boolean;
+  canOwnerRequestRevision: boolean;
+  canContinueRevision: boolean;
+  canRequestRemoval: boolean;
+  isBeforePromotionWindow: boolean;
+}) {
+  return (
+    <section className="rounded-[2.75rem] border border-accent/20 bg-accent/10 p-8">
+      <div>
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          Owner Command Panel
+        </p>
+        <h2 className="mt-3 text-3xl font-bold text-white">
+          Manage This Event
+        </h2>
+        <p className="mt-3 max-w-3xl text-white/70">
+          Available actions depend on the event status, payment state, approval state,
+          and promotion window.
+        </p>
+      </div>
+
+      <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {canStepEdit ? (
+          <>
+            <ActionLink
+              href={`/dashboard/events/${event.id}/edit/step-1`}
+              title="Edit Basic Info"
+              text="Update event name, date, location, or flyer."
             />
-            <Info
-              label="End"
-              value={
-                event.event_end_at
-                  ? new Date(event.event_end_at).toLocaleString()
-                  : ''
-              }
+            <ActionLink
+              href={`/dashboard/events/${event.id}/edit/step-2`}
+              title="Edit Event Details"
+              text="Update vibe, description, dress code, pricing, and notes."
             />
-            <Info label="Flyer URL" value={event.flyer_url} />
-          </div>
+            <ActionLink
+              href={`/dashboard/events/${event.id}/edit/step-3`}
+              title="Edit Package"
+              text="Update promotion package and add-ons."
+            />
+          </>
+        ) : null}
 
-          {canStepEdit ? (
-            <div className="mt-6">
-              <Link
-                href={`/dashboard/events/${event.id}/edit/step-1`}
-                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
-              >
-                Edit Step 1
-              </Link>
-            </div>
-          ) : null}
-        </div>
+        {canOwnerRequestRevision ? (
+          <form action={startEventRevision} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+            <input type="hidden" name="event_id" value={event.id} />
+            <h3 className="text-xl font-bold text-white">Request Edit</h3>
+            <p className="mt-2 text-sm text-white/60">
+              Open this approved event as a revision draft.
+            </p>
+            <button className="mt-5 w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black">
+              Start Revision
+            </button>
+          </form>
+        ) : null}
 
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <h2 className="text-2xl font-bold text-white">Event Details</h2>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Info label="Dress Code" value={event.dress_code} />
-            <Info label="Entry Price" value={event.entry_price} />
-            <Info label="Age Requirement" value={event.age_requirement} />
-            <Info label="Event Type" value={event.event_type} />
-            <Info label="Smoking Policy" value={event.smoking_policy} />
-            <Info label="Parking Notes" value={event.parking_notes} />
-          </div>
-
-          <Block label="Description" value={event.description} />
-          <Block label="Special Notes" value={event.special_notes} />
-          <Block
-            label="Music Selection"
-            value={
-              Array.isArray(event.music_selection)
-                ? event.music_selection.join(', ')
-                : ''
-            }
+        {canContinueRevision ? (
+          <ActionLink
+            href={`/dashboard/events/${event.id}/edit/step-1`}
+            title="Continue Revision"
+            text="Finish edits and submit back to HypeKnight."
           />
-          <Block
-            label="Vibe Tags"
-            value={Array.isArray(event.vibe_tags) ? event.vibe_tags.join(', ') : ''}
-          />
-
-          {canStepEdit ? (
-            <div className="mt-6">
-              <Link
-                href={`/dashboard/events/${event.id}/edit/step-2`}
-                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
-              >
-                Edit Step 2
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <h2 className="text-2xl font-bold text-white">Promotion + Pricing</h2>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Info
-              label="Base Price"
-              value={`$${Number(event.base_price || 0).toFixed(2)}`}
-            />
-            <Info
-              label="Included Promo Days"
-              value={String(event.included_promo_days || 14)}
-            />
-            <Info
-              label="Extra Promo Days"
-              value={String(event.extra_promo_days || 0)}
-            />
-            <Info
-              label="Extra Promo Price"
-              value={`$${Number(event.extra_promo_price || 0).toFixed(2)}`}
-            />
-            <Info label="Linkd'N Mode" value={event.linkdn_mode} />
-            <Info
-              label="Linkd'N Price"
-              value={`$${Number(event.linkdn_price || 0).toFixed(2)}`}
-            />
-            <Info
-              label="Promotion Start"
-              value={
-                event.promotion_start_at
-                  ? new Date(event.promotion_start_at).toLocaleString()
-                  : ''
-              }
-            />
-            <Info
-              label="Promotion End"
-              value={
-                event.promotion_end_at
-                  ? new Date(event.promotion_end_at).toLocaleString()
-                  : ''
-              }
-            />
-            <Info
-              label="Total Price"
-              value={`$${Number(event.total_price || 0).toFixed(2)}`}
-            />
-          </div>
-
-          {canStepEdit ? (
-            <div className="mt-6">
-              <Link
-                href={`/dashboard/events/${event.id}/edit/step-3`}
-                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
-              >
-                Edit Step 3
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <h2 className="text-2xl font-bold text-white">Pipeline Details</h2>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Info label="Status" value={event.status} />
-            <Info label="Payment Status" value={event.payment_status} />
-            <Info label="Approved" value={event.is_approved ? 'Yes' : 'No'} />
-            <Info label="Public" value={event.is_public ? 'Yes' : 'No'} />
-            <Info
-              label="Revision Requested"
-              value={
-                event.revision_requested_at
-                  ? new Date(event.revision_requested_at).toLocaleString()
-                  : ''
-              }
-            />
-            <Info
-              label="Revision Submitted"
-              value={
-                event.revision_submitted_at
-                  ? new Date(event.revision_submitted_at).toLocaleString()
-                  : ''
-              }
-            />
-          </div>
-
-          <Block label="Revision Reason" value={event.revision_reason} />
-          <Block label="Revision Admin Note" value={event.revision_admin_note} />
-          <Block label="Removal Reason" value={event.removal_reason} />
-          <Block label="Refund Reason" value={event.refund_reason} />
-        </div>
+        ) : null}
 
         {canSubmitForModeration ? (
-          <div className="rounded-[2rem] border border-accent/20 bg-accent/10 p-8">
-            <h2 className="text-2xl font-bold text-white">Ready to submit?</h2>
-            <p className="mt-3 text-white/70">
-              Once submitted, this event moves into review and becomes locked
-              unless rejected back for changes.
+          <form action={submitEventForModeration} className="rounded-2xl border border-accent/20 bg-black/20 p-5">
+            <input type="hidden" name="event_id" value={event.id} />
+            <h3 className="text-xl font-bold text-white">Submit for Review</h3>
+            <p className="mt-2 text-sm text-white/60">
+              Send this event to HypeKnight for approval.
+            </p>
+            <button className="mt-5 w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black">
+              Submit Event
+            </button>
+          </form>
+        ) : null}
+
+        <DeadAction title="Upgrade Package" text="Upgrade tools can be connected later." />
+        <DeadAction title="Hide Event on HypeKnight" text="This action can be connected later." />
+
+        {canRequestRemoval ? (
+          <form action={requestEventRemovalOrRefund} className="rounded-2xl border border-red-500/20 bg-red-500/10 p-5">
+            <input type="hidden" name="event_id" value={event.id} />
+
+            <h3 className="text-xl font-bold text-red-200">Remove / Refund</h3>
+            <p className="mt-2 text-sm text-red-100/70">
+              Request event removal or refund review.
             </p>
 
-            <form action={submitEventForModeration} className="mt-6">
-              <input type="hidden" name="event_id" value={event.id} />
-              <button
-                type="submit"
-                className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
-              >
-                Submit for Review
-              </button>
-            </form>
+            <textarea
+              name="removal_reason"
+              rows={3}
+              placeholder="Removal reason"
+              className="mt-4 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40"
+            />
+
+            <label className="mt-3 flex gap-2 text-sm text-red-100/75">
+              <input type="checkbox" name="wants_refund" />
+              Request refund review
+            </label>
+
+            <textarea
+              name="refund_reason"
+              rows={3}
+              placeholder="Refund reason, if different"
+              className="mt-3 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40"
+            />
+
+            <button className="mt-5 w-full rounded-2xl border border-red-500/30 bg-red-500/20 px-5 py-3 font-semibold text-red-100">
+              Submit Removal / Refund Request
+            </button>
+          </form>
+        ) : null}
+
+        {!canStepEdit &&
+        !canOwnerRequestRevision &&
+        !canContinueRevision &&
+        !canSubmitForModeration ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-white/60">
+            {isBeforePromotionWindow
+              ? 'No direct edit action is available for this event status.'
+              : 'Full edits are unavailable because the event is inside or past its promotion window.'}
           </div>
         ) : null}
       </div>
@@ -299,141 +324,76 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
   );
 }
 
-function EventControlPanel({
-  event,
-  isAdmin,
-  canOwnerRequestRevision,
-  canContinueRevision,
-  canRequestRemoval,
-  isBeforePromotionWindow,
+function ActionLink({
+  href,
+  title,
+  text,
 }: {
-  event: any;
-  isAdmin: boolean;
-  canOwnerRequestRevision: boolean;
-  canContinueRevision: boolean;
-  canRequestRemoval: boolean;
-  isBeforePromotionWindow: boolean;
+  href: string;
+  title: string;
+  text: string;
 }) {
   return (
-    <div className="rounded-[2rem] border border-accent/20 bg-accent/10 p-8">
-      <h2 className="text-2xl font-bold text-white">Available Actions</h2>
-      <p className="mt-3 text-white/70">
-        Actions are shown based on this event’s current status and promotion
-        timeline.
-      </p>
+    <Link
+      href={href}
+      className="rounded-2xl border border-white/10 bg-black/20 p-5 hover:border-accent/40"
+    >
+      <h3 className="text-xl font-bold text-white">{title}</h3>
+      <p className="mt-2 text-sm text-white/60">{text}</p>
+      <p className="mt-5 text-sm font-semibold text-accent">Open →</p>
+    </Link>
+  );
+}
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-          <h3 className="text-xl font-bold text-white">Owner Options</h3>
+function DeadAction({ title, text }: { title: string; text: string }) {
+  return (
+    <button
+      type="button"
+      disabled
+      className="cursor-not-allowed rounded-2xl border border-white/10 bg-black/20 p-5 text-left opacity-60"
+    >
+      <h3 className="text-xl font-bold text-white">{title}</h3>
+      <p className="mt-2 text-sm text-white/60">{text}</p>
+      <p className="mt-5 text-sm text-white/40">Coming soon</p>
+    </button>
+  );
+}
 
-          <div className="mt-4 space-y-4">
-            {canOwnerRequestRevision ? (
-              <form action={startEventRevision}>
-                <input type="hidden" name="event_id" value={event.id} />
-                <button className="w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
-                  Request Edit / Revision
-                </button>
-              </form>
-            ) : null}
+function DetailPanel({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<[string, string | null | undefined]>;
+}) {
+  const visible = items.filter(([, value]) => value && String(value).trim());
 
-            {canContinueRevision ? (
-              <Link
-                href={`/dashboard/events/${event.id}/edit/step-1`}
-                className="block w-full rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
-              >
-                Continue Revision Draft
-              </Link>
-            ) : null}
+  if (!visible.length) return null;
 
-            {!canOwnerRequestRevision && !canContinueRevision ? (
-              <Notice
-                text={
-                  isBeforePromotionWindow
-                    ? 'This event is not currently eligible for revision based on its status.'
-                    : 'Full editing is unavailable because this event is inside or past its promotion window.'
-                }
-              />
-            ) : null}
-
-            {canRequestRemoval ? (
-              <form action={requestEventRemovalOrRefund} className="space-y-3">
-                <input type="hidden" name="event_id" value={event.id} />
-
-                <textarea
-                  name="removal_reason"
-                  rows={3}
-                  placeholder="Why are you requesting removal?"
-                  className="input"
-                />
-
-                <label className="flex gap-2 text-sm text-white/70">
-                  <input type="checkbox" name="wants_refund" />
-                  Request refund review
-                </label>
-
-                <textarea
-                  name="refund_reason"
-                  rows={3}
-                  placeholder="Refund reason, if different"
-                  className="input"
-                />
-
-                <button className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-red-200 hover:border-red-500/40">
-                  Request Removal / Refund
-                </button>
-              </form>
-            ) : null}
+  return (
+    <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+      <h2 className="text-2xl font-bold text-white">{title}</h2>
+      <div className="mt-5 space-y-4">
+        {visible.map(([label, value]) => (
+          <div key={label} className="border-b border-white/10 pb-4 last:border-0">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/45">
+              {label}
+            </p>
+            <p className="mt-2 break-words text-white/75">{value}</p>
           </div>
-        </div>
-
-        {isAdmin ? (
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-            <h3 className="text-xl font-bold text-white">Admin Options</h3>
-
-            <div className="mt-4 grid gap-3">
-              <Link
-                href={`/admin/events?focus=${event.id}`}
-                className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
-              >
-                Open Event Queue
-              </Link>
-
-              <Link
-                href="/admin/payments"
-                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center text-white hover:border-accent/40"
-              >
-                Payments / Refund Center
-              </Link>
-
-              {event.status === 'revision_submitted' ? (
-                <Notice text="This event has a submitted revision waiting for admin review." />
-              ) : null}
-
-              {event.status === 'removal_requested' ? (
-                <Notice text="This event has a removal/refund request waiting for admin review." />
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        ))}
       </div>
-    </div>
+    </section>
   );
 }
 
 function Info({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null;
+
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
-      <p className="mt-2 text-white">{value || '—'}</p>
-    </div>
-  );
-}
-
-function Block({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-white">{value || '—'}</p>
+      <p className="mt-2 break-words text-white">{value}</p>
     </div>
   );
 }
@@ -446,10 +406,7 @@ function Chip({ label }: { label: string }) {
   );
 }
 
-function Notice({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/65">
-      {text}
-    </div>
-  );
+function formatDate(value?: string | null) {
+  if (!value) return null;
+  return new Date(value).toLocaleString();
 }

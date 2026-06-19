@@ -597,6 +597,16 @@ export default async function AdminEventsPage() {
       promotion_end_at,
       total_price,
       linkdn_mode,
+      flyer_url,
+      image_url,
+      description,
+      dress_code,
+      entry_price,
+      age_requirement,
+      event_type,
+      smoking_policy,
+      parking_notes,
+      special_notes,
       revision_requested_at,
       revision_submitted_at,
       revision_reason,
@@ -775,6 +785,11 @@ function RevisionModerationCard({ event }: { event: any }) {
 
           <h2 className="mt-3 text-2xl font-bold text-white">{event.name}</h2>
 
+          <div className="mt-4">
+            <AdminEventImage event={event} />
+          </div>
+
+
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Info label="Venue" value={event.venue_name} />
             <Info label="City / State" value={`${event.city || ''}, ${event.state || ''}`} />
@@ -885,6 +900,11 @@ function EventModerationCard({
           </div>
 
           <h2 className="mt-3 text-2xl font-bold text-white">{event.name}</h2>
+
+          <div className="mt-4">
+            <AdminEventImage event={event} />
+          </div>
+
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Info label="Venue" value={event.venue_name} />
@@ -1193,5 +1213,37 @@ function StateChip({
     <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${styles}`}>
       {label}
     </span>
+  );
+}
+
+function AdminEventImage({ event }: { event: any }) {
+  const imageUrl = event.flyer_url || event.image_url;
+
+  if (!imageUrl) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-white/50">
+        No event image uploaded.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+      <img
+        src={imageUrl}
+        alt={event.name || 'Event flyer'}
+        className="max-h-[420px] w-full object-cover"
+      />
+      <div className="border-t border-white/10 p-3">
+        <a
+          href={imageUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm text-accent hover:opacity-80"
+        >
+          Open image in new tab
+        </a>
+      </div>
+    </div>
   );
 }
