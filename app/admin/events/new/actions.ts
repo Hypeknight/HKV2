@@ -2,10 +2,12 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { derivePublicState } from '@/lib/events/workflow';
 
 async function requireAdmin() {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -161,6 +163,7 @@ export async function approveEvent(formData: FormData) {
 
 export async function rejectEvent(formData: FormData) {
   const { supabase, user } = await requireAdmin();
+
   const eventId = String(formData.get('event_id') || '');
   const rejectionReason = String(formData.get('rejection_reason') || '');
 
@@ -188,8 +191,11 @@ export async function rejectEvent(formData: FormData) {
 
 export async function applyPaymentOverride(formData: FormData) {
   const { supabase, user } = await requireAdmin();
+
   const eventId = String(formData.get('event_id') || '');
   const reason = String(formData.get('reason') || '');
+
+  if (!eventId) throw new Error('Missing event id');
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
@@ -197,7 +203,9 @@ export async function applyPaymentOverride(formData: FormData) {
     .eq('id', eventId)
     .single();
 
-  if (fetchError || !event) throw new Error(fetchError?.message || 'Event not found');
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found');
+  }
 
   const nextStatus = event.is_approved ? 'scheduled' : 'approved_unpaid';
 
@@ -225,8 +233,9 @@ export async function applyPaymentOverride(formData: FormData) {
 
   redirect('/admin/events?override=1');
 }
+
 export async function approveEventRevision(formData: FormData) {
-  const admin = await requireAdmin();
+  const { user } = await requireAdmin();
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
@@ -236,7 +245,15 @@ export async function approveEventRevision(formData: FormData) {
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
-    .select('id, status, original_status_before_revision')
+    .select(`
+      id,
+      status,
+      original_status_before_revision,
+      promotion_start_at,
+      promotion_end_at,
+      is_paid,
+      payment_override
+    `)
     .eq('id', eventId)
     .single();
 
@@ -256,15 +273,24 @@ export async function approveEventRevision(formData: FormData) {
       ? event.original_status_before_revision
       : 'scheduled';
 
+  const isPublic = derivePublicState({
+    isApproved: true,
+    isPaid: event.is_paid,
+    paymentOverride: event.payment_override,
+    promotionStartAt: event.promotion_start_at,
+    promotionEndAt: event.promotion_end_at,
+    status: restoredStatus,
+  });
+
   const { error } = await supabase
     .from('events')
     .update({
       status: restoredStatus,
-      is_public: ['scheduled', 'active'].includes(restoredStatus),
+      is_public: isPublic,
       is_approved: true,
       revision_admin_note: adminNote || null,
       revision_reviewed_at: new Date().toISOString(),
-      revision_reviewed_by: admin.id,
+      revision_reviewed_by: user.id,
       updated_at: new Date().toISOString(),
     })
     .eq('id', eventId);
@@ -275,7 +301,7 @@ export async function approveEventRevision(formData: FormData) {
 }
 
 export async function rejectEventRevision(formData: FormData) {
-  const admin = await requireAdmin();
+  const { user } = await requireAdmin();
   const supabase = createAdminClient();
 
   const eventId = String(formData.get('event_id') || '');
@@ -291,7 +317,7 @@ export async function rejectEventRevision(formData: FormData) {
       is_approved: false,
       revision_admin_note: adminNote || 'Revision rejected for changes.',
       revision_reviewed_at: new Date().toISOString(),
-      revision_reviewed_by: admin.id,
+      revision_reviewed_by: user.id,
       updated_at: new Date().toISOString(),
     })
     .eq('id', eventId)
