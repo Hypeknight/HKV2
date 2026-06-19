@@ -1161,7 +1161,7 @@ let flyerUrl = String(formData.get('flyer_url') || '').trim() || null;
 
 if (flyerFile && flyerFile.size > 0) {
   const fileExt = flyerFile.name.split('.').pop();
-  const filePath = `event-flyers/${user.id}/${eventId}-${Date.now()}.${fileExt}`;
+  const filePath = `${user.id}/${eventId}-${Date.now()}.${fileExt}`;
 
   const { error: uploadError } = await supabase.storage
     .from('event-flyers')
