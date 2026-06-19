@@ -1156,6 +1156,29 @@ export async function updateEventRevision(formData: FormData) {
     throw new Error('This event is not open for revision editing.');
   }
 
+const flyerFile = formData.get('flyer_file') as File | null;
+let flyerUrl = String(formData.get('flyer_url') || '').trim() || null;
+
+if (flyerFile && flyerFile.size > 0) {
+  const fileExt = flyerFile.name.split('.').pop();
+  const filePath = `event-flyers/${user.id}/${eventId}-${Date.now()}.${fileExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('event-flyers')
+    .upload(filePath, flyerFile, {
+      cacheControl: '3600',
+      upsert: true,
+    });
+
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data: publicUrlData } = supabase.storage
+    .from('event-flyers')
+    .getPublicUrl(filePath);
+
+  flyerUrl = publicUrlData.publicUrl;
+}
+
   const payload = {
     name: String(formData.get('name') || '').trim(),
     venue_name: String(formData.get('venue_name') || '').trim() || null,
@@ -1164,7 +1187,8 @@ export async function updateEventRevision(formData: FormData) {
     state: String(formData.get('state') || '').trim() || null,
     event_start_at: String(formData.get('event_start_at') || '') || null,
     event_end_at: String(formData.get('event_end_at') || '') || null,
-    flyer_url: String(formData.get('flyer_url') || '').trim() || null,
+    flyer_url: flyerUrl,
+    image_url: flyerUrl,
     description: String(formData.get('description') || '').trim() || null,
     dress_code: String(formData.get('dress_code') || '').trim() || null,
     entry_price: String(formData.get('entry_price') || '').trim() || null,

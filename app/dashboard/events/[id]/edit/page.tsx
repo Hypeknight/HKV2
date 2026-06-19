@@ -58,9 +58,10 @@ export default async function EventRevisionEditPage({ params }: Props) {
       </section>
 
       <form
-        action={updateEventRevision}
-        className="space-y-8 rounded-[2.75rem] border border-white/10 bg-white/5 p-8"
-      >
+  action={updateEventRevision}
+  encType="multipart/form-data"
+  className="space-y-8 rounded-[2.75rem] border border-white/10 bg-white/5 p-8"
+>
         <input type="hidden" name="event_id" value={event.id} />
 
         <FormSection title="Basic Information">
@@ -82,7 +83,37 @@ export default async function EventRevisionEditPage({ params }: Props) {
               type="datetime-local"
               defaultValue={toDateTimeLocal(event.event_end_at)}
             />
-            <Input name="flyer_url" label="Flyer URL" defaultValue={event.flyer_url} />
+            <div className="md:col-span-2">
+  {event.flyer_url || event.image_url ? (
+    <div className="mb-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+      <img
+        src={event.flyer_url || event.image_url}
+        alt={event.name || 'Current event flyer'}
+        className="max-h-80 w-full object-cover"
+      />
+    </div>
+  ) : null}
+
+  <Input
+    name="flyer_url"
+    label="Flyer URL"
+    defaultValue={event.flyer_url || event.image_url}
+  />
+
+  <label className="mt-4 block">
+    <span className="text-sm text-white/60">Upload New Flyer / Image</span>
+    <input
+      name="flyer_file"
+      type="file"
+      accept="image/*"
+      className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none file:mr-4 file:rounded-xl file:border-0 file:bg-accent file:px-4 file:py-2 file:font-semibold file:text-black"
+    />
+  </label>
+
+  <p className="mt-2 text-sm text-white/45">
+    Uploading a new image will replace the current flyer for this revision.
+  </p>
+</div>
           </div>
         </FormSection>
 
