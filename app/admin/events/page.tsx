@@ -598,7 +598,7 @@ export default async function AdminEventsPage() {
       total_price,
       linkdn_mode,
       flyer_url,
-      image_url,
+      
       description,
       dress_code,
       entry_price,
