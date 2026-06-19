@@ -1,9 +1,12 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getPlatformSettings } from '@/lib/settings';
 import { submitAmbassadorApplication } from '@/app/ambassadors/actions';
 
 export default async function DashboardAmbassadorApplyPage() {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
 
   const {
     data: { user },
@@ -11,22 +14,66 @@ export default async function DashboardAmbassadorApplyPage() {
 
   if (!user) redirect('/auth/login');
 
-  const { data: existingApplication,  error: existingApplicationError } = await supabase
-  .from('ambassador_applications')
-  .select('id, status')
-  .eq('user_id', user.id)
-  .in('status', ['pending', 'approved', 'suspended'])
-  .order('submitted_at', { ascending: false })
-  .limit(1)
-  .maybeSingle();
+  const programEnabled = Boolean(settings.ambassador_program_enabled);
+  const minDiscount = Number(settings.ambassador_min_discount || 20);
+  const maxDiscount = Number(settings.ambassador_max_discount || 70);
+  const commissionPercent = Number(settings.ambassador_commission_percent || 30);
+  const minPayout = Number(settings.ambassador_min_payout || 25);
+
+  const { data: existingApplication, error: existingApplicationError } =
+    await supabase
+      .from('ambassador_applications')
+      .select('id, status')
+      .eq('user_id', user.id)
+      .in('status', ['pending', 'approved', 'suspended'])
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
   if (existingApplicationError) {
-  throw new Error(existingApplicationError.message);
-}
+    throw new Error(existingApplicationError.message);
+  }
 
-if (existingApplication) {
-  redirect('/ambassadors/dashboard');
-}
+  if (existingApplication) {
+    redirect('/ambassadors/dashboard');
+  }
+
+  if (!programEnabled) {
+    return (
+      <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="rounded-[2.75rem] border border-yellow-500/20 bg-yellow-500/10 p-8 sm:p-10">
+          <p className="text-sm uppercase tracking-[0.35em] text-yellow-200">
+            HypeKnight Ambassador Program
+          </p>
+
+          <h1 className="mt-3 text-5xl font-black text-white">
+            Applications are currently paused.
+          </h1>
+
+          <p className="mt-4 max-w-3xl text-white/70">
+            HypeKnight is not accepting new ambassador applications right now.
+            Please check back as new city campaigns and opportunities open.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/ambassadors"
+              className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
+            >
+              View Program Info
+            </Link>
+
+            <Link
+              href="/dashboard"
+              className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
+            >
+              Back to Dashboard
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="mx-auto max-w-5xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
@@ -46,10 +93,10 @@ if (existingApplication) {
         </p>
 
         <div className="mt-6 rounded-2xl border border-accent/20 bg-accent/10 p-5 text-white/75">
-          Approved ambassadors may request a personal coupon code between 20%
-          and 70% off. Commission is calculated after HypeKnight profit and only
-          becomes eligible after the referred event completes its full promotion
-          pipeline with no refund, removal, or chargeback.
+          Approved ambassadors may request a personal coupon code between{' '}
+          {minDiscount}% and {maxDiscount}% off. Commission is calculated after
+          HypeKnight profit. Current ambassador commission is {commissionPercent}
+          %. Minimum payout threshold is ${minPayout.toFixed(2)}.
         </div>
       </div>
 
@@ -105,33 +152,33 @@ if (existingApplication) {
         </FormSection>
 
         <FormSection title="Ambassador Agreements">
-  <div className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-white/70">
-    <AgreementBox
-      name="ambassador_agreement"
-      label="I agree to the HypeKnight Ambassador Program Agreement."
-    />
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-white/70">
+            <AgreementBox
+              name="ambassador_agreement"
+              label="I agree to the HypeKnight Ambassador Program Agreement."
+            />
 
-    <AgreementBox
-      name="terms_of_service"
-      label="I agree to HypeKnight's Terms of Service."
-    />
+            <AgreementBox
+              name="terms_of_service"
+              label="I agree to HypeKnight's Terms of Service."
+            />
 
-    <AgreementBox
-      name="privacy_policy"
-      label="I agree to HypeKnight's Privacy Policy."
-    />
+            <AgreementBox
+              name="privacy_policy"
+              label="I agree to HypeKnight's Privacy Policy."
+            />
 
-    <AgreementBox
-      name="commission_policy"
-      label="I understand commissions are calculated from HypeKnight profit and are not earned on refunds, removals, chargebacks, cancelled events, or transactions with no profit."
-    />
+            <AgreementBox
+              name="commission_policy"
+              label="I understand commissions are calculated from HypeKnight profit and are not earned on refunds, removals, chargebacks, cancelled events, or transactions with no profit."
+            />
 
-    <AgreementBox
-      name="contractor_acknowledgement"
-      label="I understand that ambassadors are independent contractors, not employees, and are responsible for their own taxes."
-    />
-  </div>
-</FormSection>
+            <AgreementBox
+              name="contractor_acknowledgement"
+              label="I understand that ambassadors are independent contractors, not employees, and are responsible for their own taxes."
+            />
+          </div>
+        </FormSection>
 
         <button
           type="submit"
@@ -185,6 +232,7 @@ function Input({
     </label>
   );
 }
+
 function AgreementBox({
   name,
   label,
