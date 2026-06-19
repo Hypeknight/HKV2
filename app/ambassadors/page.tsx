@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { getPlatformSettings } from '@/lib/settings';
 
 export default async function AmbassadorsPage() {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
 
   const {
     data: { user },
@@ -10,8 +12,37 @@ export default async function AmbassadorsPage() {
 
   const applyHref = user ? '/dashboard/ambassador/apply' : '/auth/sign-up';
 
+  const programEnabled = Boolean(settings.ambassador_program_enabled);
+  const founderLimit = Number(settings.ambassador_founder_limit || 50);
+  const minDiscount = Number(settings.ambassador_min_discount || 20);
+  const maxDiscount = Number(settings.ambassador_max_discount || 70);
+  const commissionPercent = Number(settings.ambassador_commission_percent || 30);
+  const hypeKnightPercent = 100 - commissionPercent;
+  const minPayout = Number(settings.ambassador_min_payout || 25);
+
   return (
     <section className="mx-auto max-w-7xl space-y-14 px-4 py-12 sm:px-6 lg:px-8">
+      {!programEnabled ? (
+        <section className="rounded-[2.75rem] border border-yellow-500/20 bg-yellow-500/10 p-8">
+          <p className="text-sm uppercase tracking-[0.35em] text-yellow-200">
+            Ambassador Program
+          </p>
+          <h1 className="mt-3 text-4xl font-black text-white">
+            Applications are currently paused.
+          </h1>
+          <p className="mt-4 max-w-3xl text-white/70">
+            HypeKnight may reopen the ambassador program as new cities, events,
+            and campaign opportunities become available.
+          </p>
+          <Link
+            href="/events"
+            className="mt-6 inline-flex rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+          >
+            Explore HypeKnight
+          </Link>
+        </section>
+      ) : null}
+
       <section className="rounded-[3rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-10">
         <p className="text-sm uppercase tracking-[0.35em] text-accent">
           HypeKnight Ambassador Program
@@ -22,19 +53,21 @@ export default async function AmbassadorsPage() {
         </h1>
 
         <p className="mt-6 max-w-3xl text-lg text-white/75">
-          HypeKnight is looking for a starting group of 50 ambassadors across
-          the continental United States. This first group will help introduce
-          promoters, venues, DJs, creators, and nightlife communities to the
-          platform.
+          HypeKnight is looking for a starting group of {founderLimit}{' '}
+          ambassadors across the continental United States. This first group
+          will help introduce promoters, venues, DJs, creators, and nightlife
+          communities to the platform.
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href={applyHref}
-            className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
-          >
-            Apply to Become an Ambassador
-          </Link>
+          {programEnabled ? (
+            <Link
+              href={applyHref}
+              className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
+            >
+              Apply to Become an Ambassador
+            </Link>
+          ) : null}
 
           <Link
             href="/events"
@@ -46,9 +79,21 @@ export default async function AmbassadorsPage() {
       </section>
 
       <section className="grid gap-5 md:grid-cols-3">
-        <Metric label="Starting Group" value="50" text="Ambassadors wanted across the continental U.S." />
-        <Metric label="Coupon Range" value="20–70%" text="Approved ambassadors can request custom discounts." />
-        <Metric label="Profit Split" value="30%" text="Ambassadors earn 30% of profit from eligible code sales." />
+        <Metric
+          label="Starting Group"
+          value={String(founderLimit)}
+          text="Founding ambassador spots planned across the continental U.S."
+        />
+        <Metric
+          label="Coupon Range"
+          value={`${minDiscount}–${maxDiscount}%`}
+          text="Approved ambassadors can request custom discounts."
+        />
+        <Metric
+          label="Profit Split"
+          value={`${commissionPercent}%`}
+          text={`Ambassadors earn ${commissionPercent}% of profit from eligible code sales.`}
+        />
       </section>
 
       <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
@@ -65,7 +110,7 @@ export default async function AmbassadorsPage() {
           />
           <Step
             title="3. Request your code"
-            text="Approved ambassadors can request a custom coupon code and choose the discount amount."
+            text={`Approved ambassadors can request a custom coupon code between ${minDiscount}% and ${maxDiscount}% off.`}
           />
           <Step
             title="4. Track results"
@@ -86,8 +131,8 @@ export default async function AmbassadorsPage() {
 
           <p className="mt-4 text-white/75">
             After approval, ambassadors can request a personal coupon code such
-            as KCQUEEN30, NIGHTLIFE20, or TRE50. You can request a discount
-            between 20% and 70% off.
+            as KCQUEEN30, NIGHTLIFE20, or TRE50. The current request range is{' '}
+            {minDiscount}% to {maxDiscount}% off.
           </p>
 
           <p className="mt-4 text-white/75">
@@ -107,20 +152,20 @@ export default async function AmbassadorsPage() {
           </h2>
 
           <p className="mt-4 text-white/75">
-            Ambassadors receive 30% of the profit from sales made with their
-            coupon code.
+            Ambassadors receive {commissionPercent}% of the profit from eligible
+            sales made with their coupon code.
           </p>
 
           <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-5 text-white/70">
             Example: customer pays after discount, HypeKnight subtracts fees and
-            eligible costs, then the remaining profit is split 70% to HypeKnight
-            and 30% to the ambassador.
+            eligible costs, then the remaining profit is split {hypeKnightPercent}
+            % to HypeKnight and {commissionPercent}% to the ambassador.
           </div>
 
           <p className="mt-4 text-sm text-white/55">
             Commission is only considered eligible after the referred event
             completes the HypeKnight pipeline with no refund, removal, or
-            chargeback.
+            chargeback. Minimum payout threshold: ${minPayout.toFixed(2)}.
           </p>
         </div>
       </section>
@@ -160,7 +205,7 @@ export default async function AmbassadorsPage() {
         </p>
 
         <h2 className="mx-auto mt-3 max-w-3xl text-4xl font-black text-white">
-          Be part of the first 50 ambassadors helping HypeKnight move.
+          Be part of the first {founderLimit} ambassadors helping HypeKnight move.
         </h2>
 
         <p className="mx-auto mt-4 max-w-2xl text-white/70">
@@ -169,12 +214,14 @@ export default async function AmbassadorsPage() {
         </p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link
-            href={applyHref}
-            className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
-          >
-            Apply Now
-          </Link>
+          {programEnabled ? (
+            <Link
+              href={applyHref}
+              className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+            >
+              Apply Now
+            </Link>
+          ) : null}
 
           <Link
             href="/dashboard"
