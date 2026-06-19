@@ -323,11 +323,13 @@ function EmptyCard({ text }: { text: string }) {
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import ShareButton from '@/components/ShareButton';
+import { getPlatformSettings } from '@/lib/settings';
 
-const LOGO_URL = '/hypeknight-logo.jpeg';
+const LOGO_URL = '/hypeknight_logo.jpeg';
 
 export default async function HomePage() {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
 
   const now = new Date();
   const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
@@ -365,36 +367,40 @@ export default async function HomePage() {
 
   return (
     <section className="space-y-16 pb-16">
-      <Hero />
+      <Hero settings={settings} />
 
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <FunMetric
-          label="HypeKnight Events"
-          value={String(internalEvents.length)}
-          text="Internal events are the priority."
-        />
-        <FunMetric
-          label="External Events"
-          value={String(supplementalEvents.length)}
-          text="Supplemental listings keep the site alive."
-        />
-        <FunMetric
-          label="Cities Showing"
-          value={String(cities.size)}
-          text="Places with event energy."
-        />
-        <FunMetric
-          label="Discovery Mode"
-          value="Now"
-          text="Built around here and now."
-        />
-        
-        <ShareButton
-        title="HypeKnight"
-        text="Find what’s happening here and now on HypeKnight."
-        path="/"
-        />
+        {settings.homepage_show_active_events ? (
+          <FunMetric
+            label="HypeKnight Events"
+            value={String(internalEvents.length)}
+            text="Internal events are the priority."
+          />
+        ) : null}
 
+        {settings.homepage_show_external_events ? (
+          <FunMetric
+            label="External Events"
+            value={String(supplementalEvents.length)}
+            text="Supplemental listings keep the site alive."
+          />
+        ) : null}
+
+        {settings.homepage_show_hype_cities ? (
+          <FunMetric
+            label="Cities Showing"
+            value={String(cities.size)}
+            text="Places with event energy."
+          />
+        ) : null}
+
+        {settings.homepage_show_right_now ? (
+          <FunMetric
+            label="Discovery Mode"
+            value="Now"
+            text="Built around here and now."
+          />
+        ) : null}
       </section>
 
       <section className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
@@ -418,19 +424,16 @@ export default async function HomePage() {
             placeholder="Search events, music, venues, vibes..."
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
-
           <input
             name="city"
             placeholder="City"
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
-
           <input
             name="state"
             placeholder="State"
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
-
           <button className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
             Search
           </button>
@@ -452,74 +455,84 @@ export default async function HomePage() {
           action="Add an Event"
         />
 
-        <FeatureCard
-          title="Ambassador Program"
-          text="Approved ambassadors can request personal coupon codes, promote HypeKnight, and track eligible performance."
-          href="/ambassadors"
-          action="View Program"
-        />
+        {settings.ambassador_program_enabled ? (
+          <FeatureCard
+            title="Ambassador Program"
+            text="Approved ambassadors can request personal coupon codes, promote HypeKnight, and track eligible performance."
+            href="/ambassadors"
+            action="View Program"
+          />
+        ) : null}
       </section>
 
-      <EventSection
-        eyebrow="Priority"
-        title="HypeKnight events"
-        text="Internal HypeKnight events are shown first because they are the core of the platform."
-        events={internalEvents}
-        source="hypeknight"
-      />
+      {settings.homepage_show_active_events ? (
+        <EventSection
+          eyebrow="Priority"
+          title="HypeKnight events"
+          text="Internal HypeKnight events are shown first because they are the core of the platform."
+          events={internalEvents}
+          source="hypeknight"
+        />
+      ) : null}
 
-      <EventSection
-        eyebrow="Supplemental"
-        title="More events around the area"
-        text="External events help keep discovery active while HypeKnight grows city by city."
-        events={supplementalEvents}
-        source="external"
-      />
+      {settings.homepage_show_external_events ? (
+        <EventSection
+          eyebrow="Supplemental"
+          title="More events around the area"
+          text="External events help keep discovery active while HypeKnight grows city by city."
+          events={supplementalEvents}
+          source="external"
+        />
+      ) : null}
 
-      <section className="rounded-[2.75rem] border border-accent/20 bg-accent/10 p-10">
-        <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
-          <div>
-            <p className="text-sm uppercase tracking-[0.35em] text-accent">
-              HypeKnight Ambassador Program
-            </p>
+      {settings.ambassador_program_enabled ? (
+        <section className="rounded-[2.75rem] border border-accent/20 bg-accent/10 p-10">
+          <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
+            <div>
+              <p className="text-sm uppercase tracking-[0.35em] text-accent">
+                HypeKnight Ambassador Program
+              </p>
 
-            <h2 className="mt-3 text-4xl font-black text-white">
-              Help move the nightlife network.
-            </h2>
+              <h2 className="mt-3 text-4xl font-black text-white">
+                Help move the nightlife network.
+              </h2>
 
-            <p className="mt-4 max-w-3xl text-white/75">
-              Ambassadors help bring promoters, venues, DJs, creators, and
-              nightlife communities into HypeKnight. Approval is required before
-              coupon tools unlock.
-            </p>
+              <p className="mt-4 max-w-3xl text-white/75">
+                Ambassadors help bring promoters, venues, DJs, creators, and
+                nightlife communities into HypeKnight. Approval is required before
+                coupon tools unlock.
+              </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/ambassadors"
-                className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
-              >
-                Learn About Ambassadors
-              </Link>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/ambassadors"
+                  className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
+                >
+                  Learn About Ambassadors
+                </Link>
 
-              <Link
-                href="/dashboard/ambassador/apply"
-                className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
-              >
-                Apply From Dashboard
-              </Link>
+                <Link
+                  href="/dashboard/ambassador/apply"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Apply From Dashboard
+                </Link>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-black/20 p-8 text-center">
+              <p className="text-4xl font-black text-white">
+                {settings.ambassador_min_discount}–{settings.ambassador_max_discount}%
+              </p>
+              <p className="mt-2 text-white/65">Coupon request range</p>
+              <p className="mt-5 text-sm text-white/55">
+                Commission is only eligible after a referred event completes the
+                HypeKnight pipeline without refund, removal, or chargeback.
+              </p>
             </div>
           </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-black/20 p-8 text-center">
-            <p className="text-4xl font-black text-white">20–70%</p>
-            <p className="mt-2 text-white/65">Coupon request range</p>
-            <p className="mt-5 text-sm text-white/55">
-              Commission is only eligible after a referred event completes the
-              HypeKnight pipeline without refund, removal, or chargeback.
-            </p>
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section className="rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-10 text-center">
         <p className="text-sm uppercase tracking-[0.35em] text-accent">
@@ -552,7 +565,7 @@ export default async function HomePage() {
   );
 }
 
-function Hero() {
+function Hero({ settings }: { settings: any }) {
   return (
     <section className="relative overflow-hidden rounded-[3rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-8 py-16 sm:px-12 lg:px-16">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.07),transparent_28%)]" />
@@ -573,19 +586,29 @@ function Hero() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/events"
-              className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
-            >
-              What’s Going On Tonight?
-            </Link>
+            {settings.homepage_show_tonight ? (
+              <Link
+                href="/events"
+                className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
+              >
+                What’s Going On Tonight?
+              </Link>
+            ) : null}
 
-            <Link
-              href="/ambassadors"
-              className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
-            >
-              Ambassador Program
-            </Link>
+            {settings.ambassador_program_enabled ? (
+              <Link
+                href="/ambassadors"
+                className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
+              >
+                Ambassador Program
+              </Link>
+            ) : null}
+
+            <ShareButton
+              title="HypeKnight"
+              text="Find what’s happening here and now on HypeKnight."
+              path="/"
+            />
           </div>
         </div>
 
