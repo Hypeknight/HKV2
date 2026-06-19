@@ -314,3 +314,31 @@ function RevisionModerationCard({ event }: { event: any }) {
     </div>
   );
 }
+
+function MetricCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'yellow' | 'orange' | 'green' | 'red';
+}) {
+  const styles =
+    tone === 'yellow'
+      ? 'border-yellow-500/20 bg-yellow-500/10'
+      : tone === 'orange'
+      ? 'border-orange-500/20 bg-orange-500/10'
+      : tone === 'green'
+      ? 'border-green-500/20 bg-green-500/10'
+      : 'border-red-500/20 bg-red-500/10';
+
+  return (
+    <div className={`rounded-3xl border p-5 ${styles}`}>
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+        {label}
+      </p>
+      <p className="mt-3 text-3xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
