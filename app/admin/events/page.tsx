@@ -1,15 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import {
-  approveEvent,
-  rejectEvent,
-  applyPaymentOverride,
-  approveEventRevision,
-  rejectEventRevision,
-} from './new/actions';
+import { signOutAction } from './actions';
 
-export default async function AdminEventsPage() {
+export default async function DashboardPage() {
   const supabase = await createClient();
 
   const {
@@ -18,325 +12,549 @@ export default async function AdminEventsPage() {
 
   if (!user) redirect('/auth/login');
 
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
-    .single();
+  const [
+    { data: profile },
+    { data: events },
+    { data: ambassadorProfile },
+    { data: ambassadorApplication },
+    { data: venues },
+  ] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user.id).single(),
 
-  if (profileError || profile?.app_role !== 'admin') {
-    redirect('/dashboard');
-  }
+    supabase
+      .from('events')
+      .select(
+        'id, name, slug, status, event_start_at, city, state, created_at, revision_requested_at, revision_submitted_at, revision_reason'
+      )
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false }),
 
-  const { data: allEvents, error } = await supabase
-    .from('events')
-    .select(`
-      id,
-      name,
-      slug,
-      city,
-      state,
-      venue_name,
-      owner_id,
-      owner_type,
-      status,
-      is_public,
-      is_approved,
-      is_paid,
-      payment_override,
-      payment_required,
-      event_start_at,
-      event_end_at,
-      submitted_at,
-      approved_at,
-      rejected_at,
-      promotion_start_at,
-      promotion_end_at,
-      total_price,
-      linkdn_mode,
-      revision_requested_at,
-      revision_submitted_at,
-      revision_reason,
-      revision_admin_note,
-      original_status_before_revision,
-      created_at
-    `)
-    .order('created_at', { ascending: false });
+    supabase
+      .from('ambassador_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle(),
 
-  if (error) throw new Error(error.message);
+    supabase
+      .from('ambassador_applications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
 
-  const events = allEvents ?? [];
+    supabase
+      .from('venues')
+      .select('id, name, slug, city, state, status, created_at')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false }),
+  ]);
 
-  const unpaidUnapprovedEvents = events.filter(
-    (event) => event.status === 'NPNA'
+  const eventRows = events ?? [];
+  const venueRows = venues ?? [];
+
+  const revisionDraftEvents = eventRows.filter(
+    (event) => event.status === 'revision_draft'
   );
 
-  const readyForApprovalEvents = events.filter(
-    (event) => event.status === 'paid_awaiting_approval'
-  );
-
-  const revisionSubmittedEvents = events.filter(
+  const revisionSubmittedEvents = eventRows.filter(
     (event) => event.status === 'revision_submitted'
   );
 
-  const approvedAwaitingPaymentEvents = events.filter(
-    (event) => event.status === 'approved_awaiting_payment'
+  const activeEvents = eventRows.filter((event) =>
+    ['scheduled', 'active', 'paid_awaiting_approval'].includes(event.status)
   );
 
-  const activePipelineEvents = events.filter((event) =>
-    ['scheduled', 'active'].includes(event.status)
+  const draftEvents = eventRows.filter((event) =>
+    ['draft', 'building', 'rejected', 'NPNA', 'revision_draft'].includes(
+      event.status
+    )
   );
 
-  const completedEvents = events.filter(
+  const completedEvents = eventRows.filter(
     (event) => event.status === 'completed'
   );
 
-  const rejectedEvents = events.filter(
-    (event) => event.status === 'rejected'
+  const pendingEvents = eventRows.filter((event) =>
+    ['paid_awaiting_approval', 'approved_awaiting_payment', 'revision_submitted'].includes(
+      event.status
+    )
   );
 
-  const removedEvents = events.filter(
-    (event) => event.status === 'removed'
-  );
+  const roles = buildRoles({
+    appRole: profile?.app_role,
+    ambassadorStatus: ambassadorProfile?.status,
+    hasEvents: eventRows.length > 0,
+    hasVenues: venueRows.length > 0,
+  });
+
+  const modules = buildModules({
+    profile,
+    ambassadorProfile,
+    ambassadorApplication,
+    eventCount: eventRows.length,
+    venueCount: venueRows.length,
+  });
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">Admin</p>
-        <h1 className="mt-3 text-4xl font-bold text-white">Event Moderation</h1>
-        <p className="mt-3 max-w-3xl text-white/70">
-          Review submitted events, revision requests, payment state, and active pipeline events.
-        </p>
-      </div>
+    <section className="mx-auto max-w-7xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
+      <section className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.35em] text-accent">
+              My HypeKnight
+            </p>
 
-      <div className="mb-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Paid Awaiting Approval"
-          value={String(readyForApprovalEvents.length)}
-          tone="yellow"
+            <h1 className="mt-3 text-4xl font-black text-white">
+              {profile?.display_name || user.email || 'Welcome'}
+            </h1>
+
+            <p className="mt-3 max-w-3xl text-white/70">
+              Your dashboard opens modules based on what you are involved with
+              in HypeKnight. You can discover events, promote events, manage
+              venues, work as an ambassador, or access admin tools when approved.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {roles.map((role) => (
+                <RolePill key={role} label={role} />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/dashboard/profile"
+              className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
+            >
+              Edit Profile
+            </Link>
+
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-red-200 hover:border-red-500/40"
+              >
+                Sign Out
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Active Modules" value={String(modules.length)} />
+        <Metric label="Active Events" value={String(activeEvents.length)} />
+        <Metric label="Drafts / Revisions" value={String(draftEvents.length)} />
+        <Metric label="Pending Review" value={String(pendingEvents.length)} />
+      </section>
+
+      <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Your Active Modules</h2>
+          <p className="mt-2 text-white/65">
+            These areas become available based on your approved access and your
+            activity inside HypeKnight.
+          </p>
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          {modules.map((module) => (
+            <ProfileCard
+              key={module.title}
+              title={module.title}
+              text={module.text}
+              href={module.href}
+              action={module.action}
+            />
+          ))}
+        </div>
+      </section>
+
+      {revisionDraftEvents.length ? (
+        <EventModule
+          title="Revision Drafts"
+          text="These events were opened for editing and need to be submitted back to HypeKnight for approval."
+          events={revisionDraftEvents}
+          emptyText="No revision drafts."
+          actionLabel="Continue Revision"
         />
-        <MetricCard
-          label="Revision Requests"
-          value={String(revisionSubmittedEvents.length)}
-          tone="yellow"
+      ) : null}
+
+      {revisionSubmittedEvents.length ? (
+        <EventModule
+          title="Revisions Waiting for HypeKnight"
+          text="These revisions have been submitted and are waiting for admin review."
+          events={revisionSubmittedEvents}
+          emptyText="No submitted revisions."
+          actionLabel="View Review"
         />
-        <MetricCard
-          label="Not Paid / Not Approved"
-          value={String(unpaidUnapprovedEvents.length)}
-          tone="orange"
-        />
-        <MetricCard
-          label="Scheduled / Active"
-          value={String(activePipelineEvents.length)}
-          tone="green"
-        />
-      </div>
+      ) : null}
 
-      <div className="space-y-12">
-        <AdminSection
-          title="Revision Requests"
-          subtitle="Events edited by owners and resubmitted for admin approval."
-        >
-          {revisionSubmittedEvents.length ? (
-            <div className="space-y-6">
-              {revisionSubmittedEvents.map((event) => (
-                <RevisionModerationCard key={event.id} event={event} />
-              ))}
+      {draftEvents.length || activeEvents.length ? (
+        <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-white">My Event Activity</h2>
+              <p className="mt-2 text-white/65">
+                Drafts, revision drafts, pending, scheduled, and active listings
+                appear here.
+              </p>
             </div>
-          ) : (
-            <EmptyState text="No revision requests waiting for review." />
-          )}
-        </AdminSection>
 
-        <AdminSection
-          title="Not Paid / Not Approved"
-          subtitle="Events completed by the user but blocked until payment is complete."
-        >
-          {unpaidUnapprovedEvents.length ? (
-            <div className="space-y-6">
-              {unpaidUnapprovedEvents.map((event) => (
-                <EventPipelineCard key={event.id} event={event} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No unpaid unapproved events." />
-          )}
-        </AdminSection>
+            <Link
+              href="/dashboard/events/new/step-1"
+              className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
+            >
+              Create Event
+            </Link>
+          </div>
 
-        <AdminSection
-          title="Events Waiting for Approval"
-          subtitle="Waiting for admin review."
-        >
-          {readyForApprovalEvents.length ? (
-            <div className="space-y-6">
-              {readyForApprovalEvents.map((event) => (
-                <EventModerationCard
-                  key={event.id}
-                  event={event}
-                  mode="submitted"
-                  approveEvent={approveEvent}
-                  rejectEvent={rejectEvent}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No submitted events waiting for review." />
-          )}
-        </AdminSection>
+          <div className="mt-6 space-y-4">
+            {[...draftEvents, ...activeEvents].slice(0, 8).map((event) => (
+              <EventRow key={event.id} event={event} />
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+          <h2 className="text-2xl font-bold text-white">Ready when you are</h2>
+          <p className="mt-3 text-white/65">
+            You do not have any event drafts, revision drafts, or active event
+            listings right now.
+          </p>
 
-        <AdminSection
-          title="Unapproved and Waiting on Payment"
-          subtitle="Events that are not approved and still need payment or an admin override."
-        >
-          {unpaidUnapprovedEvents.length ? (
-            <div className="space-y-6">
-              {unpaidUnapprovedEvents.map((event) => (
-                <EventModerationCard
-                  key={event.id}
-                  event={event}
-                  mode="awaiting_payment"
-                  applyPaymentOverride={applyPaymentOverride}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No approved unpaid events right now." />
-          )}
-        </AdminSection>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/events"
+              className="rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
+            >
+              Find Something To Do
+            </Link>
 
-        <AdminSection
-          title="Scheduled / Active"
-          subtitle="Events currently in the publish pipeline or live."
-        >
-          {activePipelineEvents.length ? (
-            <div className="space-y-4">
-              {activePipelineEvents.map((event) => (
-                <EventPipelineCard key={event.id} event={event} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No scheduled or active events yet." />
-          )}
-        </AdminSection>
+            <Link
+              href="/dashboard/events/new/step-1"
+              className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+            >
+              Post an Event
+            </Link>
+          </div>
+        </section>
+      )}
 
-        <AdminSection title="Rejected" subtitle="Recently rejected events.">
-          {rejectedEvents.length ? (
-            <div className="space-y-4">
-              {rejectedEvents.slice(0, 20).map((event) => (
-                <EventPipelineCard key={event.id} event={event} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No rejected events." />
-          )}
-        </AdminSection>
-      </div>
+      {venueRows.length ? (
+        <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+          <h2 className="text-2xl font-bold text-white">Venue Activity</h2>
+          <p className="mt-2 text-white/65">
+            Venues connected to your account appear here.
+          </p>
+
+          <div className="mt-6 space-y-4">
+            {venueRows.slice(0, 5).map((venue) => (
+              <VenueRow key={venue.id} venue={venue} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {profile?.app_role === 'admin' ? (
+        <section className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
+          <h2 className="text-2xl font-bold text-white">Admin Access</h2>
+          <p className="mt-3 text-white/70">
+            You have admin permissions for HypeKnight platform operations.
+          </p>
+
+          <Link
+            href="/admin"
+            className="mt-6 inline-flex rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+          >
+            Open Admin Command Center
+          </Link>
+        </section>
+      ) : null}
     </section>
   );
 }
 
-function RevisionModerationCard({ event }: { event: any }) {
-  const urgency = getEventUrgency(event);
+function buildModules({
+  profile,
+  ambassadorProfile,
+  ambassadorApplication,
+  eventCount,
+  venueCount,
+}: {
+  profile: any;
+  ambassadorProfile: any;
+  ambassadorApplication: any;
+  eventCount: number;
+  venueCount: number;
+}) {
+  const modules = [
+    {
+      title: 'Discover Events',
+      text: 'Find what is happening tonight, tomorrow, this week, and around your city.',
+      href: '/events',
+      action: 'Explore Events',
+    },
+    {
+      title: 'Personal Preferences',
+      text: 'Set your city, music, vibe, and event preferences for better recommendations.',
+      href: '/dashboard/preferences',
+      action: 'Update Preferences',
+    },
+  ];
+
+  modules.push({
+    title: eventCount > 0 ? 'Promoter / Event Owner' : 'Post an Event',
+    text:
+      eventCount > 0
+        ? 'Manage your event drafts, revisions, pending reviews, scheduled listings, and live events.'
+        : 'Create your first event listing and submit it into the HypeKnight promotion pipeline.',
+    href: eventCount > 0 ? '/dashboard' : '/dashboard/events/new/step-1',
+    action: eventCount > 0 ? 'View Event Activity' : 'Create Event',
+  });
+
+  modules.push({
+    title: 'Ambassador Program',
+    text: getAmbassadorText(ambassadorApplication, ambassadorProfile),
+    href:
+      ambassadorProfile?.status === 'active'
+        ? '/ambassadors/dashboard'
+        : ambassadorApplication
+        ? '/ambassadors/dashboard'
+        : '/dashboard/ambassador/apply',
+    action:
+      ambassadorProfile?.status === 'active'
+        ? 'Open Ambassador Dashboard'
+        : ambassadorApplication
+        ? 'View Application Status'
+        : 'Apply Now',
+  });
+
+  if (venueCount > 0 || profile?.app_role === 'venue_owner') {
+    modules.push({
+      title: 'Venue Owner',
+      text: 'Manage venues, venue details, and connected event activity.',
+      href: '/dashboard/venues',
+      action: 'Open Venue Tools',
+    });
+  }
+
+  if (profile?.app_role === 'dj') {
+    modules.push({
+      title: 'DJ Profile',
+      text: 'Manage your DJ access, performance profile, and future HypeKnight music tools.',
+      href: '/dashboard/dj',
+      action: 'Open DJ Tools',
+    });
+  }
+
+  if (profile?.app_role === 'admin') {
+    modules.push({
+      title: 'Admin Command Center',
+      text: 'Access moderation, users, payments, ambassadors, system tools, and event queues.',
+      href: '/admin',
+      action: 'Open Admin',
+    });
+  }
+
+  return modules;
+}
+
+function buildRoles({
+  appRole,
+  ambassadorStatus,
+  hasEvents,
+  hasVenues,
+}: {
+  appRole?: string | null;
+  ambassadorStatus?: string | null;
+  hasEvents?: boolean;
+  hasVenues?: boolean;
+}) {
+  const roles = new Set<string>();
+
+  roles.add('user');
+
+  if (hasEvents) roles.add('promoter');
+  if (hasVenues) roles.add('venue owner');
+  if (appRole === 'admin') roles.add('admin');
+  if (appRole === 'venue_owner') roles.add('venue owner');
+  if (appRole === 'dj') roles.add('dj');
+  if (appRole === 'ambassador' || ambassadorStatus === 'active') {
+    roles.add('ambassador');
+  }
+
+  return Array.from(roles);
+}
+
+function EventModule({
+  title,
+  text,
+  events,
+  emptyText,
+  actionLabel,
+}: {
+  title: string;
+  text: string;
+  events: any[];
+  emptyText: string;
+  actionLabel: string;
+}) {
+  return (
+    <section className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
+      <h2 className="text-2xl font-bold text-white">{title}</h2>
+      <p className="mt-2 text-white/70">{text}</p>
+
+      {events.length ? (
+        <div className="mt-6 space-y-4">
+          {events.map((event) => (
+            <EventRow key={event.id} event={event} actionLabel={actionLabel} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5 text-white/60">
+          {emptyText}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function getAmbassadorText(application: any, ambassador: any) {
+  if (ambassador?.status === 'active') {
+    return 'Your ambassador profile is active. Manage coupon requests and track performance.';
+  }
+
+  if (ambassador?.status === 'suspended') {
+    return 'Your ambassador profile is currently suspended.';
+  }
+
+  if (application?.status === 'pending') {
+    return 'Your ambassador application is pending HypeKnight review.';
+  }
+
+  if (application?.status === 'rejected') {
+    return 'Your ambassador application was reviewed. Contact HypeKnight for next steps.';
+  }
+
+  return 'Request approval to become a HypeKnight ambassador and unlock coupon tracking tools.';
+}
+
+function ProfileCard({
+  title,
+  text,
+  href,
+  action,
+}: {
+  title: string;
+  text: string;
+  href: string;
+  action: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-[2rem] border border-white/10 bg-white/5 p-8 transition hover:border-accent/40 hover:bg-white/[0.07]"
+    >
+      <h2 className="text-2xl font-bold text-white group-hover:text-accent">
+        {title}
+      </h2>
+      <p className="mt-4 text-white/65">{text}</p>
+      <p className="mt-6 text-sm font-medium text-accent">{action} →</p>
+    </Link>
+  );
+}
+
+function EventRow({
+  event,
+  actionLabel = 'Open',
+}: {
+  event: any;
+  actionLabel?: string;
+}) {
+  const href =
+    event.status === 'revision_draft'
+      ? `/dashboard/events/${event.id}/edit`
+      : `/dashboard/events/${event.id}/review`;
 
   return (
-    <div className={`rounded-[2rem] border p-6 ${getRevisionTone(urgency)}`}>
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusChip status={event.status} />
-            <OwnerTypeChip ownerType={event.owner_type} />
-            <UrgencyChip urgency={urgency} />
-            <StateChip label={event.is_public ? 'Public' : 'Hidden'} tone={event.is_public ? 'green' : 'gray'} />
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xl font-bold text-white">{event.name}</h3>
+            <RolePill label={event.status} />
           </div>
 
-          <h2 className="mt-3 text-2xl font-bold text-white">{event.name}</h2>
+          <p className="mt-2 text-white/55">
+            {[event.city, event.state].filter(Boolean).join(', ') ||
+              'Location pending'}
+            {event.event_start_at
+              ? ` • ${new Date(event.event_start_at).toLocaleString()}`
+              : ''}
+          </p>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Info label="Venue" value={event.venue_name} />
-            <Info label="City / State" value={`${event.city || ''}, ${event.state || ''}`} />
-            <Info
-              label="Event Start"
-              value={
-                event.event_start_at
-                  ? new Date(event.event_start_at).toLocaleString()
-                  : '—'
-              }
-            />
-            <Info
-              label="Revision Submitted"
-              value={
-                event.revision_submitted_at
-                  ? new Date(event.revision_submitted_at).toLocaleString()
-                  : '—'
-              }
-            />
-            <Info
-              label="Original Status"
-              value={event.original_status_before_revision || '—'}
-            />
-            <Info label="Total" value={`$${Number(event.total_price || 0).toFixed(2)}`} />
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-            <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-              Revision Reason
+          {event.status === 'revision_draft' && event.revision_reason ? (
+            <p className="mt-2 text-sm text-accent">
+              Revision: {event.revision_reason}
             </p>
-            <p className="mt-2 whitespace-pre-wrap text-white/75">
-              {event.revision_reason || 'No revision reason provided.'}
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <Link
-            href={`/admin/events/${event.id}`}
-            className="block rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
-          >
-            View Full Event
-          </Link>
-
-          {event.slug ? (
-            <Link
-              href={`/events/${event.slug}`}
-              className="block rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-white hover:border-accent/40"
-            >
-              View Public Page
-            </Link>
           ) : null}
-
-          <form action={approveEventRevision} className="space-y-3">
-            <input type="hidden" name="event_id" value={event.id} />
-            <textarea
-              name="admin_note"
-              rows={3}
-              placeholder="Approval note"
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40"
-            />
-            <button
-              type="submit"
-              className="w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
-            >
-              Approve Revision
-            </button>
-          </form>
-
-          <form action={rejectEventRevision} className="space-y-3">
-            <input type="hidden" name="event_id" value={event.id} />
-            <textarea
-              name="admin_note"
-              rows={3}
-              placeholder="Reason revision needs more changes"
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40"
-            />
-            <button
-              type="submit"
-              className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 font-semibold text-red-300 hover:border-red-500/40"
-            >
-              Reject Revision
-            </button>
-          </form>
         </div>
+
+        <Link
+          href={href}
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-center text-white hover:border-accent/40"
+        >
+          {actionLabel}
+        </Link>
       </div>
     </div>
+  );
+}
+
+function VenueRow({ venue }: { venue: any }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xl font-bold text-white">{venue.name}</h3>
+            <RolePill label={venue.status || 'venue'} />
+          </div>
+
+          <p className="mt-2 text-white/55">
+            {[venue.city, venue.state].filter(Boolean).join(', ') ||
+              'Location pending'}
+          </p>
+        </div>
+
+        <Link
+          href={`/dashboard/venues/${venue.id}`}
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-center text-white hover:border-accent/40"
+        >
+          Open
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+        {label}
+      </p>
+      <p className="mt-3 text-3xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function RolePill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/65">
+      {label}
+    </span>
   );
 }
