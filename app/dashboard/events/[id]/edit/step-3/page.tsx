@@ -5,6 +5,7 @@ import {
   submitEventForModeration,
 } from '@/app/dashboard/events/actions';
 import { createClient } from '@/lib/supabase/server';
+import { getPlatformSettings } from '@/lib/settings';
 import EventStep3Form from '@/components/events/EventStep3Form';
 
 type Step3PageProps = {
@@ -12,10 +13,6 @@ type Step3PageProps = {
     id: string;
   }>;
 };
-
-const EXTRA_DAY_PRICE = 2.5;
-const LITE_PRICE = 9.99;
-const FULL_PRICE = 49.99;
 
 export default async function EditEventStep3Page({ params }: Step3PageProps) {
   const { id } = await params;
@@ -27,6 +24,14 @@ export default async function EditEventStep3Page({ params }: Step3PageProps) {
   } = await supabase.auth.getUser();
 
   if (!user) redirect('/auth/login');
+
+  const settings = await getPlatformSettings();
+
+  const extraDayPrice = Number(settings.extra_promo_day_price || 2.5);
+  const litePrice = Number(settings.link_lite_price || 9.99);
+  const fullPrice = Number(settings.full_link_price || 49.99);
+  const linkLiteEnabled = Boolean(settings.enable_link_lite);
+  const fullLinkEnabled = Boolean(settings.enable_full_link);
 
   const { data: event, error } = await supabase
     .from('events')
@@ -86,26 +91,14 @@ export default async function EditEventStep3Page({ params }: Step3PageProps) {
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2">
-        <Info
-          label="Event Starts"
-          value={formatDate(event.event_start_at)}
-        />
-        <Info
-          label="Event Ends"
-          value={formatDate(event.event_end_at)}
-        />
-        <Info
-          label="Promotion Starts"
-          value={formatDate(event.promotion_start_at)}
-        />
-        <Info
-          label="Promotion Ends"
-          value={formatDate(event.promotion_end_at)}
-        />
+        <Info label="Event Starts" value={formatDate(event.event_start_at)} />
+        <Info label="Event Ends" value={formatDate(event.event_end_at)} />
+        <Info label="Promotion Starts" value={formatDate(event.promotion_start_at)} />
+        <Info label="Promotion Ends" value={formatDate(event.promotion_end_at)} />
       </div>
 
       <div className="mb-8 rounded-[2rem] border border-white/10 bg-white/5 p-6">
-        <h2 className="text-2xl font-bold text-white">Payment Summary</h2>
+        <h2 className="text-2xl font-bold text-white">Current Payment Summary</h2>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <Info label="Total Price" value={`$${totalPrice.toFixed(2)}`} />
@@ -138,9 +131,11 @@ export default async function EditEventStep3Page({ params }: Step3PageProps) {
 
       <EventStep3Form
         event={event}
-        extraDayPrice={EXTRA_DAY_PRICE}
-        litePrice={LITE_PRICE}
-        fullPrice={FULL_PRICE}
+        extraDayPrice={extraDayPrice}
+        litePrice={litePrice}
+        fullPrice={fullPrice}
+        linkLiteEnabled={linkLiteEnabled}
+        fullLinkEnabled={fullLinkEnabled}
         updateAction={updateEventStep3}
         submitAction={submitEventForModeration}
       />

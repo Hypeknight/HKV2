@@ -488,6 +488,7 @@ export async function updateEventStep1(formData: FormData) {
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { calculateTotalPrice } from '@/lib/events/workflow';
+import { getPlatformSettings } from '@/lib/settings';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -739,8 +740,11 @@ export async function createEventStep1(formData: FormData) {
     throw new Error('Invalid event end date.');
   }
 
-  const includedPromoDays = 14;
-  const extraPromoDays = 0;
+  const settings = await getPlatformSettings();
+
+const includedPromoDays = Number(settings.included_promo_days || 14);
+const extraPromoDays = 0;
+const basePrice = Number(settings.event_base_price || 19.99);
 
   const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
     eventStartAt: eventStartAt.toISOString(),
@@ -770,12 +774,12 @@ export async function createEventStep1(formData: FormData) {
       is_paid: false,
       included_promo_days: includedPromoDays,
       extra_promo_days: extraPromoDays,
-      base_price: 19.99,
+      base_price: basePrice,
       extra_promo_price: 0,
       linkdn_mode: 'none',
       linkdn_price: 0,
-      total_price: 19.99,
-      payment_amount: 19.99,
+      total_price: basePrice,
+      payment_amount: basePrice,
       current_step: 1,
     })
     .select('id')
@@ -836,9 +840,10 @@ export async function updateEventStep3(formData: FormData) {
 
   if (!user) redirect('/auth/login');
 
+  const settings = await getPlatformSettings();
+
   const eventId = String(formData.get('event_id') || '');
   const extraPromoDays = Number(formData.get('extra_promo_days') || 0);
-  const extraDayPrice = Number(formData.get('extra_day_price') || 0);
   const linkdnMode = String(formData.get('linkdn_mode') || 'none') as
     | 'none'
     | 'lite'
@@ -846,12 +851,29 @@ export async function updateEventStep3(formData: FormData) {
 
   if (!eventId) throw new Error('Missing event id.');
 
+  const basePrice = Number(settings.event_base_price || 19.99);
+  const includedPromoDays = Number(settings.included_promo_days || 14);
+  const extraDayPrice = Number(settings.extra_promo_day_price || 2.5);
+
+  const linkLiteEnabled = Boolean(settings.enable_link_lite);
+  const fullLinkEnabled = Boolean(settings.enable_full_link);
+  const litePrice = Number(settings.link_lite_price || 9.99);
+  const fullPrice = Number(settings.full_link_price || 49.99);
+
+  if (linkdnMode === 'lite' && !linkLiteEnabled) {
+    throw new Error('Link Lite is currently disabled.');
+  }
+
+  if (linkdnMode === 'full' && !fullLinkEnabled) {
+    throw new Error('Full Link is currently disabled.');
+  }
+
   const linkdnPrice =
-    linkdnMode === 'full' ? 49.99 : linkdnMode === 'lite' ? 9.99 : 0;
+    linkdnMode === 'full' ? fullPrice : linkdnMode === 'lite' ? litePrice : 0;
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
-    .select('event_start_at, event_end_at, base_price, included_promo_days, status')
+    .select('event_start_at, event_end_at, status')
     .eq('id', eventId)
     .eq('owner_id', user.id)
     .single();
@@ -864,7 +886,6 @@ export async function updateEventStep3(formData: FormData) {
     redirect('/dashboard');
   }
 
-  const includedPromoDays = Number(event.included_promo_days || 14);
   const extraPromoPrice = Number((extraPromoDays * extraDayPrice).toFixed(2));
 
   const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
@@ -874,7 +895,7 @@ export async function updateEventStep3(formData: FormData) {
   });
 
   const totalPrice = calculateTotalPrice({
-    basePrice: Number(event.base_price || 19.99),
+    basePrice,
     extraPromoPrice,
     linkdnPrice,
   });
@@ -887,6 +908,7 @@ export async function updateEventStep3(formData: FormData) {
       extra_promo_price: extraPromoPrice,
       promotion_start_at: promotionStartAt,
       promotion_end_at: promotionEndAt,
+      base_price: basePrice,
       linkdn_mode: linkdnMode,
       linkdn_price: linkdnPrice,
       total_price: totalPrice,
