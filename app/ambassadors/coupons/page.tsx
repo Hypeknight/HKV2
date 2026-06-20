@@ -1,16 +1,28 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getPlatformSettings } from '@/lib/settings';
 import { requestAmbassadorCoupon } from '../actions';
 
 export default async function AmbassadorCouponsPage() {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect('/auth/login');
+
+  if (!settings.ambassador_program_enabled) {
+    redirect('/ambassadors/dashboard?error=program_paused');
+  }
+
+  const minDiscount = Number(settings.ambassador_min_discount || 20);
+  const maxDiscount = Number(settings.ambassador_max_discount || 70);
+  const commissionPercent = Number(settings.ambassador_commission_percent || 30);
+
+  const discountOptions = buildDiscountOptions(minDiscount, maxDiscount);
 
   const { data: ambassador } = await supabase
     .from('ambassador_profiles')
@@ -39,10 +51,11 @@ export default async function AmbassadorCouponsPage() {
         </p>
 
         <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5 text-yellow-100/80">
-          You may request 20% to 70% off. Higher discounts reduce the amount paid
-          by the customer and may reduce your commission. Ambassador proceeds are
-          calculated after profit and only qualify after the event completes without
-          refund, removal, or chargeback.
+          You may request {minDiscount}% to {maxDiscount}% off. Higher discounts
+          reduce the amount paid by the customer and may reduce your commission.
+          Ambassador commission is currently {commissionPercent}% of eligible profit
+          and only qualifies after the event completes without refund, removal, or
+          chargeback.
         </div>
       </div>
 
@@ -64,10 +77,10 @@ export default async function AmbassadorCouponsPage() {
           <span className="text-sm text-white/60">Discount Percent</span>
           <select
             name="discount_percent"
-            defaultValue="20"
+            defaultValue={String(minDiscount)}
             className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
           >
-            {[20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70].map((percent) => (
+            {discountOptions.map((percent) => (
               <option key={percent} value={percent}>
                 {percent}% off
               </option>
@@ -96,4 +109,21 @@ export default async function AmbassadorCouponsPage() {
       </form>
     </section>
   );
+}
+
+function buildDiscountOptions(min: number, max: number) {
+  const safeMin = Math.max(0, Math.min(100, Math.round(min)));
+  const safeMax = Math.max(safeMin, Math.min(100, Math.round(max)));
+
+  const options = [];
+
+  for (let percent = safeMin; percent <= safeMax; percent += 5) {
+    options.push(percent);
+  }
+
+  if (!options.includes(safeMax)) {
+    options.push(safeMax);
+  }
+
+  return options;
 }
