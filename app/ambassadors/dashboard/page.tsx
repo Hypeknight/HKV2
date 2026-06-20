@@ -1,15 +1,24 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getPlatformSettings } from '@/lib/settings';
 
 export default async function AmbassadorDashboardPage() {
   const supabase = await createClient();
+  const settings = await getPlatformSettings();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect('/auth/login');
+
+  const programEnabled = Boolean(settings.ambassador_program_enabled);
+  const minDiscount = Number(settings.ambassador_min_discount || 20);
+  const maxDiscount = Number(settings.ambassador_max_discount || 70);
+  const commissionPercent = Number(settings.ambassador_commission_percent || 30);
+  const minPayout = Number(settings.ambassador_min_payout || 25);
+  const founderLimit = Number(settings.ambassador_founder_limit || 50);
 
   const [{ data: application }, { data: ambassador }] = await Promise.all([
     supabase
@@ -27,7 +36,7 @@ export default async function AmbassadorDashboardPage() {
   ]);
 
   if (!application && !ambassador) {
-    redirect('/ambassadors/apply');
+    redirect('/dashboard/ambassador/apply');
   }
 
   const isActive = ambassador?.status === 'active';
@@ -80,21 +89,31 @@ export default async function AmbassadorDashboardPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Chip label={`Application: ${application?.status || 'none'}`} />
           <Chip label={`Ambassador: ${ambassador?.status || 'not active'}`} />
+          <Chip label={programEnabled ? 'Program: Open' : 'Program: Paused'} />
+          <Chip label={`Commission: ${commissionPercent}%`} />
         </div>
+
+        {!programEnabled ? (
+          <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5 text-yellow-100/80">
+            The HypeKnight ambassador program is currently paused. You can still
+            view your dashboard and existing activity, but new applications or
+            coupon requests may be disabled.
+          </div>
+        ) : null}
 
         {!isActive ? (
           <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5 text-yellow-100/80">
             Your ambassador account must be approved and active before you can
             create coupon requests.
           </div>
-        ) : (
+        ) : programEnabled ? (
           <Link
             href="/ambassadors/coupons"
             className="mt-6 inline-flex rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
           >
             Request Coupon Code
           </Link>
-        )}
+        ) : null}
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -104,13 +123,37 @@ export default async function AmbassadorDashboardPage() {
         <Metric label="Paid Commission" value={`$${paid.toFixed(2)}`} />
       </section>
 
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric
+          label="Current Discount Range"
+          value={`${minDiscount}–${maxDiscount}%`}
+        />
+        <Metric
+          label="Commission Rate"
+          value={`${commissionPercent}%`}
+        />
+        <Metric
+          label="Minimum Payout"
+          value={`$${minPayout.toFixed(2)}`}
+        />
+        <Metric
+          label="Founder Limit"
+          value={String(founderLimit)}
+        />
+      </section>
+
       <Panel title="Coupon Requests">
         {couponRequests?.length ? (
           <div className="space-y-4">
             {couponRequests.map((request) => (
-              <div key={request.id} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <div
+                key={request.id}
+                className="rounded-2xl border border-white/10 bg-black/20 p-5"
+              >
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-white">{request.requested_code}</h3>
+                  <h3 className="text-xl font-bold text-white">
+                    {request.requested_code}
+                  </h3>
                   <Chip label={request.status} />
                 </div>
                 <p className="mt-2 text-white/60">
@@ -128,9 +171,14 @@ export default async function AmbassadorDashboardPage() {
         {commissionRows.length ? (
           <div className="space-y-4">
             {commissionRows.map((row) => (
-              <div key={row.id} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <div
+                key={row.id}
+                className="rounded-2xl border border-white/10 bg-black/20 p-5"
+              >
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-white">{row.coupon_code}</h3>
+                  <h3 className="text-xl font-bold text-white">
+                    {row.coupon_code}
+                  </h3>
                   <Chip label={row.status} />
                 </div>
                 <p className="mt-2 text-white/60">
@@ -151,13 +199,21 @@ export default async function AmbassadorDashboardPage() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">{label}</p>
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+        {label}
+      </p>
       <p className="mt-3 text-3xl font-bold text-white">{value}</p>
     </div>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
       <h2 className="text-2xl font-bold text-white">{title}</h2>
