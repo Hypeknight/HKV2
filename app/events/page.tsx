@@ -81,7 +81,8 @@ export default async function EventsPage() {
   */
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import DiscoveryEventCard from '@/components/events/DiscoveryEventCard';
+import { expandCitySearch } from '@/lib/city-aliases';
+import { US_STATES, normalizeState } from '@/lib/states';
 
 type Props = {
   searchParams?: Promise<{
@@ -96,7 +97,8 @@ export default async function EventsPage({ searchParams }: Props) {
 
   const search = String(query.q || '').trim().toLowerCase();
   const city = String(query.city || '').trim().toLowerCase();
-  const state = String(query.state || '').trim().toLowerCase();
+  const state = normalizeState(String(query.state || ''));
+  const cityTerms = expandCitySearch(city);
 
   const supabase = await createClient();
   const now = new Date();
@@ -200,13 +202,16 @@ export default async function EventsPage({ searchParams }: Props) {
       .join(' ')
       .toLowerCase();
 
+    const eventCity = String(event.city || '').toLowerCase();
+    const eventState = normalizeState(String(event.state || ''));
+
     const matchesSearch = search ? haystack.includes(search) : true;
-    const matchesCity = city
-      ? String(event.city || '').toLowerCase().includes(city)
+
+    const matchesCity = cityTerms.length
+      ? cityTerms.some((term) => eventCity.includes(term.toLowerCase()))
       : true;
-    const matchesState = state
-      ? String(event.state || '').toLowerCase().includes(state)
-      : true;
+
+    const matchesState = state ? eventState === state : true;
 
     return matchesSearch && matchesCity && matchesState;
   });
@@ -257,10 +262,11 @@ export default async function EventsPage({ searchParams }: Props) {
 
         <p className="mt-4 max-w-3xl text-white/70">
           Search HypeKnight events and supplemental external events by city,
-          state, vibe, venue, music, or event name.
+          state, vibe, venue, music, or event name. City nicknames like KC, STL,
+          Chi, NYC, and Vegas are supported.
         </p>
 
-        <form className="mt-8 grid gap-3 lg:grid-cols-[1fr_220px_160px_140px]">
+        <form className="mt-8 grid gap-3 lg:grid-cols-[1fr_220px_180px_140px]">
           <input
             name="q"
             defaultValue={query.q || ''}
@@ -271,16 +277,22 @@ export default async function EventsPage({ searchParams }: Props) {
           <input
             name="city"
             defaultValue={query.city || ''}
-            placeholder="City"
+            placeholder="City or nickname: KC, STL, Chi..."
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
 
-          <input
+          <select
             name="state"
-            defaultValue={query.state || ''}
-            placeholder="State"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-          />
+            defaultValue={state || ''}
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none focus:border-accent/50"
+          >
+            <option value="">All States</option>
+            {US_STATES.map(([abbr, name]) => (
+              <option key={abbr} value={abbr}>
+                {name}
+              </option>
+            ))}
+          </select>
 
           <button
             type="submit"
@@ -290,7 +302,7 @@ export default async function EventsPage({ searchParams }: Props) {
           </button>
         </form>
 
-        {(search || city || state) ? (
+        {search || city || state ? (
           <div className="mt-4">
             <Link
               href="/events"
@@ -356,6 +368,40 @@ export default async function EventsPage({ searchParams }: Props) {
   );
 }
 
+function isSameWindow(
+  value: string | null | undefined,
+  start: Date,
+  end: Date
+) {
+  if (!value) return false;
+
+  const date = new Date(value);
+
+  return date >= start && date < end;
+}
+
+function isLiveNow(event: any, now: Date) {
+  if (!event.event_start_at) return false;
+
+  const start = new Date(event.event_start_at);
+  const end = event.event_end_at
+    ? new Date(event.event_end_at)
+    : new Date(start.getTime() + 4 * 60 * 60 * 1000);
+
+  return start <= now && end >= now;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+        {label}
+      </p>
+      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
 function EventSection({
   eyebrow,
   title,
@@ -380,54 +426,69 @@ function EventSection({
       </div>
 
       {events.length ? (
-        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {events.map((event, index) => (
-            <DiscoveryEventCard
-              key={`${event.source_label}-${event.id}-${index}`}
-              event={event}
-              featured={featured && index < 3}
-            />
+        <div
+          className={
+            featured
+              ? 'mt-8 grid gap-5 md:grid-cols-2'
+              : 'mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3'
+          }
+        >
+          {events.map((event) => (
+            <EventCard key={`${event.source_label}-${event.id}`} event={event} />
           ))}
         </div>
       ) : (
         <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
-          No events found in this window.
+          No events are showing in this section yet.
         </div>
       )}
     </section>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function EventCard({ event }: { event: any }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-        {label}
-      </p>
-      <p className="mt-3 text-3xl font-bold text-white">{value}</p>
-    </div>
+    <Link
+      href={event.href}
+      className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07]"
+    >
+      {event.image_url ? (
+        <img
+          src={event.image_url}
+          alt={event.name}
+          className="h-52 w-full object-cover"
+        />
+      ) : null}
+
+      <div className="p-6">
+        <p className="text-xs uppercase tracking-[0.25em] text-accent">
+          {event.source_label}
+        </p>
+
+        <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
+          {event.name}
+        </h3>
+
+        <p className="mt-3 text-white/60">
+          {[event.city, event.state].filter(Boolean).join(', ') ||
+            event.venue_name ||
+            'Location TBA'}
+        </p>
+
+        {event.event_start_at ? (
+          <p className="mt-2 text-sm text-white/50">
+            {new Date(event.event_start_at).toLocaleString()}
+          </p>
+        ) : null}
+
+        {event.description ? (
+          <p className="mt-4 line-clamp-3 text-sm text-white/65">
+            {event.description}
+          </p>
+        ) : null}
+
+        <p className="mt-6 text-sm font-medium text-accent">Open event →</p>
+      </div>
+    </Link>
   );
-}
-
-function isSameWindow(
-  value: string | null | undefined,
-  start: Date,
-  end: Date
-) {
-  if (!value) return false;
-
-  const date = new Date(value);
-
-  return date >= start && date < end;
-}
-
-function isLiveNow(event: any, now: Date) {
-  if (!event.event_start_at) return false;
-
-  const start = new Date(event.event_start_at);
-  const end = event.event_end_at
-    ? new Date(event.event_end_at)
-    : new Date(start.getTime() + 4 * 60 * 60 * 1000);
-
-  return now >= start && now <= end;
 }
