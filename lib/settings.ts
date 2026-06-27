@@ -39,4 +39,24 @@ const defaultSettings = {
   ambassador_min_discount: 20,
   ambassador_max_discount: 70,
   ambassador_commission_percent: 30,
-  ambassador
+  ambassador_min_payout: 25,
+  ambassador_program_enabled: true,
+  ambassador_founder_limit: 50,
+};
+
+export async function getPlatformSettings() {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('*')
+    .eq('id', 'global')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Platform settings error:', error.message);
+    return defaultSettings;
+  }
+
+  return data || defaultSettings;
+}

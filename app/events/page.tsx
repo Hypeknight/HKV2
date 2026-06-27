@@ -479,4 +479,106 @@ function EventSection({
 }) {
   return (
     <section>
-      <div className="max-w
+      <div className="max-w-3xl">
+        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          {eyebrow}
+        </p>
+        <h2 className="mt-3 text-3xl font-bold text-white">{title}</h2>
+        <p className="mt-3 text-white/70">{text}</p>
+      </div>
+
+      {events.length ? (
+        <div
+          className={
+            featured
+              ? 'mt-8 grid gap-5 md:grid-cols-2'
+              : 'mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3'
+          }
+        >
+          {events.map((event) => (
+            <EventCard key={`${event.source_label}-${event.id}`} event={event} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
+          {emptyText}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EventCard({ event }: { event: any }) {
+  const live = isLiveNow(event, new Date());
+
+  return (
+    <Link
+      href={event.href}
+      className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07]"
+    >
+      <div className="relative">
+        {event.image_url ? (
+          <img
+            src={event.image_url}
+            alt={event.name}
+            className="h-52 w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-52 w-full items-center justify-center bg-black/30 text-white/40">
+            No image
+          </div>
+        )}
+
+        {live ? (
+          <span className="absolute left-4 top-4 rounded-full bg-accent px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-black">
+            Live Now
+          </span>
+        ) : null}
+      </div>
+
+      <div className="p-6">
+        <p className="text-xs uppercase tracking-[0.25em] text-accent">
+          {event.source_label}
+        </p>
+
+        <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
+          {event.name}
+        </h3>
+
+        <p className="mt-3 text-white/60">
+          {[event.city, event.state].filter(Boolean).join(', ') ||
+            event.venue_name ||
+            'Location TBA'}
+        </p>
+
+        {event.event_start_at ? (
+          <p className="mt-2 text-sm text-white/50">
+            {new Date(event.event_start_at).toLocaleString()}
+          </p>
+        ) : null}
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {event.genre ? <Pill label={event.genre} /> : null}
+          {event.classification ? <Pill label={event.classification} /> : null}
+          {event.venue_name ? <Pill label={event.venue_name} /> : null}
+        </div>
+
+        {event.description ? (
+          <p className="mt-4 line-clamp-3 text-sm text-white/65">
+            {event.description}
+          </p>
+        ) : null}
+
+        <p className="mt-6 text-sm font-medium text-accent">Open event →</p>
+      </div>
+    </Link>
+  );
+}
+
+function Pill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
+      {label}
+    </span>
+  );
+}

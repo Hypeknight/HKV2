@@ -125,3 +125,106 @@ export default async function AdminSettingsPage() {
               label="Live Now Limit"
               type="number"
               defaultValue={settings.homepage_live_now_limit}
+            />
+
+            <Input
+              name="homepage_starting_soon_limit"
+              label="Starting Soon Limit"
+              type="number"
+              defaultValue={settings.homepage_starting_soon_limit}
+            />
+
+            <Input
+              name="homepage_recently_added_limit"
+              label="Recently Added Limit"
+              type="number"
+              defaultValue={settings.homepage_recently_added_limit}
+            />
+
+            <Input
+              name="homepage_weekend_limit"
+              label="Weekend Limit"
+              type="number"
+              defaultValue={settings.homepage_weekend_limit}
+            />
+
+            <Input
+              name="homepage_default_city"
+              label="Default Homepage City"
+              defaultValue={settings.homepage_default_city}
+            />
+
+            <Input
+              name="homepage_default_state"
+              label="Default Homepage State"
+              defaultValue={settings.homepage_default_state}
+            />
+
+            <Toggle
+              name="homepage_use_location_prompt"
+              label="Show Location Prompt"
+              defaultChecked={settings.homepage_use_location_prompt}
+            />
+          </div>
+        </Panel>
+
+        <button className="w-full rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90">
+          Save Platform Settings
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+      <h2 className="text-2xl font-bold text-white">{title}</h2>
+      <div className="mt-6">{children}</div>
+    </section>
+  );
+}
+
+function Input({
+  name,
+  label,
+  type = 'text',
+  step,
+  defaultValue,
+}: {
+  name: string;
+  label: string;
+  type?: string;
+  step?: string;
+  defaultValue?: string | number | null;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm text-white/60">{label}</span>
+      <input
+        name={name}
+        type={type}
+        step={step}
+        defaultValue={defaultValue ?? ''}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
+      />
+    </label>
+  );
+}
+
+function Toggle({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked?: boolean | null;
+}) {
+  return (
+    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white/75">
+      <input name={name} type="checkbox" defaultChecked={Boolean(defaultChecked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
