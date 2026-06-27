@@ -492,4 +492,16 @@ function EventCard({ event }: { event: any }) {
           </p>
         ) : null}
 
-     
+        <p className="mt-6 text-sm font-medium text-accent">Open event →</p>
+      </div>
+    </Link>
+  );
+}
+
+function Pill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
+      {label}
+    </span>
+  );
+}
