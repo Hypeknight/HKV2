@@ -82,6 +82,92 @@ export default async function AdminSettingsPage() {
           </div>
         </Panel>
 
+        <Panel title="Homepage Experience Widgets">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Toggle
+              name="homepage_show_live_now"
+              label="Show Live Now Widget"
+              defaultChecked={settings.homepage_show_live_now}
+            />
+
+            <Toggle
+              name="homepage_show_starting_soon"
+              label="Show Starting Soon Widget"
+              defaultChecked={settings.homepage_show_starting_soon}
+            />
+
+            <Toggle
+              name="homepage_show_recently_added"
+              label="Show Recently Added Widget"
+              defaultChecked={settings.homepage_show_recently_added}
+            />
+
+            <Toggle
+              name="homepage_show_weekend"
+              label="Show Weekend Widget"
+              defaultChecked={settings.homepage_show_weekend}
+            />
+
+            <Toggle
+              name="homepage_show_most_shared"
+              label="Show Most Shared Widget"
+              defaultChecked={settings.homepage_show_most_shared}
+            />
+
+            <Toggle
+              name="homepage_show_most_commented"
+              label="Show Most Commented Widget"
+              defaultChecked={settings.homepage_show_most_commented}
+            />
+
+            <Input
+              name="homepage_live_now_limit"
+              label="Live Now Limit"
+              type="number"
+              defaultValue={settings.homepage_live_now_limit}
+            />
+
+            <Input
+              name="homepage_starting_soon_limit"
+              label="Starting Soon Limit"
+              type="number"
+              defaultValue={settings.homepage_starting_soon_limit}
+            />
+
+            <Input
+              name="homepage_recently_added_limit"
+              label="Recently Added Limit"
+              type="number"
+              defaultValue={settings.homepage_recently_added_limit}
+            />
+
+            <Input
+              name="homepage_weekend_limit"
+              label="Weekend Limit"
+              type="number"
+              defaultValue={settings.homepage_weekend_limit}
+            />
+
+            <Input
+              name="homepage_default_city"
+              label="Default Homepage City"
+              defaultValue={settings.homepage_default_city}
+            />
+
+            <Input
+              name="homepage_default_state"
+              label="Default Homepage State"
+              defaultValue={settings.homepage_default_state}
+            />
+
+            <Toggle
+              name="homepage_use_location_prompt"
+              label="Show Location Prompt"
+              defaultChecked={settings.homepage_use_location_prompt}
+            />
+          </div>
+        </Panel>
+
         <button className="w-full rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90">
           Save Platform Settings
         </button>

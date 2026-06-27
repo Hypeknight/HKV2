@@ -20,6 +20,22 @@ const defaultSettings = {
   homepage_show_featured_events: true,
   homepage_show_priority_events: true,
 
+  homepage_show_live_now: true,
+  homepage_show_starting_soon: true,
+  homepage_show_recently_added: true,
+  homepage_show_weekend: true,
+  homepage_show_most_shared: false,
+  homepage_show_most_commented: false,
+
+  homepage_live_now_limit: 6,
+  homepage_starting_soon_limit: 6,
+  homepage_recently_added_limit: 6,
+  homepage_weekend_limit: 6,
+
+  homepage_default_city: 'Kansas City',
+  homepage_default_state: 'MO',
+  homepage_use_location_prompt: true,
+
   ambassador_min_discount: 20,
   ambassador_max_discount: 70,
   ambassador_commission_percent: 30,

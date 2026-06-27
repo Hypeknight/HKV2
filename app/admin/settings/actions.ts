@@ -67,6 +67,23 @@ export async function updatePlatformSettings(formData: FormData) {
       homepage_show_featured_events: bool(formData, 'homepage_show_featured_events'),
       homepage_show_priority_events: bool(formData, 'homepage_show_priority_events'),
 
+      homepage_show_live_now: bool(formData, 'homepage_show_live_now'),
+      homepage_show_starting_soon: bool(formData, 'homepage_show_starting_soon'),
+      homepage_show_recently_added: bool(formData, 'homepage_show_recently_added'),
+      homepage_show_weekend: bool(formData, 'homepage_show_weekend'),
+      homepage_show_most_shared: bool(formData, 'homepage_show_most_shared'),
+      homepage_show_most_commented: bool(formData, 'homepage_show_most_commented'),
+
+      homepage_live_now_limit: intValue(formData, 'homepage_live_now_limit', 6),
+      homepage_starting_soon_limit: intValue(formData, 'homepage_starting_soon_limit', 6),
+      homepage_recently_added_limit: intValue(formData, 'homepage_recently_added_limit', 6),
+      homepage_weekend_limit: intValue(formData, 'homepage_weekend_limit', 6),
+
+      homepage_default_city: String(formData.get('homepage_default_city') || 'Kansas City').trim(),
+      homepage_default_state: String(formData.get('homepage_default_state') || 'MO').trim().toUpperCase(),
+      homepage_use_location_prompt: bool(formData, 'homepage_use_location_prompt'),
+
+
       ambassador_min_discount: minDiscount,
       ambassador_max_discount: maxDiscount,
       ambassador_commission_percent: intValue(formData, 'ambassador_commission_percent', 30),
