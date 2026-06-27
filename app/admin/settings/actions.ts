@@ -75,27 +75,4 @@ export async function updatePlatformSettings(formData: FormData) {
       homepage_show_most_commented: bool(formData, 'homepage_show_most_commented'),
 
       homepage_live_now_limit: intValue(formData, 'homepage_live_now_limit', 6),
-      homepage_starting_soon_limit: intValue(formData, 'homepage_starting_soon_limit', 6),
-      homepage_recently_added_limit: intValue(formData, 'homepage_recently_added_limit', 6),
-      homepage_weekend_limit: intValue(formData, 'homepage_weekend_limit', 6),
-
-      homepage_default_city: String(formData.get('homepage_default_city') || 'Kansas City').trim(),
-      homepage_default_state: String(formData.get('homepage_default_state') || 'MO').trim().toUpperCase(),
-      homepage_use_location_prompt: bool(formData, 'homepage_use_location_prompt'),
-
-
-      ambassador_min_discount: minDiscount,
-      ambassador_max_discount: maxDiscount,
-      ambassador_commission_percent: intValue(formData, 'ambassador_commission_percent', 30),
-      ambassador_min_payout: money(formData, 'ambassador_min_payout', 25),
-      ambassador_program_enabled: bool(formData, 'ambassador_program_enabled'),
-      ambassador_founder_limit: intValue(formData, 'ambassador_founder_limit', 50),
-
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', 'global');
-
-  if (error) throw new Error(error.message);
-
-  redirect('/admin/settings?saved=1');
-}
+      homepage_starting_soon_limi

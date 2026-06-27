@@ -566,7 +566,6 @@ export default async function EventsPage({ searchParams }: Props) {
 
   const supabase = await createClient();
   const now = new Date();
-
   const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
   const nextThreeHours = new Date(now.getTime() + 3 * 60 * 60 * 1000);
 
@@ -663,16 +662,10 @@ export default async function EventsPage({ searchParams }: Props) {
   ];
 
   cards = cards.filter((event) => {
-    const eventCity = String(event.city || '').toLowerCase();
-    const eventState = normalizeState(String(event.state || ''));
-
-    const expandedEventCityTerms = expandCitySearch(eventCity);
-
     const haystack = [
       event.name,
       event.city,
       event.state,
-      ...expandedEventCityTerms,
       event.description,
       event.venue_name,
       event.genre,
@@ -683,6 +676,9 @@ export default async function EventsPage({ searchParams }: Props) {
       .join(' ')
       .toLowerCase();
 
+    const eventCity = String(event.city || '').toLowerCase();
+    const eventState = normalizeState(String(event.state || ''));
+
     const matchesSearch = search
       ? haystack.includes(search) ||
         searchTerms.some((term) => haystack.includes(term.toLowerCase()))
@@ -690,8 +686,8 @@ export default async function EventsPage({ searchParams }: Props) {
 
     const matchesCity = cityTerms.length
       ? cityTerms.some((term) => {
-          const cleanTerm = term.toLowerCase();
-          return eventCity.includes(cleanTerm) || cleanTerm.includes(eventCity);
+          const safeTerm = term.toLowerCase();
+          return eventCity.includes(safeTerm) || safeTerm.includes(eventCity);
         })
       : true;
 
@@ -758,7 +754,7 @@ export default async function EventsPage({ searchParams }: Props) {
           <input
             name="q"
             defaultValue={query.q || ''}
-            placeholder="Search music, venues, vibes..."
+            placeholder="Search music, venues, vibes, KC, STL..."
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
 
