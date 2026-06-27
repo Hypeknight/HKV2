@@ -102,6 +102,8 @@ export default async function EventsPage({ searchParams }: Props) {
 
   const supabase = await createClient();
   const now = new Date();
+  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+  const nextThreeHours = new Date(now.getTime() + 3 * 60 * 60 * 1000);
 
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -118,7 +120,11 @@ export default async function EventsPage({ searchParams }: Props) {
   const endOfNextWeek = new Date(startOfToday);
   endOfNextWeek.setDate(endOfNextWeek.getDate() + 14);
 
-  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+  const startOfWeekend = new Date(startOfToday);
+  startOfWeekend.setDate(startOfWeekend.getDate() + ((5 - startOfWeekend.getDay() + 7) % 7));
+
+  const endOfWeekend = new Date(startOfWeekend);
+  endOfWeekend.setDate(endOfWeekend.getDate() + 3);
 
   const { data: hypeEvents, error: hypeError } = await supabase
     .from('events')
@@ -156,13 +162,14 @@ export default async function EventsPage({ searchParams }: Props) {
       image_url: event.flyer_url || event.image_url,
       href: `/events/${event.slug}`,
       status: event.status,
-      source_label: 'HypeKnight',
+      source_label: 'HypeKnight Event',
       is_external: false,
       venue_name: event.venue_name || event.venue?.name,
       genre: Array.isArray(event.music_selection)
         ? event.music_selection?.[0]
         : event.event_type,
       classification: event.event_type,
+      created_at: event.created_at,
     })),
 
     ...(externalEvents ?? []).map((event: any) => ({
@@ -179,11 +186,12 @@ export default async function EventsPage({ searchParams }: Props) {
       source_label:
         event.source_code === 'ticketmaster'
           ? 'Ticketmaster'
-          : event.source_code || 'External',
+          : event.source_code || 'External Event',
       is_external: true,
       venue_name: event.venue_name,
       genre: event.genre,
       classification: event.classification || event.segment,
+      created_at: event.created_at,
     })),
   ];
 
@@ -216,29 +224,26 @@ export default async function EventsPage({ searchParams }: Props) {
     return matchesSearch && matchesCity && matchesState;
   });
 
-  cards.sort((a, b) => {
-    const aTime = a.event_start_at
-      ? new Date(a.event_start_at).getTime()
-      : Infinity;
-    const bTime = b.event_start_at
-      ? new Date(b.event_start_at).getTime()
-      : Infinity;
-
-    return aTime - bTime;
-  });
+  cards.sort(sortByStartTime);
 
   const liveEvents = cards.filter((event) => isLiveNow(event, now));
+
+  const startingSoonEvents = cards.filter((event) => {
+    if (!event.event_start_at) return false;
+    const start = new Date(event.event_start_at);
+    return start > now && start <= nextThreeHours;
+  });
 
   const tonightEvents = cards.filter((event) =>
     isSameWindow(event.event_start_at, startOfToday, startOfTomorrow)
   );
 
   const tomorrowEvents = cards.filter((event) =>
-    isSameWindow(
-      event.event_start_at,
-      startOfTomorrow,
-      startOfDayAfterTomorrow
-    )
+    isSameWindow(event.event_start_at, startOfTomorrow, startOfDayAfterTomorrow)
+  );
+
+  const weekendEvents = cards.filter((event) =>
+    isSameWindow(event.event_start_at, startOfWeekend, endOfWeekend)
   );
 
   const thisWeekEvents = cards.filter((event) =>
@@ -249,6 +254,14 @@ export default async function EventsPage({ searchParams }: Props) {
     isSameWindow(event.event_start_at, endOfThisWeek, endOfNextWeek)
   );
 
+  const recentlyAddedEvents = [...cards]
+    .sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bTime - aTime;
+    })
+    .slice(0, 8);
+
   return (
     <section className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:px-6 lg:px-8">
       <section className="rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-8 sm:p-10">
@@ -257,20 +270,19 @@ export default async function EventsPage({ searchParams }: Props) {
         </p>
 
         <h1 className="mt-3 text-5xl font-black text-white">
-          What’s going on tonight?
+          Find your next move.
         </h1>
 
         <p className="mt-4 max-w-3xl text-white/70">
           Search HypeKnight events and supplemental external events by city,
-          state, vibe, venue, music, or event name. City nicknames like KC, STL,
-          Chi, NYC, and Vegas are supported.
+          nickname, state, vibe, venue, music, or event name.
         </p>
 
         <form className="mt-8 grid gap-3 lg:grid-cols-[1fr_220px_180px_140px]">
           <input
             name="q"
             defaultValue={query.q || ''}
-            placeholder="Search events, music, venues, vibes..."
+            placeholder="Search music, venues, vibes..."
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />
 
@@ -304,30 +316,37 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {search || city || state ? (
           <div className="mt-4">
-            <Link
-              href="/events"
-              className="text-sm text-white/55 hover:text-accent"
-            >
+            <Link href="/events" className="text-sm text-white/55 hover:text-accent">
               Clear filters
             </Link>
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <Metric label="Live Now" value={String(liveEvents.length)} />
+          <Metric label="Starting Soon" value={String(startingSoonEvents.length)} />
           <Metric label="Tonight" value={String(tonightEvents.length)} />
           <Metric label="Tomorrow" value={String(tomorrowEvents.length)} />
-          <Metric label="This Week" value={String(thisWeekEvents.length)} />
-          <Metric label="Next Week" value={String(nextWeekEvents.length)} />
+          <Metric label="Weekend" value={String(weekendEvents.length)} />
+          <Metric label="All Events" value={String(cards.length)} />
         </div>
       </section>
 
       <EventSection
-        eyebrow="Now"
+        eyebrow="Here & Now"
         title="Live right now"
-        text="Events currently happening. If no end time was provided, HypeKnight keeps it live for 4 hours after start."
+        text="Events currently happening."
         events={liveEvents}
         featured
+        emptyText="Nothing is live right now."
+      />
+
+      <EventSection
+        eyebrow="Next Up"
+        title="Starting soon"
+        text="Events starting in the next 3 hours."
+        events={startingSoonEvents}
+        emptyText="No events are starting soon right now."
       />
 
       <EventSection
@@ -335,6 +354,23 @@ export default async function EventsPage({ searchParams }: Props) {
         title="Tonight’s events"
         text="Events scheduled for today and tonight."
         events={tonightEvents}
+        emptyText="No events are showing for tonight."
+      />
+
+      <EventSection
+        eyebrow="Fresh"
+        title="Recently added"
+        text="New listings added into discovery."
+        events={recentlyAddedEvents}
+        emptyText="No recently added events yet."
+      />
+
+      <EventSection
+        eyebrow="Weekend"
+        title="This weekend"
+        text="Friday through Sunday events."
+        events={weekendEvents}
+        emptyText="No weekend events are showing yet."
       />
 
       <EventSection
@@ -342,6 +378,7 @@ export default async function EventsPage({ searchParams }: Props) {
         title="Tomorrow’s move"
         text="Events happening tomorrow."
         events={tomorrowEvents}
+        emptyText="No events are showing for tomorrow."
       />
 
       <EventSection
@@ -349,6 +386,7 @@ export default async function EventsPage({ searchParams }: Props) {
         title="Coming up this week"
         text="Events after tomorrow through the next 7 days."
         events={thisWeekEvents}
+        emptyText="No events are showing for this week."
       />
 
       <EventSection
@@ -356,6 +394,7 @@ export default async function EventsPage({ searchParams }: Props) {
         title="Next week’s lineup"
         text="Events scheduled 7 to 14 days out."
         events={nextWeekEvents}
+        emptyText="No events are showing for next week."
       />
 
       <EventSection
@@ -363,6 +402,7 @@ export default async function EventsPage({ searchParams }: Props) {
         title="All discoverable events"
         text="All events currently inside their HypeKnight or external discovery window."
         events={cards}
+        emptyText="No events match your search."
       />
     </section>
   );
@@ -374,9 +414,7 @@ function isSameWindow(
   end: Date
 ) {
   if (!value) return false;
-
   const date = new Date(value);
-
   return date >= start && date < end;
 }
 
@@ -389,6 +427,18 @@ function isLiveNow(event: any, now: Date) {
     : new Date(start.getTime() + 4 * 60 * 60 * 1000);
 
   return start <= now && end >= now;
+}
+
+function sortByStartTime(a: any, b: any) {
+  const aTime = a.event_start_at
+    ? new Date(a.event_start_at).getTime()
+    : Infinity;
+
+  const bTime = b.event_start_at
+    ? new Date(b.event_start_at).getTime()
+    : Infinity;
+
+  return aTime - bTime;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -408,12 +458,14 @@ function EventSection({
   text,
   events,
   featured = false,
+  emptyText,
 }: {
   eyebrow: string;
   title: string;
   text: string;
   events: any[];
   featured?: boolean;
+  emptyText: string;
 }) {
   return (
     <section>
@@ -439,7 +491,7 @@ function EventSection({
         </div>
       ) : (
         <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
-          No events are showing in this section yet.
+          {emptyText}
         </div>
       )}
     </section>
@@ -447,18 +499,32 @@ function EventSection({
 }
 
 function EventCard({ event }: { event: any }) {
+  const live = isLiveNow(event, new Date());
+
   return (
     <Link
       href={event.href}
       className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07]"
     >
-      {event.image_url ? (
-        <img
-          src={event.image_url}
-          alt={event.name}
-          className="h-52 w-full object-cover"
-        />
-      ) : null}
+      <div className="relative">
+        {event.image_url ? (
+          <img
+            src={event.image_url}
+            alt={event.name}
+            className="h-52 w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-52 w-full items-center justify-center bg-black/30 text-white/40">
+            No image
+          </div>
+        )}
+
+        {live ? (
+          <span className="absolute left-4 top-4 rounded-full bg-accent px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-black">
+            Live Now
+          </span>
+        ) : null}
+      </div>
 
       <div className="p-6">
         <p className="text-xs uppercase tracking-[0.25em] text-accent">
@@ -481,6 +547,12 @@ function EventCard({ event }: { event: any }) {
           </p>
         ) : null}
 
+        <div className="mt-4 flex flex-wrap gap-2">
+          {event.genre ? <Pill label={event.genre} /> : null}
+          {event.classification ? <Pill label={event.classification} /> : null}
+          {event.venue_name ? <Pill label={event.venue_name} /> : null}
+        </div>
+
         {event.description ? (
           <p className="mt-4 line-clamp-3 text-sm text-white/65">
             {event.description}
@@ -490,5 +562,13 @@ function EventCard({ event }: { event: any }) {
         <p className="mt-6 text-sm font-medium text-accent">Open event →</p>
       </div>
     </Link>
+  );
+}
+
+function Pill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
+      {label}
+    </span>
   );
 }
