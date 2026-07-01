@@ -22,33 +22,8 @@ export default async function EventsPage({ searchParams }: Props) {
   const searchTerms = search ? expandCitySearch(search) : [];
 
   const supabase = await createClient();
-  const now = new Date();
-
-  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-  const nextThreeHours = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-
-  const startOfTomorrow = new Date(startOfToday);
-  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-
-  const startOfDayAfterTomorrow = new Date(startOfToday);
-  startOfDayAfterTomorrow.setDate(startOfDayAfterTomorrow.getDate() + 2);
-
-  const endOfThisWeek = new Date(startOfToday);
-  endOfThisWeek.setDate(endOfThisWeek.getDate() + 7);
-
-  const endOfNextWeek = new Date(startOfToday);
-  endOfNextWeek.setDate(endOfNextWeek.getDate() + 14);
-
-  const startOfWeekend = new Date(startOfToday);
-  startOfWeekend.setDate(
-    startOfWeekend.getDate() + ((5 - startOfWeekend.getDay() + 7) % 7)
-  );
-
-  const endOfWeekend = new Date(startOfWeekend);
-  endOfWeekend.setDate(endOfWeekend.getDate() + 3);
+  const serverNow = new Date();
+  const fourHoursAgo = new Date(serverNow.getTime() - 4 * 60 * 60 * 1000);
 
   const { data: hypeEvents, error: hypeError } = await supabase
     .from('events')
@@ -56,8 +31,8 @@ export default async function EventsPage({ searchParams }: Props) {
     .in('status', ['scheduled', 'active'])
     .eq('is_public', true)
     .is('removed_at', null)
-    .lte('promotion_start_at', now.toISOString())
-    .gte('promotion_end_at', now.toISOString())
+    .lte('promotion_start_at', serverNow.toISOString())
+    .gte('promotion_end_at', serverNow.toISOString())
     .order('event_start_at', { ascending: true });
 
   if (hypeError) throw new Error(hypeError.message);
@@ -68,13 +43,13 @@ export default async function EventsPage({ searchParams }: Props) {
     .eq('status', 'active')
     .not('event_start_at', 'is', null)
     .or(
-      `event_end_at.gte.${now.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
+      `event_end_at.gte.${serverNow.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
     )
     .order('event_start_at', { ascending: true });
 
   if (externalError) throw new Error(externalError.message);
 
-  let cards = [
+  const allCards = [
     ...(hypeEvents ?? []).map((event: any) => ({
       id: event.id,
       name: event.name,
@@ -117,12 +92,13 @@ export default async function EventsPage({ searchParams }: Props) {
       classification: event.classification || event.segment,
       created_at: event.created_at,
     })),
-  ];
+  ].sort(sortByStartTime);
 
-  cards = cards.filter((event) => {
+  const cityCounts = buildCityCounts(allCards);
+
+  let cards = allCards.filter((event) => {
     const eventCity = String(event.city || '').toLowerCase();
     const eventState = normalizeState(String(event.state || ''));
-
     const expandedEventCityTerms = expandCitySearch(eventCity);
 
     const haystack = [
@@ -157,35 +133,15 @@ export default async function EventsPage({ searchParams }: Props) {
     return matchesSearch && matchesCity && matchesState;
   });
 
-  cards.sort(sortByStartTime);
+  cards = cards.sort(sortByStartTime);
 
-  const liveEvents = cards.filter((event) => isLiveNow(event, now));
-
-  const startingSoonEvents = cards.filter((event) => {
-    if (!event.event_start_at) return false;
-    const start = new Date(event.event_start_at);
-    return start > now && start <= nextThreeHours;
-  });
-
-  const tonightEvents = cards.filter((event) =>
-    isSameWindow(event.event_start_at, startOfToday, startOfTomorrow)
-  );
-
-  const tomorrowEvents = cards.filter((event) =>
-    isSameWindow(event.event_start_at, startOfTomorrow, startOfDayAfterTomorrow)
-  );
-
-  const weekendEvents = cards.filter((event) =>
-    isSameWindow(event.event_start_at, startOfWeekend, endOfWeekend)
-  );
-
-  const thisWeekEvents = cards.filter((event) =>
-    isSameWindow(event.event_start_at, startOfDayAfterTomorrow, endOfThisWeek)
-  );
-
-  const nextWeekEvents = cards.filter((event) =>
-    isSameWindow(event.event_start_at, endOfThisWeek, endOfNextWeek)
-  );
+  const liveEvents = cards.filter((event) => isLiveNow(event));
+  const startingSoonEvents = cards.filter((event) => isStartingSoon(event));
+  const tonightEvents = cards.filter((event) => isTodayInEventTime(event));
+  const tomorrowEvents = cards.filter((event) => isTomorrowInEventTime(event));
+  const weekendEvents = cards.filter((event) => isWeekendInEventTime(event));
+  const thisWeekEvents = cards.filter((event) => isThisWeekInEventTime(event));
+  const nextWeekEvents = cards.filter((event) => isNextWeekInEventTime(event));
 
   const recentlyAddedEvents = [...cards]
     .sort((a, b) => {
@@ -255,6 +211,29 @@ export default async function EventsPage({ searchParams }: Props) {
           </div>
         ) : null}
 
+        {cityCounts.length ? (
+          <div className="mt-8 rounded-[2rem] border border-white/10 bg-black/20 p-5">
+            <p className="text-sm uppercase tracking-[0.25em] text-white/45">
+              Cities with active events
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              {cityCounts.map((item) => (
+                <Link
+                  key={`${item.city}-${item.state}`}
+                  href={`/events?city=${encodeURIComponent(item.city)}&state=${encodeURIComponent(item.state)}`}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:border-accent/40 hover:text-accent"
+                >
+                  {item.city}, {item.state}
+                  <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-black">
+                    {item.count}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <Metric label="Live Now" value={String(liveEvents.length)} />
           <Metric label="Starting Soon" value={String(startingSoonEvents.length)} />
@@ -268,7 +247,7 @@ export default async function EventsPage({ searchParams }: Props) {
       <EventSection
         eyebrow="Here & Now"
         title="Live right now"
-        text="Events currently happening."
+        text="Events currently happening based on the event city's local time."
         events={liveEvents}
         featured
         emptyText="Nothing is live right now."
@@ -277,7 +256,7 @@ export default async function EventsPage({ searchParams }: Props) {
       <EventSection
         eyebrow="Next Up"
         title="Starting soon"
-        text="Events starting in the next 3 hours."
+        text="Events starting in the next 3 hours based on the event city's local time."
         events={startingSoonEvents}
         emptyText="No events are starting soon right now."
       />
@@ -341,25 +320,180 @@ export default async function EventsPage({ searchParams }: Props) {
   );
 }
 
-function isSameWindow(
-  value: string | null | undefined,
-  start: Date,
-  end: Date
-) {
-  if (!value) return false;
-  const date = new Date(value);
+function buildCityCounts(events: any[]) {
+  const map = new Map<string, { city: string; state: string; count: number }>();
+
+  for (const event of events) {
+    const city = String(event.city || '').trim();
+    const state = normalizeState(String(event.state || ''));
+
+    if (!city || !state) continue;
+
+    const key = `${city.toLowerCase()}-${state}`;
+
+    const existing = map.get(key);
+
+    if (existing) {
+      existing.count += 1;
+    } else {
+      map.set(key, { city, state, count: 1 });
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
+}
+
+function getTimeZoneForEvent(event: any) {
+  const city = String(event.city || '').toLowerCase();
+  const state = normalizeState(String(event.state || ''));
+
+  if (state === 'MO' || state === 'KS' || state === 'IL' || state === 'TX') {
+    return 'America/Chicago';
+  }
+
+  if (state === 'NY' || state === 'GA' || state === 'FL') {
+    return 'America/New_York';
+  }
+
+  if (state === 'NV') {
+    return 'America/Los_Angeles';
+  }
+
+  if (state === 'CA') {
+    return 'America/Los_Angeles';
+  }
+
+  if (city.includes('denver')) {
+    return 'America/Denver';
+  }
+
+  return 'America/Chicago';
+}
+
+function getZonedNow(timeZone: string) {
+  return new Date(
+    new Date().toLocaleString('en-US', {
+      timeZone,
+    })
+  );
+}
+
+function getZonedDate(value: string | null | undefined, timeZone: string) {
+  if (!value) return null;
+
+  return new Date(
+    new Date(value).toLocaleString('en-US', {
+      timeZone,
+    })
+  );
+}
+
+function getEventWindow(event: any) {
+  const timeZone = getTimeZoneForEvent(event);
+  const now = getZonedNow(timeZone);
+  const start = getZonedDate(event.event_start_at, timeZone);
+
+  if (!start) return null;
+
+  const end =
+    getZonedDate(event.event_end_at, timeZone) ||
+    new Date(start.getTime() + 4 * 60 * 60 * 1000);
+
+  return { timeZone, now, start, end };
+}
+
+function isLiveNow(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
+
+  return window.now >= window.start && window.now <= window.end;
+}
+
+function isStartingSoon(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
+
+  const nextThreeHours = new Date(window.now.getTime() + 3 * 60 * 60 * 1000);
+
+  return window.start > window.now && window.start <= nextThreeHours;
+}
+
+function startOfZonedToday(now: Date) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function isSameWindow(value: string | null | undefined, event: any, start: Date, end: Date) {
+  const timeZone = getTimeZoneForEvent(event);
+  const date = getZonedDate(value, timeZone);
+
+  if (!date) return false;
+
   return date >= start && date < end;
 }
 
-function isLiveNow(event: any, now: Date) {
-  if (!event.event_start_at) return false;
+function isTodayInEventTime(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
 
-  const start = new Date(event.event_start_at);
-  const end = event.event_end_at
-    ? new Date(event.event_end_at)
-    : new Date(start.getTime() + 4 * 60 * 60 * 1000);
+  const start = startOfZonedToday(window.now);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
 
-  return start <= now && end >= now;
+  return isSameWindow(event.event_start_at, event, start, end);
+}
+
+function isTomorrowInEventTime(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
+
+  const start = startOfZonedToday(window.now);
+  start.setDate(start.getDate() + 1);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return isSameWindow(event.event_start_at, event, start, end);
+}
+
+function isWeekendInEventTime(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
+
+  const start = startOfZonedToday(window.now);
+  start.setDate(start.getDate() + ((5 - start.getDay() + 7) % 7));
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 3);
+
+  return isSameWindow(event.event_start_at, event, start, end);
+}
+
+function isThisWeekInEventTime(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
+
+  const start = startOfZonedToday(window.now);
+  start.setDate(start.getDate() + 2);
+
+  const end = startOfZonedToday(window.now);
+  end.setDate(end.getDate() + 7);
+
+  return isSameWindow(event.event_start_at, event, start, end);
+}
+
+function isNextWeekInEventTime(event: any) {
+  const window = getEventWindow(event);
+  if (!window) return false;
+
+  const start = startOfZonedToday(window.now);
+  start.setDate(start.getDate() + 7);
+
+  const end = startOfZonedToday(window.now);
+  end.setDate(end.getDate() + 14);
+
+  return isSameWindow(event.event_start_at, event, start, end);
 }
 
 function sortByStartTime(a: any, b: any) {
@@ -372,6 +506,21 @@ function sortByStartTime(a: any, b: any) {
     : Infinity;
 
   return aTime - bTime;
+}
+
+function formatEventTime(event: any) {
+  if (!event.event_start_at) return null;
+
+  const timeZone = getTimeZoneForEvent(event);
+
+  return new Date(event.event_start_at).toLocaleString('en-US', {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -432,7 +581,7 @@ function EventSection({
 }
 
 function EventCard({ event }: { event: any }) {
-  const live = isLiveNow(event, new Date());
+  const live = isLiveNow(event);
 
   return (
     <Link
@@ -476,7 +625,7 @@ function EventCard({ event }: { event: any }) {
 
         {event.event_start_at ? (
           <p className="mt-2 text-sm text-white/50">
-            {new Date(event.event_start_at).toLocaleString()}
+            {formatEventTime(event)}
           </p>
         ) : null}
 
