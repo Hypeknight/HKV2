@@ -571,10 +571,7 @@ export default async function AdminEventsPage() {
 
   const { data: events, error } = await supabase
     .from('events')
-    .select(`
-      *,
-      owner:profiles(id, display_name, username, email)
-    `)
+    .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -731,12 +728,7 @@ function AdminEventCard({
   mode: 'approval' | 'revision' | 'view';
 }) {
   const imageUrl = event.flyer_url || event.image_url;
-  const ownerName =
-    event.owner?.display_name ||
-    event.owner?.username ||
-    event.owner?.email ||
-    event.owner_id ||
-    'Unknown owner';
+  const ownerName = event.owner_id || 'Unknown owner';
 
   return (
     <article className="overflow-hidden rounded-[2rem] border border-white/10 bg-black/20">
