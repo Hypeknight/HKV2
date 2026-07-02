@@ -113,3 +113,77 @@ export async function deleteSpecialDay(formData: FormData) {
 
   redirect('/admin/calendar?deleted=1');
 }
+
+export async function assignEventToSpecialDay(formData: FormData) {
+  const { supabase } = await requireAdmin();
+
+  const specialDayId = String(formData.get('special_day_id') || '');
+  const sourceType = String(formData.get('source_type') || '');
+  const eventId = String(formData.get('event_id') || '');
+
+  if (!specialDayId || !sourceType || !eventId) {
+    throw new Error('Missing assignment data.');
+  }
+
+  if (!['hypeknight', 'external'].includes(sourceType)) {
+    throw new Error('Invalid event source type.');
+  }
+
+  const payload =
+    sourceType === 'hypeknight'
+      ? {
+          special_day_id: specialDayId,
+          source_type: sourceType,
+          event_id: eventId,
+          external_event_id: null,
+        }
+      : {
+          special_day_id: specialDayId,
+          source_type: sourceType,
+          event_id: null,
+          external_event_id: eventId,
+        };
+
+  const { error } = await supabase
+    .from('special_day_events')
+    .upsert(payload, {
+      onConflict:
+        sourceType === 'hypeknight'
+          ? 'special_day_id,event_id'
+          : 'special_day_id,external_event_id',
+    });
+
+  if (error) throw new Error(error.message);
+
+  redirect(`/admin/calendar/${specialDayId}?assigned=1`);
+}
+
+export async function removeEventFromSpecialDay(formData: FormData) {
+  const { supabase } = await requireAdmin();
+
+  const specialDayId = String(formData.get('special_day_id') || '');
+  const sourceType = String(formData.get('source_type') || '');
+  const eventId = String(formData.get('event_id') || '');
+
+  if (!specialDayId || !sourceType || !eventId) {
+    throw new Error('Missing assignment data.');
+  }
+
+  let query = supabase
+    .from('special_day_events')
+    .delete()
+    .eq('special_day_id', specialDayId)
+    .eq('source_type', sourceType);
+
+  if (sourceType === 'hypeknight') {
+    query = query.eq('event_id', eventId);
+  } else {
+    query = query.eq('external_event_id', eventId);
+  }
+
+  const { error } = await query;
+
+  if (error) throw new Error(error.message);
+
+  redirect(`/admin/calendar/${specialDayId}?removed=1`);
+}

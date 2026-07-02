@@ -36,6 +36,9 @@ const defaultSettings = {
   homepage_default_state: 'MO',
   homepage_use_location_prompt: true,
 
+  homepage_show_special_days: true,
+  homepage_special_days_limit: 6,
+
   ambassador_min_discount: 20,
   ambassador_max_discount: 70,
   ambassador_commission_percent: 30,

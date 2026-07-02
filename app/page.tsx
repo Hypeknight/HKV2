@@ -362,6 +362,14 @@ export default async function HomePage() {
     ...(externalEvents ?? []).map((event: any) => normalizeEvent(event, 'external')),
   ].sort(sortByStartTime);
 
+const { data: specialDays } = await supabase
+  .from('special_days')
+  .select('*')
+  .eq('is_active', true)
+  .eq('is_featured', true)
+  .order('starts_on', { ascending: true })
+  .limit(Number(settings.homepage_special_days_limit || 6));
+
   const cityCounts = buildCityCounts(allEvents);
 
   const liveNowEvents = allEvents
@@ -535,6 +543,10 @@ export default async function HomePage() {
           events={weekendEvents}
           emptyText="No weekend events are showing yet."
         />
+      ) : null}
+
+      {settings.homepage_show_special_days ? (
+        <SpecialDaysSection specialDays={specialDays ?? []} />
       ) : null}
 
       {settings.ambassador_program_enabled ? (
@@ -1051,4 +1063,75 @@ function FeatureCard({
       <p className="mt-6 text-sm font-medium text-accent">{action} →</p>
     </Link>
   );
+}
+function SpecialDaysSection({ specialDays }: { specialDays: any[] }) {
+  return (
+    <section>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-sm uppercase tracking-[0.35em] text-accent">
+            HypeKnight Calendar
+          </p>
+          <h2 className="mt-3 text-3xl font-bold text-white">
+            Browse by special days and themes.
+          </h2>
+          <p className="mt-3 text-white/70">
+            Find events connected to holidays, seasons, city moments, festivals,
+            sports weekends, and local celebrations.
+          </p>
+        </div>
+
+        <Link
+          href="/calendar"
+          className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
+        >
+          View Calendar
+        </Link>
+      </div>
+
+      {specialDays.length ? (
+        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {specialDays.map((day) => (
+            <Link
+              key={day.id}
+              href={`/calendar/${day.slug}`}
+              className="block rounded-[2rem] border border-accent/20 bg-accent/10 p-6 transition hover:border-accent/40"
+            >
+              <p className="text-xs uppercase tracking-[0.25em] text-accent">
+                {day.category || 'Theme'}
+              </p>
+
+              <h3 className="mt-3 text-2xl font-bold text-white">
+                {day.name}
+              </h3>
+
+              <p className="mt-3 text-white/55">
+                {formatCalendarDate(day.starts_on)}
+                {day.ends_on ? ` – ${formatCalendarDate(day.ends_on)}` : ''}
+              </p>
+
+              {day.description ? (
+                <p className="mt-4 line-clamp-3 text-sm text-white/65">
+                  {day.description}
+                </p>
+              ) : null}
+
+              <p className="mt-6 text-sm font-semibold text-accent">
+                View themed events →
+              </p>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
+          No featured calendar themes are showing yet.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatCalendarDate(value?: string | null) {
+  if (!value) return '—';
+  return new Date(`${value}T00:00:00`).toLocaleDateString();
 }
