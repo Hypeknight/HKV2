@@ -358,17 +358,21 @@ export default async function HomePage() {
     .limit(40);
 
   const allEvents = [
-    ...(hypeEvents ?? []).map((event: any) => normalizeEvent(event, 'hypeknight')),
-    ...(externalEvents ?? []).map((event: any) => normalizeEvent(event, 'external')),
+    ...(hypeEvents ?? []).map((event: any) =>
+      normalizeEvent(event, 'hypeknight')
+    ),
+    ...(externalEvents ?? []).map((event: any) =>
+      normalizeEvent(event, 'external')
+    ),
   ].sort(sortByStartTime);
 
-const { data: specialDays } = await supabase
-  .from('special_days')
-  .select('*')
-  .eq('is_active', true)
-  .eq('is_featured', true)
-  .order('starts_on', { ascending: true })
-  .limit(Number(settings.homepage_special_days_limit || 6));
+  const { data: specialDays } = await supabase
+    .from('special_days')
+    .select('*')
+    .eq('is_active', true)
+    .eq('is_featured', true)
+    .order('starts_on', { ascending: true })
+    .limit(Number(settings.homepage_special_days_limit || 6));
 
   const cityCounts = buildCityCounts(allEvents);
 
@@ -395,60 +399,20 @@ const { data: specialDays } = await supabase
   return (
     <section className="space-y-8 pb-10 sm:space-y-12 sm:pb-16">
       <Hero
-        settings={settings}
         liveCount={liveNowEvents.length}
         startingSoonCount={startingSoonEvents.length}
         totalCount={allEvents.length}
         cityCount={cityCounts.length}
       />
 
-      {cityCounts.length ? (
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.3em] text-accent">
-                Active Cities
-              </p>
-              <h2 className="mt-2 text-2xl sm:text-3xl font-bold text-white">
-                See what cities have events right now.
-              </h2>
-              <p className="mt-2 max-w-3xl text-white/65">
-                HypeKnight is not limited to one city. Choose a city to jump
-                straight into active HypeKnight and supplemental event listings.
-              </p>
-            </div>
+      {cityCounts.length ? <ActiveCities cityCounts={cityCounts} /> : null}
 
-            <Link
-              href="/events"
-              className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
-            >
-              View All Events
-            </Link>
-          </div>
-
-          <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2 sm:flex-wrap sm:overflow-visible">
-            {cityCounts.slice(0, 12).map((item) => (
-              <Link
-                key={`${item.city}-${item.state}`}
-                href={`/events?city=${encodeURIComponent(item.city)}&state=${encodeURIComponent(item.state)}`}
-                className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/70 hover:border-accent/40 hover:text-accent"
-              >
-                {item.city}, {item.state}
-                <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-black">
-                  {item.count}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4">
         {settings.homepage_show_live_now ? (
           <FunMetric
             label="Live Now"
             value={String(liveNowEvents.length)}
-            text="Events happening right now."
+            text="Happening right now."
           />
         ) : null}
 
@@ -456,48 +420,48 @@ const { data: specialDays } = await supabase
           <FunMetric
             label="Starting Soon"
             value={String(startingSoonEvents.length)}
-            text="Events starting in the next 3 hours."
+            text="Next 3 hours."
           />
         ) : null}
 
         {settings.homepage_show_hype_cities ? (
           <FunMetric
-            label="Cities Showing"
+            label="Cities"
             value={String(cityCounts.length)}
-            text="Places with active event energy."
+            text="Active areas."
           />
         ) : null}
 
         {settings.homepage_show_recently_added ? (
           <FunMetric
-            label="Recently Added"
+            label="Fresh Drops"
             value={String(recentlyAddedEvents.length)}
-            text="Fresh listings added to discovery."
+            text="Recently added."
           />
         ) : null}
       </section>
 
       <QuickSearch />
 
-      <section className="grid gap-6 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <FeatureCard
           title="Find Events"
-          text="Explore live, starting soon, tonight, weekend, and upcoming events across active cities."
+          text="Live, starting soon, weekend, and upcoming events across active cities."
           href="/events"
           action="Explore Events"
         />
 
         <FeatureCard
           title="Promote Events"
-          text="Create an event listing, submit it for review, and place it into HypeKnight discovery."
+          text="Post an event, submit it for review, and get discovered on HypeKnight."
           href="/dashboard/events/new/step-1"
-          action="Add an Event"
+          action="Add Event"
         />
 
         {settings.ambassador_program_enabled ? (
           <FeatureCard
-            title="Ambassador Program"
-            text="Approved ambassadors can request coupon codes, promote HypeKnight, and track eligible performance."
+            title="Ambassadors"
+            text="Promote HypeKnight, request codes, and help your city get discovered."
             href="/ambassadors"
             action="View Program"
           />
@@ -519,7 +483,7 @@ const { data: specialDays } = await supabase
         <EventSection
           eyebrow="Next Up"
           title="Starting soon"
-          text="Events starting in the next few hours based on each event city's local time."
+          text="Events starting in the next few hours."
           events={startingSoonEvents}
           emptyText="No events are starting soon right now."
         />
@@ -553,28 +517,28 @@ const { data: specialDays } = await supabase
         <AmbassadorBanner settings={settings} />
       ) : null}
 
-      <section className="rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-10 text-center">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+      <section className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-6 text-center sm:rounded-[2.75rem] sm:p-10">
+        <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
           Hype Nights with HypeKnight
         </p>
-        <h2 className="mx-auto mt-3 max-w-3xl text-4xl font-black text-white">
+        <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-black leading-tight text-white sm:text-4xl">
           The night starts with knowing where to go.
         </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-white/70">
+        <p className="mx-auto mt-4 max-w-2xl text-sm text-white/70 sm:text-base">
           Explore what’s live, what’s starting soon, what’s coming next, and
           what matches your vibe.
         </p>
 
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+        <div className="mt-6 flex flex-col justify-center gap-3 sm:mt-8 sm:flex-row">
           <Link
             href="/events"
-            className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+            className="w-full rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90 sm:w-auto"
           >
             Start Discovering
           </Link>
           <Link
             href="/auth/sign-up"
-            className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-white hover:border-accent/40"
+            className="w-full rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-white hover:border-accent/40 sm:w-auto"
           >
             Create Profile
           </Link>
@@ -585,35 +549,33 @@ const { data: specialDays } = await supabase
 }
 
 function Hero({
-  settings,
   liveCount,
   startingSoonCount,
   totalCount,
   cityCount,
 }: {
-  settings: any;
   liveCount: number;
   startingSoonCount: number;
   totalCount: number;
   cityCount: number;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-10 sm:px-8 sm:py-14 lg:px-16 lg:py-16">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.07),transparent_28%)]" />
+    <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-8 sm:rounded-[3rem] sm:px-8 sm:py-14 lg:px-16 lg:py-16">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
 
-      <div className="relative grid gap-10 lg:grid-cols-[1fr_380px] lg:items-center">
+      <div className="relative grid gap-8 lg:grid-cols-[1fr_380px] lg:items-center">
         <div>
-          <p className="text-sm uppercase tracking-[0.4em] text-accent">
-            HypeKnight • Local Event Discovery
-          </p>
+          <div className="inline-flex rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent">
+            Local Event Discovery
+          </div>
 
-          <h1 className="mt-4 text-5xl font-black tracking-tight text-white sm:text-7xl">
+          <h1 className="mt-5 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
             What’s happening right now?
           </h1>
 
-          <p className="mt-6 max-w-2xl text-lg text-white/75">
-            Discover what is live, starting soon, newly added, and coming up
-            across active HypeKnight cities.
+          <p className="mt-5 max-w-2xl text-base leading-7 text-white/75 sm:text-lg">
+            Find live events, starting-soon plans, weekend moves, and themed
+            experiences across active HypeKnight cities.
           </p>
 
           <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
@@ -621,14 +583,14 @@ function Hero({
               href="/events"
               className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
             >
-              Explore Events
+              Explore Tonight
             </Link>
 
             <Link
               href="/dashboard/events/new/step-1"
               className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
             >
-              Promote an Event
+              Promote Event
             </Link>
 
             <ShareButton
@@ -639,20 +601,20 @@ function Hero({
           </div>
         </div>
 
-        <div className="rounded-[1.75rem] sm:rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
-          <div className="mx-auto flex h-40 w-40 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-black/30">
+        <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
+          <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/30 sm:h-40 sm:w-40 sm:rounded-[2rem]">
             <img
               src={LOGO_URL}
               alt="HypeKnight logo"
-              className="h-full w-full object-contain p-4"
+              className="h-full w-full object-contain p-3 sm:p-4"
             />
           </div>
 
-          <div className="mt-6 grid gap-3">
-            <MiniStat label="Live Now" value={String(liveCount)} />
-            <MiniStat label="Starting Soon" value={String(startingSoonCount)} />
-            <MiniStat label="Active Cities" value={String(cityCount)} />
-            <MiniStat label="Discoverable Events" value={String(totalCount)} />
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:mt-6">
+            <MiniStat label="Live" value={String(liveCount)} />
+            <MiniStat label="Soon" value={String(startingSoonCount)} />
+            <MiniStat label="Cities" value={String(cityCount)} />
+            <MiniStat label="Events" value={String(totalCount)} />
           </div>
         </div>
       </div>
@@ -660,22 +622,65 @@ function Hero({
   );
 }
 
+function ActiveCities({ cityCounts }: { cityCounts: any[] }) {
+  return (
+    <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
+            Active Cities
+          </p>
+          <h2 className="mt-2 text-2xl font-black leading-tight text-white sm:text-3xl">
+            Pick a city. Find the move.
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm text-white/65 sm:text-base">
+            Jump straight into cities with active HypeKnight and supplemental
+            event listings.
+          </p>
+        </div>
+
+        <Link
+          href="/events"
+          className="w-full rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40 sm:w-auto"
+        >
+          View All Events
+        </Link>
+      </div>
+
+      <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2 sm:flex-wrap sm:overflow-visible">
+        {cityCounts.slice(0, 12).map((item) => (
+          <Link
+            key={`${item.city}-${item.state}`}
+            href={`/events?city=${encodeURIComponent(item.city)}&state=${encodeURIComponent(item.state)}`}
+            className="shrink-0 rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/70 hover:border-accent/40 hover:text-accent"
+          >
+            {item.city}, {item.state}
+            <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-black">
+              {item.count}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function QuickSearch() {
   return (
-    <section className="rounded-[2rem] sm:rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
-      <p className="text-sm uppercase tracking-[0.35em] text-accent">
+    <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.75rem] sm:p-8">
+      <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
         Quick Search
       </p>
-      <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">
+      <h2 className="mt-3 text-2xl font-black text-white sm:text-3xl">
         Find your move faster
       </h2>
-      <p className="mt-3 max-w-3xl text-white/70">
+      <p className="mt-3 max-w-3xl text-sm text-white/70 sm:text-base">
         Search by city, nickname, state, music, venue, vibe, or event name.
       </p>
 
       <form
         action="/events"
-        className="mt-8 grid gap-3 lg:grid-cols-[1fr_220px_160px_140px]"
+        className="mt-6 grid gap-3 sm:grid-cols-2 lg:mt-8 lg:grid-cols-[1fr_220px_160px_140px]"
       >
         <input
           name="q"
@@ -684,7 +689,7 @@ function QuickSearch() {
         />
         <input
           name="city"
-          placeholder="City or nickname: KC, STL..."
+          placeholder="City or nickname..."
           className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
         />
         <input
@@ -692,7 +697,7 @@ function QuickSearch() {
           placeholder="State"
           className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
         />
-        <button className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
+        <button className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90 sm:col-span-2 lg:col-span-1">
           Search
         </button>
       </form>
@@ -718,19 +723,21 @@ function EventSection({
   return (
     <section>
       <div className="max-w-3xl">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
+        <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
           {eyebrow}
         </p>
-        <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">{title}</h2>
-        <p className="mt-3 text-white/70">{text}</p>
+        <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl">
+          {title}
+        </h2>
+        <p className="mt-3 text-sm text-white/70 sm:text-base">{text}</p>
       </div>
 
       {events.length ? (
         <div
           className={
             featured
-              ? 'mt-8 grid gap-5 md:grid-cols-2'
-              : 'mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3'
+              ? 'mt-5 grid gap-4 sm:mt-8 md:grid-cols-2'
+              : 'mt-5 grid gap-4 sm:mt-8 md:grid-cols-2 xl:grid-cols-3'
           }
         >
           {events.map((event: any) => (
@@ -738,7 +745,7 @@ function EventSection({
           ))}
         </div>
       ) : (
-        <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
+        <div className="mt-5 rounded-[1.75rem] border border-white/10 bg-white/5 p-5 text-sm text-white/60 sm:mt-8 sm:rounded-[2rem] sm:p-8">
           {emptyText}
         </div>
       )}
@@ -752,7 +759,7 @@ function EventCard({ event }: { event: any }) {
   return (
     <Link
       href={event.href}
-      className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07]"
+      className="group block overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07] sm:rounded-[2rem]"
     >
       <div className="relative">
         {event.image_url ? (
@@ -762,28 +769,28 @@ function EventCard({ event }: { event: any }) {
             className="h-44 w-full object-cover sm:h-52"
           />
         ) : (
-          <div className="flex h-52 w-full items-center justify-center bg-black/30 text-white/40">
+          <div className="flex h-44 w-full items-center justify-center bg-black/30 text-white/40 sm:h-52">
             No image
           </div>
         )}
 
         {live ? (
-          <span className="absolute left-4 top-4 rounded-full bg-accent px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-black">
+          <span className="absolute left-3 top-3 rounded-full bg-accent px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black sm:left-4 sm:top-4 sm:text-xs">
             Live Now
           </span>
         ) : null}
       </div>
 
       <div className="p-5 sm:p-6">
-        <p className="text-xs uppercase tracking-[0.25em] text-accent">
+        <p className="text-[10px] uppercase tracking-[0.25em] text-accent sm:text-xs">
           {event.source_label}
         </p>
 
-        <h3 className="mt-3 text-xl font-bold leading-tight text-white group-hover:text-accent sm:text-2xl">
+        <h3 className="mt-3 text-xl font-black leading-tight text-white group-hover:text-accent sm:text-2xl">
           {event.name}
         </h3>
 
-        <p className="mt-3 text-white/60">
+        <p className="mt-3 text-sm text-white/60">
           {[event.city, event.state].filter(Boolean).join(', ') ||
             event.venue_name ||
             'Location TBA'}
@@ -801,7 +808,9 @@ function EventCard({ event }: { event: any }) {
           </p>
         ) : null}
 
-        <p className="mt-6 text-sm font-medium text-accent">Open event →</p>
+        <p className="mt-5 text-sm font-semibold text-accent">
+          Open event →
+        </p>
       </div>
     </Link>
   );
@@ -809,21 +818,21 @@ function EventCard({ event }: { event: any }) {
 
 function AmbassadorBanner({ settings }: { settings: any }) {
   return (
-    <section className="rounded-[2rem] sm:rounded-[2.75rem] border border-accent/20 bg-accent/10 p-10">
-      <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
+    <section className="rounded-[2rem] border border-accent/20 bg-accent/10 p-6 sm:rounded-[2.75rem] sm:p-10">
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
         <div>
-          <p className="text-sm uppercase tracking-[0.35em] text-accent">
+          <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
             HypeKnight Ambassador Program
           </p>
-          <h2 className="mt-3 text-4xl font-black text-white">
+          <h2 className="mt-3 text-3xl font-black leading-tight text-white sm:text-4xl">
             Help move the nightlife network.
           </h2>
-          <p className="mt-4 max-w-3xl text-white/75">
+          <p className="mt-4 max-w-3xl text-sm text-white/75 sm:text-base">
             Ambassadors help bring promoters, DJs, creators, and nightlife
             communities into HypeKnight.
           </p>
 
-          <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
+          <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto">
             <Link
               href="/ambassadors"
               className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
@@ -839,13 +848,82 @@ function AmbassadorBanner({ settings }: { settings: any }) {
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-white/10 bg-black/20 p-8 text-center">
-          <p className="text-4xl font-black text-white">
+        <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6 text-center sm:p-8">
+          <p className="text-3xl font-black text-white sm:text-4xl">
             {settings.ambassador_min_discount}–{settings.ambassador_max_discount}%
           </p>
-          <p className="mt-2 text-white/65">Coupon request range</p>
+          <p className="mt-2 text-sm text-white/65 sm:text-base">
+            Coupon request range
+          </p>
         </div>
       </div>
+    </section>
+  );
+}
+
+function SpecialDaysSection({ specialDays }: { specialDays: any[] }) {
+  return (
+    <section>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
+            HypeKnight Calendar
+          </p>
+          <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl">
+            Browse by special days and themes.
+          </h2>
+          <p className="mt-3 text-sm text-white/70 sm:text-base">
+            Find events connected to holidays, seasons, city moments, festivals,
+            sports weekends, and local celebrations.
+          </p>
+        </div>
+
+        <Link
+          href="/calendar"
+          className="w-full rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40 sm:w-auto"
+        >
+          View Calendar
+        </Link>
+      </div>
+
+      {specialDays.length ? (
+        <div className="mt-5 flex gap-4 overflow-x-auto pb-2 sm:mt-8 sm:grid sm:grid-cols-2 sm:gap-5 sm:overflow-visible xl:grid-cols-3">
+          {specialDays.map((day) => (
+            <Link
+              key={day.id}
+              href={`/calendar/${day.slug}`}
+              className="block min-w-[82%] rounded-[1.75rem] border border-accent/20 bg-accent/10 p-5 transition hover:border-accent/40 sm:min-w-0 sm:rounded-[2rem] sm:p-6"
+            >
+              <p className="text-[10px] uppercase tracking-[0.25em] text-accent sm:text-xs">
+                {day.category || 'Theme'}
+              </p>
+
+              <h3 className="mt-3 text-xl font-black leading-tight text-white sm:text-2xl">
+                {day.name}
+              </h3>
+
+              <p className="mt-3 text-sm text-white/55">
+                {formatCalendarDate(day.starts_on)}
+                {day.ends_on ? ` – ${formatCalendarDate(day.ends_on)}` : ''}
+              </p>
+
+              {day.description ? (
+                <p className="mt-4 line-clamp-3 text-sm text-white/65">
+                  {day.description}
+                </p>
+              ) : null}
+
+              <p className="mt-5 text-sm font-semibold text-accent">
+                View themed events →
+              </p>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-[1.75rem] border border-white/10 bg-white/5 p-5 text-sm text-white/60 sm:mt-8 sm:rounded-[2rem] sm:p-8">
+          No featured calendar themes are showing yet.
+        </div>
+      )}
     </section>
   );
 }
@@ -1009,13 +1087,18 @@ function formatEventTime(event: any) {
   });
 }
 
+function formatCalendarDate(value?: string | null) {
+  if (!value) return '—';
+  return new Date(`${value}T00:00:00`).toLocaleDateString();
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/45">
+      <p className="text-[10px] uppercase tracking-[0.22em] text-white/45 sm:text-xs">
         {label}
       </p>
-      <p className="mt-2 text-2xl sm:text-3xl font-black text-white">{value}</p>
+      <p className="mt-2 text-2xl font-black text-white sm:text-3xl">{value}</p>
     </div>
   );
 }
@@ -1030,12 +1113,12 @@ function FunMetric({
   text: string;
 }) {
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/45">
+    <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2rem] sm:p-6">
+      <p className="text-[10px] uppercase tracking-[0.22em] text-white/45 sm:text-xs">
         {label}
       </p>
-      <p className="mt-3 text-4xl font-black text-white">{value}</p>
-      <p className="mt-2 text-sm text-white/60">{text}</p>
+      <p className="mt-3 text-3xl font-black text-white sm:text-4xl">{value}</p>
+      <p className="mt-2 text-xs text-white/60 sm:text-sm">{text}</p>
     </div>
   );
 }
@@ -1054,84 +1137,15 @@ function FeatureCard({
   return (
     <Link
       href={href}
-      className="group rounded-[2rem] border border-white/10 bg-white/5 p-8 transition hover:border-accent/40 hover:bg-white/[0.07]"
+      className="group rounded-[1.75rem] border border-white/10 bg-white/5 p-5 transition hover:border-accent/40 hover:bg-white/[0.07] sm:rounded-[2rem] sm:p-8"
     >
-      <h2 className="text-2xl font-bold text-white group-hover:text-accent">
+      <h2 className="text-xl font-black leading-tight text-white group-hover:text-accent sm:text-2xl">
         {title}
       </h2>
-      <p className="mt-4 text-white/65">{text}</p>
-      <p className="mt-6 text-sm font-medium text-accent">{action} →</p>
+      <p className="mt-3 text-sm text-white/65 sm:mt-4 sm:text-base">{text}</p>
+      <p className="mt-5 text-sm font-semibold text-accent sm:mt-6">
+        {action} →
+      </p>
     </Link>
   );
-}
-function SpecialDaysSection({ specialDays }: { specialDays: any[] }) {
-  return (
-    <section>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-3xl">
-          <p className="text-sm uppercase tracking-[0.35em] text-accent">
-            HypeKnight Calendar
-          </p>
-          <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">
-            Browse by special days and themes.
-          </h2>
-          <p className="mt-3 text-white/70">
-            Find events connected to holidays, seasons, city moments, festivals,
-            sports weekends, and local celebrations.
-          </p>
-        </div>
-
-        <Link
-          href="/calendar"
-          className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white hover:border-accent/40"
-        >
-          View Calendar
-        </Link>
-      </div>
-
-      {specialDays.length ? (
-        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {specialDays.map((day) => (
-            <Link
-              key={day.id}
-              href={`/calendar/${day.slug}`}
-              className="block rounded-[2rem] border border-accent/20 bg-accent/10 p-6 transition hover:border-accent/40"
-            >
-              <p className="text-xs uppercase tracking-[0.25em] text-accent">
-                {day.category || 'Theme'}
-              </p>
-
-              <h3 className="mt-3 text-2xl font-bold text-white">
-                {day.name}
-              </h3>
-
-              <p className="mt-3 text-white/55">
-                {formatCalendarDate(day.starts_on)}
-                {day.ends_on ? ` – ${formatCalendarDate(day.ends_on)}` : ''}
-              </p>
-
-              {day.description ? (
-                <p className="mt-4 line-clamp-3 text-sm text-white/65">
-                  {day.description}
-                </p>
-              ) : null}
-
-              <p className="mt-6 text-sm font-semibold text-accent">
-                View themed events →
-              </p>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
-          No featured calendar themes are showing yet.
-        </div>
-      )}
-    </section>
-  );
-}
-
-function formatCalendarDate(value?: string | null) {
-  if (!value) return '—';
-  return new Date(`${value}T00:00:00`).toLocaleDateString();
 }
