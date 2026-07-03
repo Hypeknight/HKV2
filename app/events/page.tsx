@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { expandCitySearch } from '@/lib/city-aliases';
 import { US_STATES, normalizeState } from '@/lib/states';
+import TrackView from '@/components/analytics/TrackView';
 
 type Props = {
   searchParams?: Promise<{
@@ -156,6 +157,14 @@ export default async function EventsPage({ searchParams }: Props) {
   const hasActiveFilters = Boolean(search || city || state);
 
   return (
+  <>
+    <TrackView
+      pageType="events_index"
+      path="/events"
+      city={query.city || null}
+      state={query.state || null}
+    />
+
     <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-10 lg:px-8">
       <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[2.75rem] sm:p-10">
         <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
@@ -371,6 +380,7 @@ export default async function EventsPage({ searchParams }: Props) {
         ) : null}
       </section>
     </section>
+    </>
   );
 }
 

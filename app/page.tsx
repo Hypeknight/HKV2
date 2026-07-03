@@ -325,6 +325,7 @@ import { createClient } from '@/lib/supabase/server';
 import ShareButton from '@/components/ShareButton';
 import { getPlatformSettings } from '@/lib/settings';
 import { normalizeState } from '@/lib/states';
+import TrackView from '@/components/analytics/TrackView';
 
 const LOGO_URL = '/hypeknight-logo.jpeg';
 
@@ -340,6 +341,7 @@ const VIBES = [
 ];
 
 export default async function HomePage() {
+  
   const supabase = await createClient();
   const settings = await getPlatformSettings();
 
@@ -400,6 +402,8 @@ export default async function HomePage() {
     : null;
 
   return (
+      <>
+    <TrackView pageType="homepage" path="/" />
     <section className="space-y-8 pb-12 sm:space-y-12 sm:pb-16">
       <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-8 sm:rounded-[3rem] sm:px-10 sm:py-14 lg:px-16">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
@@ -557,6 +561,7 @@ export default async function HomePage() {
         </div>
       </section>
     </section>
+    </>
   );
 }
 
