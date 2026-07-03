@@ -424,20 +424,32 @@ function EventRail({
           <p className="mt-3 text-sm text-white/70 sm:text-base">{text}</p>
         </div>
 
-        {events.length ? (
-          <p className="text-sm text-white/45">{events.length} showing</p>
-        ) : null}
+          {events.length ? (
+            <p className="text-sm text-white/45">
+              {events.length} showing • Swipe to browse →
+            </p>
+          ) : null}
       </div>
 
       {events.length ? (
-        <div className="-mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-3 sm:mx-0 sm:mt-8 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-2 xl:grid-cols-3">
-          {events.map((event) => (
-            <EventCard key={`${event.source_label}-${event.id}`} event={event} compact />
-          ))}
-        </div>
-      ) : (
-        <Empty text={emptyText} />
-      )}
+  <div className="relative">
+    <div className="-mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-3 sm:mx-0 sm:mt-8 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-2 xl:grid-cols-3">
+      {events.map((event) => (
+        <EventCard
+          key={`${event.source_label}-${event.id}`}
+          event={event}
+          compact
+        />
+      ))}
+    </div>
+
+    {/* Mobile scroll hint */}
+    <div className="pointer-events-none absolute right-0 top-5 h-[calc(100%-1.25rem)] w-12 bg-gradient-to-l from-black to-transparent sm:hidden" />
+  </div>
+) : (
+  <Empty text={emptyText} />
+)}
+      
     </section>
   );
 }
@@ -476,7 +488,7 @@ function EventCard({ event, compact = false }: { event: any; compact?: boolean }
     <Link
       href={event.href}
       className={`group block shrink-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07] sm:shrink ${
-        compact ? 'w-[82vw] sm:w-auto' : ''
+        compact ? 'w-[78vw] sm:w-auto' : ''
       }`}
     >
       <div className="relative">
