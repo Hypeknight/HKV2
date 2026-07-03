@@ -1324,4 +1324,13 @@ function Chip({
   const styles =
     tone === 'accent'
       ? 'border-accent/20 bg-accent/10 text-accent'
-      :
+      : 'border-white/10 bg-white/5 text-white/65';
+
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${styles}`}
+    >
+      {label}
+    </span>
+  );
+}
