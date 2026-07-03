@@ -829,6 +829,13 @@ function AdminEventCard({
             >
               Owner Review Page
             </Link>
+
+            <Link
+              href={`/admin/events/${event.id}/`}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:border-accent/40"
+            >
+              Admin Review Page
+            </Link>
           </div>
 
           {mode === 'approval' ? <ApprovalControls event={event} /> : null}
