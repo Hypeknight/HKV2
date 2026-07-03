@@ -393,7 +393,7 @@ const { data: specialDays } = await supabase
     .slice(0, Number(settings.homepage_weekend_limit || 6));
 
   return (
-    <section className="space-y-14 pb-16">
+    <section className="space-y-8 pb-10 sm:space-y-12 sm:pb-16">
       <Hero
         settings={settings}
         liveCount={liveNowEvents.length}
@@ -409,7 +409,7 @@ const { data: specialDays } = await supabase
               <p className="text-sm uppercase tracking-[0.3em] text-accent">
                 Active Cities
               </p>
-              <h2 className="mt-2 text-3xl font-bold text-white">
+              <h2 className="mt-2 text-2xl sm:text-3xl font-bold text-white">
                 See what cities have events right now.
               </h2>
               <p className="mt-2 max-w-3xl text-white/65">
@@ -426,7 +426,7 @@ const { data: specialDays } = await supabase
             </Link>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2 sm:flex-wrap sm:overflow-visible">
             {cityCounts.slice(0, 12).map((item) => (
               <Link
                 key={`${item.city}-${item.state}`}
@@ -598,7 +598,7 @@ function Hero({
   cityCount: number;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-[3rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-8 py-16 sm:px-12 lg:px-16">
+    <section className="relative overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-10 sm:px-8 sm:py-14 lg:px-16 lg:py-16">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.07),transparent_28%)]" />
 
       <div className="relative grid gap-10 lg:grid-cols-[1fr_380px] lg:items-center">
@@ -616,7 +616,7 @@ function Hero({
             across active HypeKnight cities.
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
             <Link
               href="/events"
               className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
@@ -639,7 +639,7 @@ function Hero({
           </div>
         </div>
 
-        <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+        <div className="rounded-[1.75rem] sm:rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
           <div className="mx-auto flex h-40 w-40 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-black/30">
             <img
               src={LOGO_URL}
@@ -662,11 +662,11 @@ function Hero({
 
 function QuickSearch() {
   return (
-    <section className="rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
+    <section className="rounded-[2rem] sm:rounded-[2.75rem] border border-white/10 bg-white/5 p-8">
       <p className="text-sm uppercase tracking-[0.35em] text-accent">
         Quick Search
       </p>
-      <h2 className="mt-3 text-3xl font-bold text-white">
+      <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">
         Find your move faster
       </h2>
       <p className="mt-3 max-w-3xl text-white/70">
@@ -721,7 +721,7 @@ function EventSection({
         <p className="text-sm uppercase tracking-[0.35em] text-accent">
           {eyebrow}
         </p>
-        <h2 className="mt-3 text-3xl font-bold text-white">{title}</h2>
+        <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">{title}</h2>
         <p className="mt-3 text-white/70">{text}</p>
       </div>
 
@@ -759,7 +759,7 @@ function EventCard({ event }: { event: any }) {
           <img
             src={event.image_url}
             alt={event.name}
-            className="h-52 w-full object-cover"
+            className="h-44 w-full object-cover sm:h-52"
           />
         ) : (
           <div className="flex h-52 w-full items-center justify-center bg-black/30 text-white/40">
@@ -774,12 +774,12 @@ function EventCard({ event }: { event: any }) {
         ) : null}
       </div>
 
-      <div className="p-6">
+      <div className="p-5 sm:p-6">
         <p className="text-xs uppercase tracking-[0.25em] text-accent">
           {event.source_label}
         </p>
 
-        <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
+        <h3 className="mt-3 text-xl font-bold leading-tight text-white group-hover:text-accent sm:text-2xl">
           {event.name}
         </h3>
 
@@ -809,7 +809,7 @@ function EventCard({ event }: { event: any }) {
 
 function AmbassadorBanner({ settings }: { settings: any }) {
   return (
-    <section className="rounded-[2.75rem] border border-accent/20 bg-accent/10 p-10">
+    <section className="rounded-[2rem] sm:rounded-[2.75rem] border border-accent/20 bg-accent/10 p-10">
       <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
         <div>
           <p className="text-sm uppercase tracking-[0.35em] text-accent">
@@ -823,7 +823,7 @@ function AmbassadorBanner({ settings }: { settings: any }) {
             communities into HypeKnight.
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
             <Link
               href="/ambassadors"
               className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
@@ -1015,7 +1015,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-[0.25em] text-white/45">
         {label}
       </p>
-      <p className="mt-2 text-3xl font-black text-white">{value}</p>
+      <p className="mt-2 text-2xl sm:text-3xl font-black text-white">{value}</p>
     </div>
   );
 }
@@ -1072,7 +1072,7 @@ function SpecialDaysSection({ specialDays }: { specialDays: any[] }) {
           <p className="text-sm uppercase tracking-[0.35em] text-accent">
             HypeKnight Calendar
           </p>
-          <h2 className="mt-3 text-3xl font-bold text-white">
+          <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">
             Browse by special days and themes.
           </h2>
           <p className="mt-3 text-white/70">

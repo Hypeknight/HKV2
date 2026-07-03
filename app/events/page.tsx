@@ -152,7 +152,7 @@ export default async function EventsPage({ searchParams }: Props) {
     .slice(0, 8);
 
   return (
-    <section className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:px-6 lg:px-8">
+    <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-10 lg:px-8">
       <section className="rounded-[2.75rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-8 sm:p-10">
         <p className="text-sm uppercase tracking-[0.35em] text-accent">
           Event Discovery
@@ -234,7 +234,7 @@ export default async function EventsPage({ searchParams }: Props) {
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:grid-cols-3 xl:grid-cols-6">
           <Metric label="Live Now" value={String(liveEvents.length)} />
           <Metric label="Starting Soon" value={String(startingSoonEvents.length)} />
           <Metric label="Tonight" value={String(tonightEvents.length)} />
@@ -529,7 +529,7 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">
         {label}
       </p>
-      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
+      <p className="mt-2 text-2xl sm:text-3xl font-bold text-white">{value}</p>
     </div>
   );
 }
@@ -555,7 +555,7 @@ function EventSection({
         <p className="text-sm uppercase tracking-[0.35em] text-accent">
           {eyebrow}
         </p>
-        <h2 className="mt-3 text-3xl font-bold text-white">{title}</h2>
+        <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">{title}</h2>
         <p className="mt-3 text-white/70">{text}</p>
       </div>
 
@@ -593,7 +593,7 @@ function EventCard({ event }: { event: any }) {
           <img
             src={event.image_url}
             alt={event.name}
-            className="h-52 w-full object-cover"
+            className="h-44 w-full object-cover sm:h-52"
           />
         ) : (
           <div className="flex h-52 w-full items-center justify-center bg-black/30 text-white/40">
@@ -608,12 +608,12 @@ function EventCard({ event }: { event: any }) {
         ) : null}
       </div>
 
-      <div className="p-6">
+      <div className="p-5 sm:p-6">
         <p className="text-xs uppercase tracking-[0.25em] text-accent">
           {event.source_label}
         </p>
 
-        <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
+        <h3 className="mt-3 text-xl font-bold leading-tight text-white group-hover:text-accent sm:text-2xl">
           {event.name}
         </h3>
 

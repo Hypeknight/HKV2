@@ -919,12 +919,12 @@ if (commentsError) {
             <img
               src={imageUrl}
               alt={event.name || 'HypeKnight event'}
-              className="max-h-[560px] w-full object-cover"
+              className="max-h-[420px] w-full object-cover sm:max-h-[560px]"
             />
           </div>
         ) : null}
 
-        <div className="p-8 sm:p-10">
+        <div className="p-5 sm:p-8 lg:p-10">
           <div className="flex flex-wrap gap-2">
             <Chip label="HypeKnight Event" tone="accent" />
             <Chip label={event.status || 'unknown'} tone="gray" />
@@ -935,7 +935,7 @@ if (commentsError) {
 
           </div>
 
-          <h1 className="mt-5 text-4xl font-black text-white sm:text-6xl">
+          <h1 className="mt-5 text-3xl font-black leading-tight text-white sm:text-5xl lg:text-6xl">
             {event.name}
           </h1>
 
@@ -945,7 +945,7 @@ if (commentsError) {
             </p>
           ) : null}
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2 sm:flex-wrap sm:overflow-visible">
             <ShareButton
               title={event.name}
               text={`Check out ${event.name} on HypeKnight`}
@@ -1028,7 +1028,7 @@ if (commentsError) {
       </section>
 
       {(event.ticket_url || event.venue?.slug) ? (
-        <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+        <section className="rounded-[1.75rem] sm:rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
           <h2 className="text-2xl font-bold text-white">Next Step</h2>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -1055,7 +1055,7 @@ if (commentsError) {
         </section>
       ) : null}
 
-      <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+      <section className="rounded-[1.75rem] sm:rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
         <h2 className="text-2xl font-bold text-white">Share This Event</h2>
         <p className="mt-3 max-w-2xl text-white/65">
           Send this event to friends, promoters, venues, or anyone looking for
@@ -1099,14 +1099,14 @@ function EventControlPanel({
   isBeforePromotionWindow: boolean;
 }) {
   return (
-    <section className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
+    <section className="rounded-[1.75rem] sm:rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.35em] text-accent">
             Event Control Panel
           </p>
 
-          <h2 className="mt-3 text-3xl font-bold text-white">
+          <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-white">
             Current Status: {event.status}
           </h2>
 
@@ -1297,7 +1297,7 @@ function DetailPanel({
   if (!visibleItems.length) return null;
 
   return (
-    <section className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+    <section className="rounded-[1.75rem] sm:rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
       <h2 className="text-2xl font-bold text-white">{title}</h2>
 
       <div className="mt-5 space-y-4">
