@@ -266,4 +266,185 @@ export default async function AdminEventDetailPage({ params }: Props) {
           </Panel>
 
           <Panel title="Manual Status Control">
-       
+            <form action={updateAdminEventStatus} className="space-y-4">
+              <input type="hidden" name="event_id" value={event.id} />
+
+              <label className="block">
+                <span className="text-sm text-white/60">Status</span>
+                <select
+                  name="status"
+                  defaultValue={event.status || 'draft'}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
+                >
+                  <option value="draft">draft</option>
+                  <option value="revision_draft">revision_draft</option>
+                  <option value="submitted">submitted</option>
+                  <option value="paid_awaiting_approval">paid_awaiting_approval</option>
+                  <option value="approved_unpaid">approved_unpaid</option>
+                  <option value="revision_submitted">revision_submitted</option>
+                  <option value="scheduled">scheduled</option>
+                  <option value="active">active</option>
+                  <option value="rejected">rejected</option>
+                  <option value="cancelled">cancelled</option>
+                  <option value="removed">removed</option>
+                </select>
+              </label>
+
+              <TextArea name="reason" label="Reason / Internal Note" />
+
+              <Button tone="yellow">Update Status</Button>
+            </form>
+          </Panel>
+
+          <Panel title="Quick Facts">
+            <div className="space-y-3">
+              <Info label="Event ID" value={event.id} />
+              <Info label="Owner ID" value={event.owner_id} />
+              <Info label="Created" value={formatDate(event.created_at)} />
+              <Info label="Updated" value={formatDate(event.updated_at)} />
+              <Info label="Approved At" value={formatDate(event.approved_at)} />
+              <Info label="Rejected At" value={formatDate(event.rejected_at)} />
+              <Info label="Removed At" value={formatDate(event.removed_at)} />
+              <Info label="Locked At" value={formatDate(event.locked_at)} />
+            </div>
+          </Panel>
+        </aside>
+      </section>
+    </section>
+  );
+}
+
+function StatusForm({
+  eventId,
+  action,
+  label,
+  tone,
+}: {
+  eventId: string;
+  action: string;
+  label: string;
+  tone: 'green' | 'yellow' | 'red';
+}) {
+  return (
+    <form action={updateAdminEventVisibility}>
+      <input type="hidden" name="event_id" value={eventId} />
+      <input type="hidden" name="action" value={action} />
+      <Button tone={tone}>{label}</Button>
+    </form>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+      <h2 className="text-2xl font-bold text-white">{title}</h2>
+      <div className="mt-6">{children}</div>
+    </section>
+  );
+}
+
+function Input({
+  name,
+  label,
+  type = 'text',
+  step,
+  defaultValue,
+}: {
+  name: string;
+  label: string;
+  type?: string;
+  step?: string;
+  defaultValue?: any;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm text-white/60">{label}</span>
+      <input
+        name={name}
+        type={type}
+        step={step}
+        defaultValue={defaultValue ?? ''}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+      />
+    </label>
+  );
+}
+
+function TextArea({
+  name,
+  label,
+  defaultValue,
+  rows = 4,
+}: {
+  name: string;
+  label: string;
+  defaultValue?: any;
+  rows?: number;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm text-white/60">{label}</span>
+      <textarea
+        name={name}
+        rows={rows}
+        defaultValue={defaultValue ?? ''}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+      />
+    </label>
+  );
+}
+
+function Button({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: 'green' | 'yellow' | 'red';
+}) {
+  const className =
+    tone === 'green'
+      ? 'border-green-500/20 bg-green-500/10 text-green-200 hover:border-green-500/40'
+      : tone === 'red'
+      ? 'border-red-500/20 bg-red-500/10 text-red-200 hover:border-red-500/40'
+      : 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200 hover:border-yellow-500/40';
+
+  return (
+    <button className={`w-full rounded-2xl border px-5 py-3 font-semibold ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+function Info({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.25em] text-white/45">{label}</p>
+      <p className="mt-2 break-words text-white">{value || '—'}</p>
+    </div>
+  );
+}
+
+function Chip({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/65">
+      {label}
+    </span>
+  );
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString();
+}
+
+function money(value: number | string | null | undefined) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+}

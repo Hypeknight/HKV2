@@ -1318,3 +1318,31 @@ function DetailPanel({
             <p className="text-xs uppercase tracking-[0.25em] text-white/45">
               {label}
             </p>
+            <p className="mt-2 text-white/75">{value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Chip({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'accent' | 'gray';
+}) {
+  const styles =
+    tone === 'accent'
+      ? 'border-accent/20 bg-accent/10 text-accent'
+      : 'border-white/10 bg-white/5 text-white/65';
+
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.15em] ${styles}`}
+    >
+      {label}
+    </span>
+  );
+}
