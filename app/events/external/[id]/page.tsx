@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import TrackView from '@/components/analytics/TrackView';
 
 type PageProps = {
   params: Promise<{
@@ -31,7 +32,17 @@ export default async function ExternalEventPage({
     : 'Date pending';
 
   return (
-    <section className="space-y-10">
+  <>
+    <TrackView
+      externalEventId={event.id}
+      sourceType="external"
+      pageType="external_event_detail"
+      city={event.city}
+      state={event.state}
+      path={`/events/external/${event.id}`}
+    />
+
+    <section className="mx-auto max-w-7xl ...">
       {/* Hero */}
 
       <section className="overflow-hidden rounded-[2.5rem] border border-white/10 bg-white/5">
@@ -173,6 +184,7 @@ export default async function ExternalEventPage({
         </p>
       </section>
     </section>
+    </>
   );
 }
 
