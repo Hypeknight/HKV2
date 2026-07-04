@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import TrackView from '@/components/analytics/TrackView';
+import { ReactNode } from 'react';
 
 type PageProps = {
   params: Promise<{
@@ -191,19 +192,35 @@ export default async function ExternalEventPage({
 function InfoCard({
   label,
   value,
+  icon,
+  accent = false,
 }: {
   label: string;
-  value: string;
+  value?: ReactNode;
+  icon?: ReactNode;
+  accent?: boolean;
 }) {
-  return (
-    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-        {label}
-      </p>
+  if (!value) return null;
 
-      <p className="mt-3 text-white">
+  return (
+    <div
+      className={`rounded-3xl border p-5 transition-all ${
+        accent
+          ? 'border-accent/30 bg-accent/10'
+          : 'border-white/10 bg-black/20'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {icon ? <div className="text-lg">{icon}</div> : null}
+
+        <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+          {label}
+        </p>
+      </div>
+
+      <div className="mt-3 break-words text-white">
         {value}
-      </p>
+      </div>
     </div>
   );
 }

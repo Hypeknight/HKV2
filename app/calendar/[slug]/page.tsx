@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeState } from '@/lib/states';
+import LocalDateTime from '@/components/LocalDateTime';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -224,7 +225,7 @@ function EventCard({ event }: { event: any }) {
 
         {event.event_start_at ? (
           <p className="mt-2 text-sm text-white/50">
-            {new Date(event.event_start_at).toLocaleString()}
+            <LocalDateTime value={event.event_start_at} />
           </p>
         ) : null}
 

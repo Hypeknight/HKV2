@@ -803,6 +803,8 @@ import {
 import ShareButton from '@/components/ShareButton';
 import EventComments from '@/components/events/EventComments';
 import TrackView from '@/components/analytics/TrackView';
+import LocalDateTime from '@/components/LocalDateTime';
+import { ReactNode } from 'react';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -986,7 +988,7 @@ if (commentsError) {
             {event.event_start_at ? (
               <InfoCard
                 label="Starts"
-                value={new Date(event.event_start_at).toLocaleString()}
+                value="{<LocalDateTime value={event.event_start_at} />}"
               />
             ) : null}
 
@@ -1284,15 +1286,38 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleString();
 }
 
-function InfoCard({ label, value }: { label: string; value?: string | null }) {
+function InfoCard({
+  label,
+  value,
+  icon,
+  accent = false,
+}: {
+  label: string;
+  value?: ReactNode;
+  icon?: ReactNode;
+  accent?: boolean;
+}) {
   if (!value) return null;
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-        {label}
-      </p>
-      <p className="mt-3 break-words text-white">{value}</p>
+    <div
+      className={`rounded-3xl border p-5 transition-all ${
+        accent
+          ? 'border-accent/30 bg-accent/10'
+          : 'border-white/10 bg-black/20'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {icon ? <div className="text-lg">{icon}</div> : null}
+
+        <p className="text-xs uppercase tracking-[0.25em] text-white/50">
+          {label}
+        </p>
+      </div>
+
+      <div className="mt-3 break-words text-white">
+        {value}
+      </div>
     </div>
   );
 }

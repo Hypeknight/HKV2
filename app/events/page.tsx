@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { expandCitySearch } from '@/lib/city-aliases';
 import { US_STATES, normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
+import LocalDateTime from '@/components/LocalDateTime';
 
 type Props = {
   searchParams?: Promise<{
@@ -538,7 +539,7 @@ function EventCard({ event, compact = false }: { event: any; compact?: boolean }
 
         {event.event_start_at ? (
           <p className="mt-2 text-sm text-white/50">
-            {formatEventTime(event)}
+            <LocalDateTime value={event.event_start_at} />
           </p>
         ) : null}
 

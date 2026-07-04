@@ -7,6 +7,7 @@ import {
   assignEventToSpecialDay,
   removeEventFromSpecialDay,
 } from '../actions';
+import LocalDateTime from '@/components/LocalDateTime';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -266,7 +267,7 @@ function AssignmentPanel({
                   </p>
                   {event.event_start_at ? (
                     <p className="mt-1 text-sm text-white/45">
-                      {new Date(event.event_start_at).toLocaleString()}
+                      <LocalDateTime value={event.event_start_at} />
                     </p>
                   ) : null}
                 </div>

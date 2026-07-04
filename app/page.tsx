@@ -326,6 +326,7 @@ import ShareButton from '@/components/ShareButton';
 import { getPlatformSettings } from '@/lib/settings';
 import { normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
+import LocalDateTime from '@/components/LocalDateTime';
 
 const LOGO_URL = '/hypeknight-logo.jpeg';
 
@@ -738,7 +739,7 @@ function EventCard({ event }: { event: any }) {
           {[event.city, event.state].filter(Boolean).join(', ') || event.venue_name || 'Location TBA'}
         </p>
         {event.event_start_at ? (
-          <p className="mt-2 text-sm text-white/50">{formatEventTime(event)}</p>
+          <p className="mt-2 text-sm text-white/50"><LocalDateTime value={event.event_start_at} /></p>
         ) : null}
         {event.description ? (
           <p className="mt-4 line-clamp-2 text-sm text-white/65">{event.description}</p>
