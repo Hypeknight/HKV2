@@ -200,22 +200,3 @@ function InfoCard({
       <p className="text-xs uppercase tracking-[0.25em] text-white/50">
         {label}
       </p>
-
-      <p className="mt-3 text-white">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function Badge({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white">
-      {children}
-    </span>
-  );
-}
