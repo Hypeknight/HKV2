@@ -988,7 +988,7 @@ if (commentsError) {
             {event.event_start_at ? (
               <InfoCard
                 label="Starts"
-                value="{<LocalDateTime value={event.event_start_at} />}"
+                value={<LocalDateTime value={event.event_start_at} />}
               />
             ) : null}
 
