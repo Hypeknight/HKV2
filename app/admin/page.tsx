@@ -128,6 +128,13 @@ export default async function AdminPage() {
             description="Review flagged content and moderation actions."
             href="/admin/moderation"
           />
+
+          <AdminCard
+            title="Analytics & Reporting"
+            description="View platform metrics, event performance, and user engagement."
+            href="/admin/analytics"
+          />
+
         </div>
       </section>
 
