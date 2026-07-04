@@ -802,6 +802,7 @@ import {
 } from '@/app/dashboard/events/actions';
 import ShareButton from '@/components/ShareButton';
 import EventComments from '@/components/events/EventComments';
+import TrackView from '@/components/analytics/TrackView';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -896,6 +897,16 @@ if (commentsError) {
   );
 
   return (
+  <>
+    <TrackView
+      eventId={event.id}
+      sourceType="hypeknight"
+      pageType="event_detail"
+      city={event.city || event.venue?.city}
+      state={event.state || event.venue?.state}
+      path={`/events/${event.slug}`}
+    />
+
     <section className="mx-auto max-w-7xl space-y-10 px-4 py-10 sm:px-6 lg:px-8">
       <Link href="/events" className="text-sm text-white/60 hover:text-accent">
         ← Back to Events
@@ -1078,6 +1089,7 @@ if (commentsError) {
         eventPath={`/events/${event.slug}`}
       />
     </section>
+    </>
   );
 }
 
