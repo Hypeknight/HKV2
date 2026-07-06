@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 
 export default function EventTime({
   value,
-  timeZone,
-  mode = 'utc',
+  mode = 'wall',
+  showStatus = true,
 }: {
   value?: string | null;
-  timeZone?: string;
-  mode?: 'utc' | 'wall';
+  mode?: 'wall' | 'utc';
+  showStatus?: boolean;
 }) {
   const [now, setNow] = useState(new Date());
 
@@ -20,9 +20,11 @@ export default function EventTime({
 
   if (!value) return <>—</>;
 
-  const displayDate = mode === 'wall' ? parseWallTime(value) : new Date(value);
-  const diff = displayDate.getTime() - now.getTime();
+  const date = mode === 'wall' ? parseWallTime(value) : new Date(value);
 
+  if (Number.isNaN(date.getTime())) return <>—</>;
+
+  const diff = date.getTime() - now.getTime();
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
@@ -33,20 +35,19 @@ export default function EventTime({
   else if (minutes < 60) status = `Starts in ${Math.max(minutes, 1)} min`;
   else if (hours < 24) status = `Starts in ${hours} hr`;
   else if (days === 1) status = 'Tomorrow';
-  else status = displayDate.toLocaleDateString(undefined, { weekday: 'long' });
+  else status = date.toLocaleDateString(undefined, { weekday: 'long' });
 
   return (
     <div className="space-y-1">
-      <p className="font-semibold text-white">{status}</p>
+      {showStatus ? <p className="font-semibold text-white">{status}</p> : null}
+
       <p className="text-sm text-white/55">
-        {displayDate.toLocaleString(undefined, {
-          ...(mode === 'utc' && timeZone ? { timeZone } : {}),
+        {date.toLocaleString(undefined, {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
-          ...(mode === 'utc' && timeZone ? { timeZoneName: 'short' } : {}),
         })}
       </p>
     </div>
@@ -54,18 +55,20 @@ export default function EventTime({
 }
 
 function parseWallTime(value: string) {
-  const clean = value.replace('T', ' ').replace('Z', '');
-  const [datePart, timePartRaw = '00:00:00'] = clean.split(' ');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const [hour, minute, secondRaw = '0'] = timePartRaw.split(':');
-  const second = Number(String(secondRaw).split('.')[0]);
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
+  );
+
+  if (!match) return new Date(value);
+
+  const [, year, month, day, hour, minute, second = '0'] = match;
 
   return new Date(
-    year,
-    month - 1,
-    day,
+    Number(year),
+    Number(month) - 1,
+    Number(day),
     Number(hour),
     Number(minute),
-    second
+    Number(second)
   );
 }

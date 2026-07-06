@@ -120,7 +120,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
                 <div className="mt-2">
                   <EventTime
                     value={event.event_start_at}
-                    timeZone={eventTimeZone}
+                    
                     mode="utc"
                   />
                 </div>
@@ -171,7 +171,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
             value={
               <EventTime
                 value={event.event_start_at}
-                timeZone={eventTimeZone}
+                
                 mode="utc"
               />
             }

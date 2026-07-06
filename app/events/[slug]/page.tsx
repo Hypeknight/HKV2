@@ -947,7 +947,7 @@ export default async function EventDetailPage({ params }: Props) {
             value={
               <EventTime
                 value={event.event_end_at}
-                timeZone={eventTimeZone}
+                mode="wall"
               />
             }
           />
