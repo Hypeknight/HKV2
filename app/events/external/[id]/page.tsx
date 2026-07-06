@@ -29,12 +29,31 @@ export default async function ExternalEventDetailPage({ params }: Props) {
   if (error || !event) notFound();
 
   const imageUrl = event.image_url;
+  const eventTimeZone = getTimeZoneForEvent(event);
+
   const sourceLabel =
     event.source_code === 'ticketmaster'
       ? 'Ticketmaster'
       : event.source_code || 'External Event';
 
+  const officialUrl =
+    event.url ||
+    event.ticket_url ||
+    event.provider_url ||
+    event.source_url ||
+    null;
+
+  const fullAddress = [
+    event.address,
+    event.city,
+    event.state,
+    event.postal_code || event.zip_code,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   const locationText =
+    fullAddress ||
     [event.city, event.state].filter(Boolean).join(', ') ||
     event.venue_name ||
     'Location TBA';
@@ -99,19 +118,22 @@ export default async function ExternalEventDetailPage({ params }: Props) {
                   Starts
                 </p>
                 <div className="mt-2">
-                  <EventTime value={event.event_start_at} />
+                  <EventTime
+                    value={event.event_start_at}
+                    timeZone={eventTimeZone}
+                  />
                 </div>
               </div>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                {event.url ? (
+                {officialUrl ? (
                   <a
-                    href={event.url}
+                    href={officialUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black transition hover:opacity-90 sm:w-auto"
                   >
-                    View Official Listing
+                    View / Buy from Official Provider
                   </a>
                 ) : null}
 
@@ -123,19 +145,45 @@ export default async function ExternalEventDetailPage({ params }: Props) {
               <p className="mt-5 text-xs leading-6 text-white/45">
                 This is a supplemental external listing. HypeKnight is helping
                 surface the event, but details may change. Confirm times,
-                ticketing, age requirements, and venue rules with the official
-                event provider before attending.
+                ticketing, age requirements, pricing, and venue rules with the
+                official event provider before attending.
               </p>
             </div>
           </div>
         </section>
+
+        {imageUrl ? (
+          <Panel title="Event Image" eyebrow="External Visual">
+            <img
+              src={imageUrl}
+              alt={`${event.name} event image`}
+              className="w-full rounded-[1.5rem] border border-white/10 object-contain"
+            />
+          </Panel>
+        ) : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <InfoCard
             label="Starts"
             icon="🕒"
             accent
-            value={<EventTime value={event.event_start_at} />}
+            value={
+              <EventTime
+                value={event.event_start_at}
+                timeZone={eventTimeZone}
+              />
+            }
+          />
+
+          <InfoCard
+            label="Ends"
+            icon="⏳"
+            value={
+              <EventTime
+                value={event.event_end_at}
+                timeZone={eventTimeZone}
+              />
+            }
           />
 
           <InfoCard
@@ -144,12 +192,29 @@ export default async function ExternalEventDetailPage({ params }: Props) {
             value={event.venue_name || 'Venue TBA'}
           />
 
-          <InfoCard label="Location" icon="🏙️" value={locationText} />
+          <InfoCard
+            label="Address"
+            icon="🏙️"
+            value={fullAddress || locationText}
+          />
 
           <InfoCard
-            label="Source"
+            label="Official Provider"
             icon="🔗"
-            value={sourceLabel}
+            value={
+              officialUrl ? (
+                <a
+                  href={officialUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-accent hover:underline"
+                >
+                  Open event provider
+                </a>
+              ) : (
+                'Official link not available'
+              )
+            }
           />
 
           <InfoCard
@@ -165,15 +230,9 @@ export default async function ExternalEventDetailPage({ params }: Props) {
           />
 
           <InfoCard
-            label="Ends"
-            icon="⏳"
-            value={<EventTime value={event.event_end_at} />}
-          />
-
-          <InfoCard
-            label="Status"
+            label="Source"
             icon="⚡"
-            value={event.status || 'active'}
+            value={sourceLabel}
           />
         </section>
 
@@ -191,21 +250,21 @@ export default async function ExternalEventDetailPage({ params }: Props) {
               <p className="text-white/70">
                 This event came from an external source. HypeKnight displays it
                 to help users discover more experiences, but the official source
-                should be used for final event information.
+                should be used for final event information and purchasing.
               </p>
 
-              {event.url ? (
+              {officialUrl ? (
                 <a
-                  href={event.url}
+                  href={officialUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black transition hover:opacity-90 sm:w-auto"
                 >
-                  Open Official Event
+                  View / Buy from Official Provider
                 </a>
               ) : (
                 <p className="text-sm text-white/50">
-                  No official link is currently available.
+                  No official provider link is currently available.
                 </p>
               )}
             </div>
@@ -233,4 +292,25 @@ export default async function ExternalEventDetailPage({ params }: Props) {
       </section>
     </>
   );
+}
+
+function getTimeZoneForEvent(event: { city?: string | null; state?: string | null }) {
+  const city = String(event.city || '').toLowerCase();
+  const state = String(event.state || '').toUpperCase();
+
+  if (state === 'MO' || state === 'KS' || state === 'IL' || state === 'TX') {
+    return 'America/Chicago';
+  }
+
+  if (state === 'NY' || state === 'GA' || state === 'FL') {
+    return 'America/New_York';
+  }
+
+  if (state === 'NV' || state === 'CA') {
+    return 'America/Los_Angeles';
+  }
+
+  if (city.includes('denver')) return 'America/Denver';
+
+  return 'America/Chicago';
 }

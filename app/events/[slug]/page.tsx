@@ -842,7 +842,19 @@ export default async function EventDetailPage({ params }: Props) {
   const imageUrl = event.flyer_url || event.image_url;
   const city = event.city || event.venue?.city;
   const state = event.state || event.venue?.state;
+  const eventTimeZone = getTimeZoneForEvent({ city, state });
+
+  const fullAddress = [
+    event.address,
+    city,
+    state,
+    event.zip_code,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   const locationText =
+    fullAddress ||
     [city, state].filter(Boolean).join(', ') ||
     event.venue_name ||
     'Location TBA';
@@ -874,7 +886,7 @@ export default async function EventDetailPage({ params }: Props) {
                 className="h-[360px] w-full object-cover sm:h-[520px]"
               />
 
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/10" />
 
               <div className="absolute left-4 top-4">
                 <EventStatusBadge
@@ -887,6 +899,7 @@ export default async function EventDetailPage({ params }: Props) {
                 <HeroContent
                   event={event}
                   locationText={locationText}
+                  eventTimeZone={eventTimeZone}
                   canManage={canManage}
                   isAdmin={isAdmin}
                 />
@@ -897,6 +910,7 @@ export default async function EventDetailPage({ params }: Props) {
               <HeroContent
                 event={event}
                 locationText={locationText}
+                eventTimeZone={eventTimeZone}
                 canManage={canManage}
                 isAdmin={isAdmin}
               />
@@ -904,34 +918,50 @@ export default async function EventDetailPage({ params }: Props) {
           )}
         </section>
 
+        {imageUrl ? (
+          <Panel title="Event Flyer" eyebrow="Official Visual">
+            <img
+              src={imageUrl}
+              alt={`${event.name} flyer`}
+              className="w-full rounded-[1.5rem] border border-white/10 object-contain"
+            />
+          </Panel>
+        ) : null}
+
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <InfoCard
             label="Starts"
             icon="🕒"
             accent
-            value={<EventTime value={event.event_start_at} />}
+            value={
+              <EventTime
+                value={event.event_start_at}
+                timeZone={eventTimeZone}
+              />
+            }
+          />
+
+          <InfoCard
+            label="Ends"
+            icon="⏳"
+            value={
+              <EventTime
+                value={event.event_end_at}
+                timeZone={eventTimeZone}
+              />
+            }
           />
 
           <InfoCard
             label="Venue"
-            icon="📍"
+            icon="🏢"
             value={event.venue_name || event.venue?.name || 'Venue TBA'}
           />
 
           <InfoCard
-            label="Location"
-            icon="🏙️"
-            value={locationText}
-          />
-
-          <InfoCard
-            label="Music / Type"
-            icon="🎵"
-            value={
-              Array.isArray(event.music_selection)
-                ? event.music_selection.join(', ')
-                : event.event_type || 'Not listed'
-            }
+            label="Address"
+            icon="📍"
+            value={fullAddress || 'Address not listed'}
           />
 
           <InfoCard
@@ -953,9 +983,13 @@ export default async function EventDetailPage({ params }: Props) {
           />
 
           <InfoCard
-            label="Ends"
-            icon="⏳"
-            value={<EventTime value={event.event_end_at} />}
+            label="Music / Type"
+            icon="🎵"
+            value={
+              Array.isArray(event.music_selection)
+                ? event.music_selection.join(', ')
+                : event.event_type || 'Not listed'
+            }
           />
         </section>
 
@@ -1030,7 +1064,7 @@ export default async function EventDetailPage({ params }: Props) {
                     href={`/dashboard/events/${event.id}/revision`}
                     variant="secondary"
                   >
-                    Request / Edit Revision
+                    Edit / Revision
                   </ButtonLink>
                 </>
               ) : null}
@@ -1055,11 +1089,13 @@ export default async function EventDetailPage({ params }: Props) {
 function HeroContent({
   event,
   locationText,
+  eventTimeZone,
   canManage,
   isAdmin,
 }: {
   event: any;
   locationText: string;
+  eventTimeZone: string;
   canManage: boolean;
   isAdmin: boolean;
 }) {
@@ -1085,7 +1121,7 @@ function HeroContent({
             Starts
           </p>
           <div className="mt-2">
-            <EventTime value={event.event_start_at} />
+            <EventTime value={event.event_start_at} timeZone={eventTimeZone} />
           </div>
         </div>
 
@@ -1110,4 +1146,25 @@ function HeroContent({
       </div>
     </div>
   );
+}
+
+function getTimeZoneForEvent(event: { city?: string | null; state?: string | null }) {
+  const city = String(event.city || '').toLowerCase();
+  const state = String(event.state || '').toUpperCase();
+
+  if (state === 'MO' || state === 'KS' || state === 'IL' || state === 'TX') {
+    return 'America/Chicago';
+  }
+
+  if (state === 'NY' || state === 'GA' || state === 'FL') {
+    return 'America/New_York';
+  }
+
+  if (state === 'NV' || state === 'CA') {
+    return 'America/Los_Angeles';
+  }
+
+  if (city.includes('denver')) return 'America/Denver';
+
+  return 'America/Chicago';
 }

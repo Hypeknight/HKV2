@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 
-export default function EventTime({ value }: { value?: string | null }) {
+export default function EventTime({
+  value,
+  timeZone,
+}: {
+  value?: string | null;
+  timeZone?: string;
+}) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -21,21 +27,23 @@ export default function EventTime({ value }: { value?: string | null }) {
   let status = '';
 
   if (diff < 0) status = 'Started';
-  else if (minutes < 60) status = `Starts in ${minutes} min`;
+  else if (minutes < 60) status = `Starts in ${Math.max(minutes, 1)} min`;
   else if (hours < 24) status = `Starts in ${hours} hr`;
   else if (days === 1) status = 'Tomorrow';
-  else status = date.toLocaleDateString(undefined, { weekday: 'long' });
+  else status = date.toLocaleDateString(undefined, { weekday: 'long', timeZone });
 
   return (
     <div className="space-y-1">
       <p className="font-semibold text-white">{status}</p>
       <p className="text-sm text-white/55">
         {date.toLocaleString(undefined, {
+          timeZone,
           weekday: 'short',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
+          timeZoneName: 'short',
         })}
       </p>
     </div>
