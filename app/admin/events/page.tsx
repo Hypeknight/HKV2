@@ -942,13 +942,4 @@ function Info({ label, value }: { label: string; value?: string | null }) {
 
 function Chip({ label }: { label: string }) {
   return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.15em] text-white/65">
-      {label}
-    </span>
-  );
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString();
-}
+    <span className="r
