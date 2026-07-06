@@ -121,6 +121,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
                   <EventTime
                     value={event.event_start_at}
                     timeZone={eventTimeZone}
+                    mode="utc"
                   />
                 </div>
               </div>
@@ -171,17 +172,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
               <EventTime
                 value={event.event_start_at}
                 timeZone={eventTimeZone}
-              />
-            }
-          />
-
-          <InfoCard
-            label="Ends"
-            icon="⏳"
-            value={
-              <EventTime
-                value={event.event_end_at}
-                timeZone={eventTimeZone}
+                mode="utc"
               />
             }
           />

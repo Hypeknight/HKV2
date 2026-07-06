@@ -936,7 +936,7 @@ export default async function EventDetailPage({ params }: Props) {
             value={
               <EventTime
                 value={event.event_start_at}
-                timeZone={eventTimeZone}
+                mode="wall"
               />
             }
           />
@@ -1121,7 +1121,7 @@ function HeroContent({
             Starts
           </p>
           <div className="mt-2">
-            <EventTime value={event.event_start_at} timeZone={eventTimeZone} />
+            <EventTime value={event.event_start_at} mode="wall" />
           </div>
         </div>
 
