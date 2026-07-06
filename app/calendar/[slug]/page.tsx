@@ -2,7 +2,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeState } from '@/lib/states';
-import LocalDateTime from '@/components/LocalDateTime';
+import {
+  EmptyState,
+  EventCard,
+  MetricCard,
+  SectionHeader,
+} from '@/components/ui';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -70,6 +75,7 @@ export default async function PublicCalendarThemePage({ params }: Props) {
       event_end_at: event.event_end_at,
       image_url: event.flyer_url || event.image_url,
       href: `/events/${event.slug}`,
+      source: 'hypeknight',
       source_label: 'HypeKnight Event',
       venue_name: event.venue_name,
       genre: Array.isArray(event.music_selection)
@@ -88,6 +94,7 @@ export default async function PublicCalendarThemePage({ params }: Props) {
       event_end_at: event.event_end_at,
       image_url: event.image_url,
       href: `/events/external/${event.id}`,
+      source: 'external',
       source_label:
         event.source_code === 'ticketmaster'
           ? 'Ticketmaster'
@@ -98,68 +105,65 @@ export default async function PublicCalendarThemePage({ params }: Props) {
     })),
   ].sort(sortByStartTime);
 
+  const hypeCount = cards.filter(
+    (event) => event.source_label === 'HypeKnight Event'
+  ).length;
+
+  const externalCount = cards.length - hypeCount;
+
   return (
-    <section className="mx-auto max-w-7xl space-y-12 px-4 py-12 sm:px-6 lg:px-8">
+    <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-10 lg:px-8">
       <Link href="/calendar" className="text-sm text-white/60 hover:text-accent">
         ← Back to Calendar
       </Link>
 
-      <section className="rounded-[3rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-10">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
-          {specialDay.category || 'Calendar Theme'}
-        </p>
+      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[3rem] sm:p-10">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
 
-        <h1 className="mt-3 max-w-4xl text-5xl font-black text-white">
-          {specialDay.name}
-        </h1>
-
-        <p className="mt-4 text-white/55">
-          {formatDate(specialDay.starts_on)}
-          {specialDay.ends_on ? ` – ${formatDate(specialDay.ends_on)}` : ''}
-        </p>
-
-        {specialDay.description ? (
-          <p className="mt-5 max-w-3xl text-white/70">
-            {specialDay.description}
+        <div className="relative">
+          <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
+            {specialDay.category || 'Calendar Theme'}
           </p>
-        ) : null}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <Metric label="Assigned Events" value={String(cards.length)} />
-          <Metric
-            label="HypeKnight"
-            value={String(cards.filter((event) => event.source_label === 'HypeKnight Event').length)}
-          />
-          <Metric
-            label="External"
-            value={String(cards.filter((event) => event.source_label !== 'HypeKnight Event').length)}
-          />
+          <h1 className="mt-3 max-w-4xl text-4xl font-black leading-tight text-white sm:text-6xl">
+            {specialDay.name}
+          </h1>
+
+          <p className="mt-4 text-sm text-white/55 sm:text-base">
+            {formatDate(specialDay.starts_on)}
+            {specialDay.ends_on ? ` – ${formatDate(specialDay.ends_on)}` : ''}
+          </p>
+
+          {specialDay.description ? (
+            <p className="mt-5 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
+              {specialDay.description}
+            </p>
+          ) : null}
+
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            <MetricCard label="Events" value={cards.length} accent />
+            <MetricCard label="HypeKnight" value={hypeCount} />
+            <MetricCard label="External" value={externalCount} />
+          </div>
         </div>
       </section>
 
       <section>
-        <div className="max-w-3xl">
-          <p className="text-sm uppercase tracking-[0.35em] text-accent">
-            Themed Events
-          </p>
-          <h2 className="mt-3 text-3xl font-bold text-white">
-            Events connected to {specialDay.name}
-          </h2>
-          <p className="mt-3 text-white/70">
-            These events were selected by HypeKnight admin for this calendar
-            theme.
-          </p>
-        </div>
+        <SectionHeader
+          eyebrow="Themed Events"
+          title={`Events connected to ${specialDay.name}`}
+          text="These events were selected by HypeKnight admin for this calendar theme."
+        />
 
         {cards.length ? (
-          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-5 grid gap-4 sm:mt-8 md:grid-cols-2 xl:grid-cols-3">
             {cards.map((event) => (
               <EventCard key={`${event.source_label}-${event.id}`} event={event} />
             ))}
           </div>
         ) : (
-          <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
-            No events have been added to this theme yet.
+          <div className="mt-5">
+            <EmptyState text="No events have been added to this theme yet." />
           </div>
         )}
       </section>
@@ -167,92 +171,32 @@ export default async function PublicCalendarThemePage({ params }: Props) {
   );
 }
 
-function sortByStartTime(a: any, b: any) {
-  const aTime = a.event_start_at
-    ? new Date(a.event_start_at).getTime()
-    : Infinity;
+function parseWallTime(value?: string | null) {
+  if (!value) return null;
 
-  const bTime = b.event_start_at
-    ? new Date(b.event_start_at).getTime()
-    : Infinity;
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
+  );
+
+  if (!match) return new Date(value);
+
+  const [, year, month, day, hour, minute, second = '0'] = match;
+
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second)
+  );
+}
+
+function sortByStartTime(a: any, b: any) {
+  const aTime = parseWallTime(a.event_start_at)?.getTime() ?? Infinity;
+  const bTime = parseWallTime(b.event_start_at)?.getTime() ?? Infinity;
 
   return aTime - bTime;
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
-    </div>
-  );
-}
-
-function EventCard({ event }: { event: any }) {
-  return (
-    <Link
-      href={event.href}
-      className="group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07]"
-    >
-      {event.image_url ? (
-        <img
-          src={event.image_url}
-          alt={event.name}
-          className="h-52 w-full object-cover"
-        />
-      ) : (
-        <div className="flex h-52 w-full items-center justify-center bg-black/30 text-white/40">
-          No image
-        </div>
-      )}
-
-      <div className="p-6">
-        <p className="text-xs uppercase tracking-[0.25em] text-accent">
-          {event.source_label}
-        </p>
-
-        <h3 className="mt-3 text-2xl font-bold text-white group-hover:text-accent">
-          {event.name}
-        </h3>
-
-        <p className="mt-3 text-white/60">
-          {[event.city, event.state].filter(Boolean).join(', ') ||
-            event.venue_name ||
-            'Location TBA'}
-        </p>
-
-        {event.event_start_at ? (
-          <p className="mt-2 text-sm text-white/50">
-            <LocalDateTime value={event.event_start_at} />
-          </p>
-        ) : null}
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {event.genre ? <Pill label={event.genre} /> : null}
-          {event.classification ? <Pill label={event.classification} /> : null}
-          {event.venue_name ? <Pill label={event.venue_name} /> : null}
-        </div>
-
-        {event.description ? (
-          <p className="mt-4 line-clamp-3 text-sm text-white/65">
-            {event.description}
-          </p>
-        ) : null}
-
-        <p className="mt-6 text-sm font-medium text-accent">Open event →</p>
-      </div>
-    </Link>
-  );
-}
-
-function Pill({ label }: { label: string }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
-      {label}
-    </span>
-  );
 }
 
 function formatDate(value?: string | null) {
