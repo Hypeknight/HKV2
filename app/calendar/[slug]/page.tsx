@@ -257,4 +257,5 @@ function Pill({ label }: { label: string }) {
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
-  return 
+  return new Date(`${value}T00:00:00`).toLocaleDateString();
+}
