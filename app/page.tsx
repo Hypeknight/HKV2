@@ -326,23 +326,26 @@ import ShareButton from '@/components/ShareButton';
 import { getPlatformSettings } from '@/lib/settings';
 import { normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
-import LocalDateTime from '@/components/LocalDateTime';
+import {
+  EventRail,
+  MetricCard,
+  SectionHeader,
+} from '@/components/ui';
 
 const LOGO_URL = '/hypeknight-logo.jpeg';
 
 const VIBES = [
-  { label: 'Live Music', emoji: '🎸', terms: ['music', 'concert', 'live music', 'rock', 'jazz', 'blues'] },
-  { label: 'Country', emoji: '🤠', terms: ['country'] },
-  { label: 'Hip-Hop', emoji: '🎤', terms: ['hip-hop', 'hip hop', 'rap'] },
-  { label: 'Sports', emoji: '🏟️', terms: ['sports', 'soccer', 'football', 'baseball', 'basketball'] },
-  { label: 'Theater', emoji: '🎭', terms: ['theater', 'arts', 'broadway'] },
-  { label: 'Festivals', emoji: '🎡', terms: ['festival', 'fair', 'fairs'] },
-  { label: 'Comedy', emoji: '😂', terms: ['comedy'] },
-  { label: 'Family', emoji: '👨‍👩‍👧', terms: ['family', 'kids'] },
+  { label: 'Live Music', emoji: '🎸', value: 'music', terms: ['music', 'concert', 'live music', 'rock', 'jazz', 'blues'] },
+  { label: 'Country', emoji: '🤠', value: 'country', terms: ['country'] },
+  { label: 'Hip-Hop', emoji: '🎤', value: 'hip-hop', terms: ['hip-hop', 'hip hop', 'rap'] },
+  { label: 'Sports', emoji: '🏟️', value: 'sports', terms: ['sports', 'soccer', 'football', 'baseball', 'basketball'] },
+  { label: 'Theater', emoji: '🎭', value: 'theater', terms: ['theater', 'arts', 'broadway'] },
+  { label: 'Festivals', emoji: '🎡', value: 'festivals', terms: ['festival', 'fair', 'fairs'] },
+  { label: 'Comedy', emoji: '😂', value: 'comedy', terms: ['comedy'] },
+  { label: 'Family', emoji: '👨‍👩‍👧', value: 'family', terms: ['family', 'kids'] },
 ];
 
 export default async function HomePage() {
-  
   const supabase = await createClient();
   const settings = await getPlatformSettings();
 
@@ -358,7 +361,7 @@ export default async function HomePage() {
     .lte('promotion_start_at', serverNow.toISOString())
     .gte('promotion_end_at', serverNow.toISOString())
     .order('event_start_at', { ascending: true })
-    .limit(60);
+    .limit(80);
 
   const { data: externalEvents } = await supabase
     .from('external_events')
@@ -369,7 +372,7 @@ export default async function HomePage() {
       `event_end_at.gte.${serverNow.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
     )
     .order('event_start_at', { ascending: true })
-    .limit(60);
+    .limit(80);
 
   const { data: specialDays } = await supabase
     .from('special_days')
@@ -385,17 +388,24 @@ export default async function HomePage() {
   ].sort(sortByStartTime);
 
   const cityCounts = buildCityCounts(allEvents);
-  const liveNowEvents = allEvents.filter((event) => isLiveNow(event)).slice(0, 8);
-  const startingSoonEvents = allEvents.filter((event) => isStartingSoon(event)).slice(0, 8);
-  const weekendEvents = allEvents.filter((event) => isWeekendInEventTime(event)).slice(0, 8);
+
+  const liveNowEvents = allEvents.filter(isLiveNow).slice(0, 8);
+  const startingSoonEvents = allEvents.filter(isStartingSoon).slice(0, 8);
+  const tonightEvents = allEvents.filter(isTodayInEventTime).slice(0, 8);
+  const weekendEvents = allEvents.filter(isWeekendInEventTime).slice(0, 8);
+
   const recentlyAddedEvents = [...allEvents]
-    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.created_at || 0).getTime() -
+        new Date(a.created_at || 0).getTime()
+    )
     .slice(0, 8);
 
   const vibeCards = VIBES.map((vibe) => ({
     ...vibe,
     count: allEvents.filter((event) => eventMatchesTerms(event, vibe.terms)).length,
-    href: `/events?q=${encodeURIComponent(vibe.terms[0])}`,
+    href: `/events?vibe=${encodeURIComponent(vibe.value)}`,
   })).filter((vibe) => vibe.count > 0);
 
   const surpriseEvent = allEvents.length
@@ -403,165 +413,197 @@ export default async function HomePage() {
     : null;
 
   return (
-      <>
-    <TrackView pageType="homepage" path="/" />
-    <section className="space-y-8 pb-12 sm:space-y-12 sm:pb-16">
-      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-8 sm:rounded-[3rem] sm:px-10 sm:py-14 lg:px-16">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
+    <>
+      <TrackView pageType="homepage" path="/" />
 
-        <div className="relative grid gap-8 lg:grid-cols-[1fr_360px] lg:items-center">
-          <div>
-            <div className="inline-flex rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent">
-              HypeKnight Discovery
-            </div>
+      <section className="space-y-8 pb-12 sm:space-y-12 sm:pb-16">
+        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-8 sm:rounded-[3rem] sm:px-10 sm:py-14 lg:px-16">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
 
-            <h1 className="mt-5 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
-              Tonight starts here.
-            </h1>
+          <div className="relative grid gap-8 lg:grid-cols-[1fr_360px] lg:items-center">
+            <div>
+              <div className="inline-flex rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent">
+                HypeKnight Discovery
+              </div>
 
-            <p className="mt-5 max-w-2xl text-base leading-7 text-white/75 sm:text-lg">
-              Find live events, fresh drops, city vibes, themed moments, and
-              what’s starting soon — without digging through five different apps.
-            </p>
+              <h1 className="mt-5 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
+                Tonight starts here.
+              </h1>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
-              <Link
-                href="/events"
-                className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
-              >
-                Explore Tonight
-              </Link>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-white/75 sm:text-lg">
+                Find live events, fresh drops, city vibes, themed moments, and
+                what’s starting soon — without digging through five different apps.
+              </p>
 
-              {surpriseEvent ? (
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
                 <Link
-                  href={surpriseEvent.href}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
+                  href="/events"
+                  className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
                 >
-                  🎲 Surprise Me
+                  Explore Tonight
                 </Link>
-              ) : null}
 
-              <ShareButton
-                title="HypeKnight"
-                text="Find what’s happening here and now on HypeKnight."
-                path="/"
-              />
+                {surpriseEvent ? (
+                  <Link
+                    href={surpriseEvent.href}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
+                  >
+                    🎲 Surprise Me
+                  </Link>
+                ) : null}
+
+                <ShareButton
+                  title="HypeKnight"
+                  text="Find what’s happening here and now on HypeKnight."
+                  path="/"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
+              <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/30 sm:h-36 sm:w-36 sm:rounded-[2rem]">
+                <img
+                  src={LOGO_URL}
+                  alt="HypeKnight logo"
+                  className="h-full w-full object-contain p-3"
+                />
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <MiniStat label="Live" value={String(liveNowEvents.length)} />
+                <MiniStat label="Soon" value={String(startingSoonEvents.length)} />
+                <MiniStat label="Cities" value={String(cityCounts.length)} />
+                <MiniStat label="Events" value={String(allEvents.length)} />
+              </div>
             </div>
           </div>
+        </section>
 
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
-            <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/30 sm:h-36 sm:w-36 sm:rounded-[2rem]">
-              <img
-                src={LOGO_URL}
-                alt="HypeKnight logo"
-                className="h-full w-full object-contain p-3"
-              />
-            </div>
+        <QuickSearch />
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <MiniStat label="Live" value={String(liveNowEvents.length)} />
-              <MiniStat label="Soon" value={String(startingSoonEvents.length)} />
-              <MiniStat label="Cities" value={String(cityCounts.length)} />
-              <MiniStat label="Events" value={String(allEvents.length)} />
-            </div>
-          </div>
-        </div>
-      </section>
+        {vibeCards.length ? <DiscoveryVibes vibes={vibeCards} /> : null}
 
-      <QuickSearch />
+        {cityCounts.length ? <ActiveCities cityCounts={cityCounts} /> : null}
 
-      {vibeCards.length ? (
-        <DiscoveryVibes vibes={vibeCards} />
-      ) : null}
+        <section className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4">
+          <MetricCard
+            label="Live Now"
+            value={liveNowEvents.length}
+            text="Happening now."
+            href="/events?when=live"
+            accent
+          />
+          <MetricCard
+            label="Starting Soon"
+            value={startingSoonEvents.length}
+            text="Next 3 hours."
+            href="/events?when=soon"
+          />
+          <MetricCard
+            label="Active Cities"
+            value={cityCounts.length}
+            text="Places with energy."
+            href="/events"
+          />
+          <MetricCard
+            label="Fresh Drops"
+            value={recentlyAddedEvents.length}
+            text="Recently added."
+            href="/events"
+          />
+        </section>
 
-      {cityCounts.length ? (
-        <ActiveCities cityCounts={cityCounts} />
-      ) : null}
-
-      <section className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4">
-        <FunMetric label="Live Now" value={String(liveNowEvents.length)} text="Happening now." />
-        <FunMetric label="Starting Soon" value={String(startingSoonEvents.length)} text="Next 3 hours." />
-        <FunMetric label="Active Cities" value={String(cityCounts.length)} text="Places with energy." />
-        <FunMetric label="Fresh Drops" value={String(recentlyAddedEvents.length)} text="Recently added." />
-      </section>
-
-      {liveNowEvents.length ? (
         <EventRail
+          id="live"
           eyebrow="Here & Now"
           title="Live right now"
-          text="Events currently happening based on each event city’s local time."
+          text="Events currently happening."
           events={liveNowEvents}
+          emptyText="Nothing is live right now."
         />
-      ) : null}
 
-      {startingSoonEvents.length ? (
         <EventRail
+          id="soon"
           eyebrow="Next Up"
           title="Starting soon"
-          text="Events starting in the next few hours."
+          text="Events starting in the next 3 hours."
           events={startingSoonEvents}
+          emptyText="No events are starting soon right now."
         />
-      ) : null}
 
-      {recentlyAddedEvents.length ? (
         <EventRail
+          id="tonight"
+          eyebrow="Tonight"
+          title="Tonight’s events"
+          text="Events scheduled for today and tonight."
+          events={tonightEvents}
+          emptyText="No events are showing for tonight."
+        />
+
+        <EventRail
+          id="fresh"
           eyebrow="Fresh"
           title="Recently added"
-          text="New events added into HypeKnight discovery."
+          text="New listings added into HypeKnight discovery."
           events={recentlyAddedEvents}
+          emptyText="No recently added events yet."
         />
-      ) : null}
 
-      {weekendEvents.length ? (
         <EventRail
+          id="weekend"
           eyebrow="Weekend"
           title="This weekend"
           text="A quick look at what is coming up this weekend."
           events={weekendEvents}
+          emptyText="No weekend events are showing yet."
         />
-      ) : null}
 
-      {settings.homepage_show_special_days ? (
-        <SpecialDaysSection specialDays={specialDays ?? []} />
-      ) : null}
+        {settings.homepage_show_special_days ? (
+          <SpecialDaysSection specialDays={specialDays ?? []} />
+        ) : null}
 
-      <section className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-accent/15 to-white/5 p-6 sm:rounded-[2.75rem] sm:p-10">
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-              Build the map with us
-            </p>
-            <h2 className="mt-3 text-3xl font-black leading-tight text-white sm:text-4xl">
-              Know about an event? Put it on HypeKnight.
-            </h2>
-            <p className="mt-4 max-w-3xl text-sm text-white/75 sm:text-base">
-              During beta, event posting helps us build a better way to find
-              what’s happening. Use code <span className="font-bold text-accent">HYPEKC</span> to post free where available.
-            </p>
+        <section className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-accent/15 to-white/5 p-6 sm:rounded-[2.75rem] sm:p-10">
+          <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
+                Build the map with us
+              </p>
+              <h2 className="mt-3 text-3xl font-black leading-tight text-white sm:text-4xl">
+                Know about an event? Put it on HypeKnight.
+              </h2>
+              <p className="mt-4 max-w-3xl text-sm text-white/75 sm:text-base">
+                During beta, event posting helps us build a better way to find
+                what’s happening. Use code{' '}
+                <span className="font-bold text-accent">HYPEKC</span> to post
+                free where available.
+              </p>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/dashboard/events/new/step-1"
-                className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
-              >
-                Post an Event
-              </Link>
-              <Link
-                href="/ambassadors"
-                className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
-              >
-                Become an Ambassador
-              </Link>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/dashboard/events/new/step-1"
+                  className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
+                >
+                  Post an Event
+                </Link>
+
+                <Link
+                  href="/ambassadors"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-center text-white hover:border-accent/40"
+                >
+                  Become an Ambassador
+                </Link>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6 text-center">
+              <p className="text-5xl font-black text-white">Beta</p>
+              <p className="mt-2 text-white/65">
+                Help nightlife get easier to find.
+              </p>
             </div>
           </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6 text-center">
-            <p className="text-5xl font-black text-white">Beta</p>
-            <p className="mt-2 text-white/65">Help nightlife get easier to find.</p>
-          </div>
-        </div>
+        </section>
       </section>
-    </section>
     </>
   );
 }
@@ -578,23 +620,38 @@ function QuickSearch() {
 
       <form
         action="/events"
-        className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_220px_160px_140px]"
+        className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_220px_160px_160px_140px]"
       >
         <input
           name="q"
           placeholder="Music, venue, vibe..."
           className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
         />
+
         <input
           name="city"
           placeholder="City or nickname..."
           className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
         />
+
         <input
           name="state"
           placeholder="State"
           className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
         />
+
+        <select
+          name="when"
+          defaultValue=""
+          className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none focus:border-accent/50"
+        >
+          <option value="">Any Time</option>
+          <option value="live">Live Now</option>
+          <option value="soon">Starting Soon</option>
+          <option value="tonight">Tonight</option>
+          <option value="weekend">Weekend</option>
+        </select>
+
         <button className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90 sm:col-span-2 lg:col-span-1">
           Search
         </button>
@@ -606,19 +663,12 @@ function QuickSearch() {
 function DiscoveryVibes({ vibes }: { vibes: any[] }) {
   return (
     <section>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-            What’s your vibe?
-          </p>
-          <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl">
-            Browse by what you feel like doing.
-          </h2>
-        </div>
-        <Link href="/events" className="text-sm text-white/55 hover:text-accent">
-          View all events →
-        </Link>
-      </div>
+      <SectionHeader
+        eyebrow="What’s your vibe?"
+        title="Browse by what you feel like doing."
+        href="/events"
+        action="View all events"
+      />
 
       <div className="mt-5 flex gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4">
         {vibes.map((vibe) => (
@@ -641,12 +691,12 @@ function DiscoveryVibes({ vibes }: { vibes: any[] }) {
 function ActiveCities({ cityCounts }: { cityCounts: any[] }) {
   return (
     <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-6">
-      <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-        Active Cities
-      </p>
-      <h2 className="mt-2 text-2xl font-black leading-tight text-white sm:text-3xl">
-        Pick a city. Find the move.
-      </h2>
+      <SectionHeader
+        eyebrow="Active Cities"
+        title="Pick a city. Find the move."
+        href="/events"
+        action="View all"
+      />
 
       <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2 sm:flex-wrap sm:overflow-visible">
         {cityCounts.slice(0, 12).map((item) => (
@@ -663,90 +713,6 @@ function ActiveCities({ cityCounts }: { cityCounts: any[] }) {
         ))}
       </div>
     </section>
-  );
-}
-
-function EventRail({
-  eyebrow,
-  title,
-  text,
-  events,
-}: {
-  eyebrow: string;
-  title: string;
-  text: string;
-  events: any[];
-}) {
-  return (
-    <section>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-            {eyebrow}
-          </p>
-          <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl">
-            {title}
-          </h2>
-          <p className="mt-3 text-sm text-white/70 sm:text-base">{text}</p>
-        </div>
-        <p className="text-sm text-white/45">{events.length} showing • Swipe →</p>
-      </div>
-
-      <div className="relative">
-        <div className="-mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-3 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-3">
-          {events.map((event) => (
-            <EventCard key={`${event.source}-${event.id}`} event={event} />
-          ))}
-        </div>
-        <div className="pointer-events-none absolute right-0 top-5 h-[calc(100%-1.25rem)] w-12 bg-gradient-to-l from-black to-transparent sm:hidden" />
-      </div>
-    </section>
-  );
-}
-
-function EventCard({ event }: { event: any }) {
-  const live = isLiveNow(event);
-
-  return (
-    <Link
-      href={event.href}
-      className="group block min-w-[78vw] overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 transition hover:border-accent/40 hover:bg-white/[0.07] sm:min-w-0 sm:rounded-[2rem]"
-    >
-      <div className="relative">
-        {event.image_url ? (
-          <img src={event.image_url} alt={event.name} className="h-44 w-full object-cover sm:h-52" />
-        ) : (
-          <div className="flex h-44 w-full items-center justify-center bg-black/30 text-white/40 sm:h-52">
-            No image
-          </div>
-        )}
-
-        {live ? (
-          <span className="absolute left-3 top-3 rounded-full bg-accent px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black">
-            Live
-          </span>
-        ) : null}
-      </div>
-
-      <div className="p-5">
-        <p className="text-[10px] uppercase tracking-[0.25em] text-accent sm:text-xs">
-          {event.source_label}
-        </p>
-        <h3 className="mt-3 text-xl font-black leading-tight text-white group-hover:text-accent sm:text-2xl">
-          {event.name}
-        </h3>
-        <p className="mt-3 text-sm text-white/60">
-          {[event.city, event.state].filter(Boolean).join(', ') || event.venue_name || 'Location TBA'}
-        </p>
-        {event.event_start_at ? (
-          <p className="mt-2 text-sm text-white/50"><LocalDateTime value={event.event_start_at} /></p>
-        ) : null}
-        {event.description ? (
-          <p className="mt-4 line-clamp-2 text-sm text-white/65">{event.description}</p>
-        ) : null}
-        <p className="mt-5 text-sm font-semibold text-accent">Open event →</p>
-      </div>
-    </Link>
   );
 }
 
@@ -810,36 +776,35 @@ function buildCityCounts(events: any[]) {
   return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
-function getTimeZoneForEvent(event: any) {
-  const city = String(event.city || '').toLowerCase();
-  const state = normalizeState(String(event.state || ''));
-
-  if (state === 'MO' || state === 'KS' || state === 'IL' || state === 'TX') return 'America/Chicago';
-  if (state === 'NY' || state === 'GA' || state === 'FL') return 'America/New_York';
-  if (state === 'NV' || state === 'CA') return 'America/Los_Angeles';
-  if (city.includes('denver')) return 'America/Denver';
-
-  return 'America/Chicago';
-}
-
-function getZonedNow(timeZone: string) {
-  return new Date(new Date().toLocaleString('en-US', { timeZone }));
-}
-
-function getZonedDate(value: string | null | undefined, timeZone: string) {
+function parseWallTime(value?: string | null) {
   if (!value) return null;
-  return new Date(new Date(value).toLocaleString('en-US', { timeZone }));
+
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
+  );
+
+  if (!match) return new Date(value);
+
+  const [, year, month, day, hour, minute, second = '0'] = match;
+
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second)
+  );
 }
 
 function getEventWindow(event: any) {
-  const timeZone = getTimeZoneForEvent(event);
-  const now = getZonedNow(timeZone);
-  const start = getZonedDate(event.event_start_at, timeZone);
+  const now = new Date();
+  const start = parseWallTime(event.event_start_at);
 
   if (!start) return null;
 
   const end =
-    getZonedDate(event.event_end_at, timeZone) ||
+    parseWallTime(event.event_end_at) ||
     new Date(start.getTime() + 4 * 60 * 60 * 1000);
 
   return { now, start, end };
@@ -859,54 +824,50 @@ function isStartingSoon(event: any) {
   return window.start > window.now && window.start <= nextThreeHours;
 }
 
-function isWeekendInEventTime(event: any) {
-  const window = getEventWindow(event);
-  if (!window) return false;
-
-  const start = new Date(window.now);
+function startOfToday() {
+  const start = new Date();
   start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function isSameWindow(value: string | null | undefined, start: Date, end: Date) {
+  const date = parseWallTime(value);
+  if (!date) return false;
+  return date >= start && date < end;
+}
+
+function isTodayInEventTime(event: any) {
+  const start = startOfToday();
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return isSameWindow(event.event_start_at, start, end);
+}
+
+function isWeekendInEventTime(event: any) {
+  const start = startOfToday();
   start.setDate(start.getDate() + ((5 - start.getDay() + 7) % 7));
 
   const end = new Date(start);
   end.setDate(end.getDate() + 3);
 
-  return window.start >= start && window.start < end;
+  return isSameWindow(event.event_start_at, start, end);
 }
 
 function sortByStartTime(a: any, b: any) {
-  const aTime = a.event_start_at ? new Date(a.event_start_at).getTime() : Infinity;
-  const bTime = b.event_start_at ? new Date(b.event_start_at).getTime() : Infinity;
+  const aTime = parseWallTime(a.event_start_at)?.getTime() ?? Infinity;
+  const bTime = parseWallTime(b.event_start_at)?.getTime() ?? Infinity;
+
   return aTime - bTime;
-}
-
-function formatEventTime(event: any) {
-  if (!event.event_start_at) return null;
-
-  return new Date(event.event_start_at).toLocaleString('en-US', {
-    timeZone: getTimeZoneForEvent(event),
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-[10px] uppercase tracking-[0.22em] text-white/45 sm:text-xs">{label}</p>
+      <p className="text-[10px] uppercase tracking-[0.22em] text-white/45 sm:text-xs">
+        {label}
+      </p>
       <p className="mt-2 text-2xl font-black text-white sm:text-3xl">{value}</p>
-    </div>
-  );
-}
-
-function FunMetric({ label, value, text }: { label: string; value: string; text: string }) {
-  return (
-    <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2rem] sm:p-6">
-      <p className="text-[10px] uppercase tracking-[0.22em] text-white/45 sm:text-xs">{label}</p>
-      <p className="mt-3 text-3xl font-black text-white sm:text-4xl">{value}</p>
-      <p className="mt-2 text-xs text-white/60 sm:text-sm">{text}</p>
     </div>
   );
 }
@@ -916,12 +877,12 @@ function SpecialDaysSection({ specialDays }: { specialDays: any[] }) {
 
   return (
     <section>
-      <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-        HypeKnight Calendar
-      </p>
-      <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl">
-        Browse by special days and themes.
-      </h2>
+      <SectionHeader
+        eyebrow="HypeKnight Calendar"
+        title="Browse by special days and themes."
+        href="/calendar"
+        action="View calendar"
+      />
 
       <div className="mt-5 flex gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible xl:grid-cols-3">
         {specialDays.map((day) => (
