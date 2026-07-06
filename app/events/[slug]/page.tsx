@@ -803,7 +803,6 @@ import {
   EventTime,
   InfoCard,
   Panel,
-  SectionHeader,
 } from '@/components/ui';
 
 type Props = {
@@ -813,6 +812,10 @@ type Props = {
 export default async function EventDetailPage({ params }: Props) {
   const { slug } = await params;
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { data: event, error } = await supabase
     .from('events')
@@ -824,9 +827,25 @@ export default async function EventDetailPage({ params }: Props) {
 
   if (error || !event) notFound();
 
+  const { data: profile } = user
+    ? await supabase
+        .from('profiles')
+        .select('app_role')
+        .eq('id', user.id)
+        .maybeSingle()
+    : { data: null };
+
+  const isOwner = user?.id === event.owner_id;
+  const isAdmin = profile?.app_role === 'admin';
+  const canManage = isOwner || isAdmin;
+
   const imageUrl = event.flyer_url || event.image_url;
   const city = event.city || event.venue?.city;
   const state = event.state || event.venue?.state;
+  const locationText =
+    [city, state].filter(Boolean).join(', ') ||
+    event.venue_name ||
+    'Location TBA';
 
   return (
     <>
@@ -839,19 +858,23 @@ export default async function EventDetailPage({ params }: Props) {
         path={`/events/${event.slug}`}
       />
 
-      <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
+      <section className="mx-auto max-w-7xl space-y-8 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
         <Link href="/events" className="text-sm text-white/60 hover:text-accent">
           ← Back to Events
         </Link>
 
-        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 sm:rounded-[3rem]">
+        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 sm:rounded-[3rem]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.09),transparent_30%)]" />
+
           {imageUrl ? (
             <div className="relative">
               <img
                 src={imageUrl}
                 alt={event.name || 'Event flyer'}
-                className="max-h-[420px] w-full object-cover sm:max-h-[560px]"
+                className="h-[360px] w-full object-cover sm:h-[520px]"
               />
+
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent" />
 
               <div className="absolute left-4 top-4">
                 <EventStatusBadge
@@ -859,36 +882,26 @@ export default async function EventDetailPage({ params }: Props) {
                   endAt={event.event_end_at}
                 />
               </div>
+
+              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-8 lg:p-10">
+                <HeroContent
+                  event={event}
+                  locationText={locationText}
+                  canManage={canManage}
+                  isAdmin={isAdmin}
+                />
+              </div>
             </div>
-          ) : null}
-
-          <div className="p-5 sm:p-8 lg:p-10">
-            <div className="flex flex-wrap gap-2">
-              <Chip>HypeKnight Event</Chip>
-              {event.event_type ? <Chip>{event.event_type}</Chip> : null}
-              {event.status ? <Chip>{event.status}</Chip> : null}
+          ) : (
+            <div className="relative p-6 sm:p-10">
+              <HeroContent
+                event={event}
+                locationText={locationText}
+                canManage={canManage}
+                isAdmin={isAdmin}
+              />
             </div>
-
-            <h1 className="mt-5 text-3xl font-black leading-tight text-white sm:text-5xl lg:text-6xl">
-              {event.name}
-            </h1>
-
-            <p className="mt-4 max-w-3xl text-white/70">
-              {[city, state].filter(Boolean).join(', ') ||
-                event.venue_name ||
-                'Location TBA'}
-            </p>
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <ButtonLink href="/events" variant="secondary">
-                Browse More Events
-              </ButtonLink>
-
-              <ButtonLink href={`/events/${event.slug}`} variant="primary">
-                Share / Save Link
-              </ButtonLink>
-            </div>
-          </div>
+          )}
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -900,12 +913,6 @@ export default async function EventDetailPage({ params }: Props) {
           />
 
           <InfoCard
-            label="Ends"
-            icon="⏳"
-            value={<EventTime value={event.event_end_at} />}
-          />
-
-          <InfoCard
             label="Venue"
             icon="📍"
             value={event.venue_name || event.venue?.name || 'Venue TBA'}
@@ -914,13 +921,23 @@ export default async function EventDetailPage({ params }: Props) {
           <InfoCard
             label="Location"
             icon="🏙️"
-            value={[city, state].filter(Boolean).join(', ') || 'Location TBA'}
+            value={locationText}
+          />
+
+          <InfoCard
+            label="Music / Type"
+            icon="🎵"
+            value={
+              Array.isArray(event.music_selection)
+                ? event.music_selection.join(', ')
+                : event.event_type || 'Not listed'
+            }
           />
 
           <InfoCard
             label="Entry"
             icon="💵"
-            value={event.entry_price || event.cover_charge || 'Check event details'}
+            value={event.entry_price || event.cover_charge || 'Check details'}
           />
 
           <InfoCard
@@ -936,26 +953,22 @@ export default async function EventDetailPage({ params }: Props) {
           />
 
           <InfoCard
-            label="Music / Type"
-            icon="🎵"
-            value={
-              Array.isArray(event.music_selection)
-                ? event.music_selection.join(', ')
-                : event.event_type || 'Not listed'
-            }
+            label="Ends"
+            icon="⏳"
+            value={<EventTime value={event.event_end_at} />}
           />
         </section>
 
         {event.description ? (
-          <Panel title="About this event" eyebrow="Details">
-            <p className="whitespace-pre-wrap leading-7 text-white/75">
+          <Panel title="The vibe" eyebrow="About">
+            <p className="whitespace-pre-wrap text-base leading-8 text-white/75 sm:text-lg">
               {event.description}
             </p>
           </Panel>
         ) : null}
 
-        <section className="grid gap-6 lg:grid-cols-2">
-          <Panel title="Know before you go" eyebrow="Quick Notes">
+        <section className="grid gap-6 lg:grid-cols-[1fr_0.85fr]">
+          <Panel title="Before you go" eyebrow="Quick Notes">
             <div className="grid gap-4">
               <InfoCard
                 label="Parking"
@@ -977,27 +990,124 @@ export default async function EventDetailPage({ params }: Props) {
             </div>
           </Panel>
 
-          <Panel title="Event source" eyebrow="HypeKnight">
-            <div className="space-y-4">
+          <Panel title="Make your move" eyebrow="HypeKnight">
+            <div className="space-y-5">
               <p className="text-white/70">
-                This event is listed through HypeKnight discovery. Always confirm
-                important details with the event organizer or venue before
-                attending.
+                Save the details, share it with your people, and double-check
+                important information with the venue or organizer before heading
+                out.
               </p>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <ButtonLink href="/events" variant="secondary">
+              <div className="flex flex-col gap-3">
+                <ButtonLink href="/events" variant="primary">
                   Find More Events
                 </ButtonLink>
 
-                <ButtonLink href="/dashboard/events/new/step-1" variant="primary">
+                <ButtonLink href="/dashboard/events/new/step-1" variant="secondary">
                   Post Your Event
                 </ButtonLink>
               </div>
             </div>
           </Panel>
         </section>
+
+        {canManage ? (
+          <Panel
+            title={isAdmin ? 'Admin Event Controls' : 'Owner Event Controls'}
+            eyebrow="Management"
+          >
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {isOwner ? (
+                <>
+                  <ButtonLink
+                    href={`/dashboard/events/${event.id}/review`}
+                    variant="secondary"
+                  >
+                    Owner Review
+                  </ButtonLink>
+
+                  <ButtonLink
+                    href={`/dashboard/events/${event.id}/revision`}
+                    variant="secondary"
+                  >
+                    Request / Edit Revision
+                  </ButtonLink>
+                </>
+              ) : null}
+
+              {isAdmin ? (
+                <ButtonLink href={`/admin/events/${event.id}`} variant="primary">
+                  Admin Control Center
+                </ButtonLink>
+              ) : null}
+
+              <ButtonLink href="/events" variant="secondary">
+                Public Event List
+              </ButtonLink>
+            </div>
+          </Panel>
+        ) : null}
       </section>
     </>
+  );
+}
+
+function HeroContent({
+  event,
+  locationText,
+  canManage,
+  isAdmin,
+}: {
+  event: any;
+  locationText: string;
+  canManage: boolean;
+  isAdmin: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        <Chip>HypeKnight Event</Chip>
+        {event.event_type ? <Chip>{event.event_type}</Chip> : null}
+        {canManage ? <Chip>{isAdmin ? 'Admin View' : 'Owner View'}</Chip> : null}
+      </div>
+
+      <h1 className="mt-5 text-4xl font-black leading-[0.95] text-white sm:text-6xl lg:text-7xl">
+        {event.name}
+      </h1>
+
+      <p className="mt-4 max-w-3xl text-base font-medium text-white/80 sm:text-xl">
+        {locationText}
+      </p>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
+        <div className="rounded-2xl border border-accent/20 bg-accent/10 p-4">
+          <p className="text-xs uppercase tracking-[0.25em] text-accent">
+            Starts
+          </p>
+          <div className="mt-2">
+            <EventTime value={event.event_start_at} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+          <p className="text-xs uppercase tracking-[0.25em] text-white/45">
+            Venue
+          </p>
+          <p className="mt-2 font-semibold text-white">
+            {event.venue_name || event.venue?.name || 'Venue TBA'}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        <ButtonLink href="/events" variant="primary">
+          Browse More Events
+        </ButtonLink>
+
+        <ButtonLink href={`/events/${event.slug}`} variant="secondary">
+          Share This Event
+        </ButtonLink>
+      </div>
+    </div>
   );
 }
