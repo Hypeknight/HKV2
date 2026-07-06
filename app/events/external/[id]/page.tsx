@@ -29,7 +29,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
   if (error || !event) notFound();
 
   const imageUrl = event.image_url;
-  const eventTimeZone = getTimeZoneForEvent(event);
+  
 
   const sourceLabel =
     event.source_code === 'ticketmaster'
@@ -121,7 +121,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
                   <EventTime
                     value={event.event_start_at}
                     
-                    mode="utc"
+                    mode="wall"
                   />
                 </div>
               </div>
@@ -172,7 +172,7 @@ export default async function ExternalEventDetailPage({ params }: Props) {
               <EventTime
                 value={event.event_start_at}
                 
-                mode="utc"
+                mode="wall"
               />
             }
           />
@@ -285,23 +285,3 @@ export default async function ExternalEventDetailPage({ params }: Props) {
   );
 }
 
-function getTimeZoneForEvent(event: { city?: string | null; state?: string | null }) {
-  const city = String(event.city || '').toLowerCase();
-  const state = String(event.state || '').toUpperCase();
-
-  if (state === 'MO' || state === 'KS' || state === 'IL' || state === 'TX') {
-    return 'America/Chicago';
-  }
-
-  if (state === 'NY' || state === 'GA' || state === 'FL') {
-    return 'America/New_York';
-  }
-
-  if (state === 'NV' || state === 'CA') {
-    return 'America/Los_Angeles';
-  }
-
-  if (city.includes('denver')) return 'America/Denver';
-
-  return 'America/Chicago';
-}
