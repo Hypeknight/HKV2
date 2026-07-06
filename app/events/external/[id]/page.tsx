@@ -2,19 +2,21 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import TrackView from '@/components/analytics/TrackView';
-import { ReactNode } from 'react';
+import {
+  ButtonLink,
+  Chip,
+  EventStatusBadge,
+  EventTime,
+  InfoCard,
+  Panel,
+} from '@/components/ui';
 
-type PageProps = {
-  params: Promise<{
-    id: string;
-  }>;
+type Props = {
+  params: Promise<{ id: string }>;
 };
 
-export default async function ExternalEventPage({
-  params,
-}: PageProps) {
+export default async function ExternalEventDetailPage({ params }: Props) {
   const { id } = await params;
-
   const supabase = await createClient();
 
   const { data: event, error } = await supabase
@@ -22,217 +24,213 @@ export default async function ExternalEventPage({
     .select('*')
     .eq('id', id)
     .eq('status', 'active')
-    .maybeSingle();
+    .single();
 
-  if (error || !event) {
-    notFound();
-  }
+  if (error || !event) notFound();
 
-  const startDate = event.event_start_at
-    ? new Date(event.event_start_at).toLocaleString()
-    : 'Date pending';
+  const imageUrl = event.image_url;
+  const sourceLabel =
+    event.source_code === 'ticketmaster'
+      ? 'Ticketmaster'
+      : event.source_code || 'External Event';
+
+  const locationText =
+    [event.city, event.state].filter(Boolean).join(', ') ||
+    event.venue_name ||
+    'Location TBA';
 
   return (
-  <>
-    <TrackView
-      externalEventId={event.id}
-      sourceType="external"
-      pageType="external_event_detail"
-      city={event.city}
-      state={event.state}
-      path={`/events/external/${event.id}`}
-    />
+    <>
+      <TrackView
+        externalEventId={event.id}
+        sourceType="external"
+        pageType="external_event_detail"
+        city={event.city}
+        state={event.state}
+        path={`/events/external/${event.id}`}
+      />
 
-    <section className="mx-auto max-w-7xl ...">
-      {/* Hero */}
+      <section className="mx-auto max-w-7xl space-y-8 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
+        <Link href="/events" className="text-sm text-white/60 hover:text-accent">
+          ← Back to Events
+        </Link>
 
-      <section className="overflow-hidden rounded-[2.5rem] border border-white/10 bg-white/5">
-        {event.image_url ? (
-          <div className="aspect-[16/6] overflow-hidden">
-            <img
-              src={event.image_url}
-              alt={event.name}
-              className="h-full w-full object-cover"
-            />
-          </div>
-        ) : (
-          <div className="flex aspect-[16/6] items-center justify-center bg-black/20 text-white/40">
-            No event image available
-          </div>
-        )}
+        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 sm:rounded-[2.75rem]">
+          <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="relative bg-black/30">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={event.name || 'Event image'}
+                  className="h-[320px] w-full object-cover sm:h-[460px] lg:h-full"
+                />
+              ) : (
+                <div className="flex h-[320px] items-center justify-center text-white/40 sm:h-[460px]">
+                  No image
+                </div>
+              )}
 
-        <div className="p-10">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-4 py-2 text-xs uppercase tracking-[0.25em] text-yellow-200">
-              External Event
-            </span>
+              <div className="absolute left-4 top-4">
+                <EventStatusBadge
+                  startAt={event.event_start_at}
+                  endAt={event.event_end_at}
+                />
+              </div>
+            </div>
 
-            <span className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs uppercase tracking-[0.25em] text-white/70">
-              {event.source_code}
-            </span>
-          </div>
+            <div className="p-5 sm:p-8 lg:p-10">
+              <div className="flex flex-wrap gap-2">
+                <Chip>{sourceLabel}</Chip>
+                {event.classification ? <Chip>{event.classification}</Chip> : null}
+                {event.genre ? <Chip>{event.genre}</Chip> : null}
+                {event.segment ? <Chip>{event.segment}</Chip> : null}
+              </div>
 
-          <h1 className="mt-5 text-5xl font-black text-white">
-            {event.name}
-          </h1>
+              <h1 className="mt-5 text-3xl font-black leading-tight text-white sm:text-5xl">
+                {event.name}
+              </h1>
 
-          <p className="mt-5 max-w-4xl text-lg text-white/70">
-            This event was discovered through a trusted external source and is
-            being shown to help users find more events in their area.
-          </p>
+              <p className="mt-4 max-w-3xl text-base text-white/75 sm:text-lg">
+                {locationText}
+              </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            {event.source_url ? (
-              <a
-                href={event.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
-              >
-                View Original Event
-              </a>
-            ) : null}
+              <div className="mt-6 rounded-2xl border border-accent/20 bg-accent/10 p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-accent">
+                  Starts
+                </p>
+                <div className="mt-2">
+                  <EventTime value={event.event_start_at} />
+                </div>
+              </div>
 
-            <Link
-              href="/events"
-              className="rounded-2xl border border-white/10 bg-black/20 px-6 py-3 text-white hover:border-accent/40"
-            >
-              Back to Events
-            </Link>
-          </div>
-        </div>
-      </section>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                {event.url ? (
+                  <a
+                    href={event.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black transition hover:opacity-90 sm:w-auto"
+                  >
+                    View Official Listing
+                  </a>
+                ) : null}
 
-      {/* Information */}
+                <ButtonLink href="/events" variant="secondary">
+                  Browse More Events
+                </ButtonLink>
+              </div>
 
-      <section className="grid gap-5 lg:grid-cols-4">
-        <InfoCard
-          label="Date"
-          value={startDate}
-        />
-
-        <InfoCard
-          label="Venue"
-          value={event.venue_name || 'Venue pending'}
-        />
-
-        <InfoCard
-          label="Location"
-          value={`${event.city || 'Unknown'}, ${event.state || ''}`}
-        />
-
-        <InfoCard
-          label="Source"
-          value={event.source_code}
-        />
-      </section>
-
-      {/* Description */}
-
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-        <h2 className="text-2xl font-bold text-white">
-          Event Details
-        </h2>
-
-        {event.description ? (
-          <div className="mt-5 whitespace-pre-wrap text-white/75">
-            {event.description}
-          </div>
-        ) : (
-          <p className="mt-5 text-white/60">
-            No additional details were provided by the source.
-          </p>
-        )}
-      </section>
-
-      {/* Categories */}
-
-      {(event.genre ||
-        event.segment ||
-        event.classification) && (
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <h2 className="text-2xl font-bold text-white">
-            Classification
-          </h2>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            {event.segment ? (
-              <Badge>{event.segment}</Badge>
-            ) : null}
-
-            {event.genre ? (
-              <Badge>{event.genre}</Badge>
-            ) : null}
-
-            {event.classification ? (
-              <Badge>{event.classification}</Badge>
-            ) : null}
+              <p className="mt-5 text-xs leading-6 text-white/45">
+                This is a supplemental external listing. HypeKnight is helping
+                surface the event, but details may change. Confirm times,
+                ticketing, age requirements, and venue rules with the official
+                event provider before attending.
+              </p>
+            </div>
           </div>
         </section>
-      )}
 
-      {/* Source Disclaimer */}
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <InfoCard
+            label="Starts"
+            icon="🕒"
+            accent
+            value={<EventTime value={event.event_start_at} />}
+          />
 
-      <section className="rounded-[2rem] border border-yellow-500/20 bg-yellow-500/10 p-8">
-        <h2 className="text-xl font-bold text-yellow-100">
-          External Event Notice
-        </h2>
+          <InfoCard
+            label="Venue"
+            icon="📍"
+            value={event.venue_name || 'Venue TBA'}
+          />
 
-        <p className="mt-4 text-yellow-100/80">
-          This event is not managed by HypeKnight. Information is provided by
-          an external source and may change without notice. Please verify
-          details with the original event organizer before attending.
-        </p>
+          <InfoCard label="Location" icon="🏙️" value={locationText} />
+
+          <InfoCard
+            label="Source"
+            icon="🔗"
+            value={sourceLabel}
+          />
+
+          <InfoCard
+            label="Category"
+            icon="🏷️"
+            value={event.classification || event.segment || 'Not listed'}
+          />
+
+          <InfoCard
+            label="Genre"
+            icon="🎵"
+            value={event.genre || 'Not listed'}
+          />
+
+          <InfoCard
+            label="Ends"
+            icon="⏳"
+            value={<EventTime value={event.event_end_at} />}
+          />
+
+          <InfoCard
+            label="Status"
+            icon="⚡"
+            value={event.status || 'active'}
+          />
+        </section>
+
+        {event.description ? (
+          <Panel title="About this event" eyebrow="Details">
+            <p className="whitespace-pre-wrap text-base leading-8 text-white/75">
+              {event.description}
+            </p>
+          </Panel>
+        ) : null}
+
+        <section className="grid gap-6 lg:grid-cols-[1fr_0.85fr]">
+          <Panel title="Official source" eyebrow="External Listing">
+            <div className="space-y-5">
+              <p className="text-white/70">
+                This event came from an external source. HypeKnight displays it
+                to help users discover more experiences, but the official source
+                should be used for final event information.
+              </p>
+
+              {event.url ? (
+                <a
+                  href={event.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black transition hover:opacity-90 sm:w-auto"
+                >
+                  Open Official Event
+                </a>
+              ) : (
+                <p className="text-sm text-white/50">
+                  No official link is currently available.
+                </p>
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Keep exploring" eyebrow="HypeKnight">
+            <div className="space-y-5">
+              <p className="text-white/70">
+                Want something different? Browse HypeKnight to compare live
+                events, starting-soon plans, weekend moves, and city vibes.
+              </p>
+
+              <div className="flex flex-col gap-3">
+                <ButtonLink href="/events" variant="primary">
+                  Explore Events
+                </ButtonLink>
+
+                <ButtonLink href="/calendar" variant="secondary">
+                  Browse Calendar Themes
+                </ButtonLink>
+              </div>
+            </div>
+          </Panel>
+        </section>
       </section>
-    </section>
     </>
-  );
-}
-
-function InfoCard({
-  label,
-  value,
-  icon,
-  accent = false,
-}: {
-  label: string;
-  value?: ReactNode;
-  icon?: ReactNode;
-  accent?: boolean;
-}) {
-  if (!value) return null;
-
-  return (
-    <div
-      className={`rounded-3xl border p-5 transition-all ${
-        accent
-          ? 'border-accent/30 bg-accent/10'
-          : 'border-white/10 bg-black/20'
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        {icon ? <div className="text-lg">{icon}</div> : null}
-
-        <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-          {label}
-        </p>
-      </div>
-
-      <div className="mt-3 break-words text-white">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Badge({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white">
-      {children}
-    </span>
   );
 }

@@ -267,14 +267,4 @@ function Metric({
   value: string;
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-      <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-        {label}
-      </p>
-
-      <p className="mt-3 text-3xl font-bold text-white">
-        {value}
-      </p>
-    </div>
-  );
-}
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-5"
