@@ -41,34 +41,4 @@ export default function EventTime({
     <div className="space-y-1">
       {showStatus ? <p className="font-semibold text-white">{status}</p> : null}
 
-      <p className="text-sm text-white/55">
-        {date.toLocaleString(undefined, {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        })}
-      </p>
-    </div>
-  );
-}
-
-function parseWallTime(value: string) {
-  const match = value.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
-  );
-
-  if (!match) return new Date(value);
-
-  const [, year, month, day, hour, minute, second = '0'] = match;
-
-  return new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second)
-  );
-}
+      <p className="text-sm text-whit
