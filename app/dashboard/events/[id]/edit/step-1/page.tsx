@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { updateEventStep1 } from '@/app/dashboard/events/actions';
 import EventFlyerUpload from '@/components/events/EventFlyerUpload';
+import { US_STATES } from '@/lib/states';
+import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
 type EditStep1PageProps = {
   params: Promise<{
@@ -14,6 +16,7 @@ export default async function EditEventStep1Page({ params }: EditStep1PageProps)
   const { id } = await params;
 
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -42,207 +45,268 @@ export default async function EditEventStep1Page({ params }: EditStep1PageProps)
 
   if (error || !event) notFound();
 
-  if (!['draft', 'building', 'rejected'].includes(event.status)) {
+  if (!['draft', 'building', 'rejected', 'revision_draft'].includes(event.status)) {
     redirect(`/events/${event.slug}`);
   }
 
-  const startDate = event.event_start_at
-    ? new Date(event.event_start_at).toISOString().slice(0, 10)
-    : '';
-  const startTime = event.event_start_at
-    ? new Date(event.event_start_at).toISOString().slice(11, 16)
-    : '';
-  const endDate = event.event_end_at
-    ? new Date(event.event_end_at).toISOString().slice(0, 10)
-    : '';
-  const endTime = event.event_end_at
-    ? new Date(event.event_end_at).toISOString().slice(11, 16)
-    : '';
+  const startParts = getDateTimeParts(event.event_start_at);
+  const endParts = getDateTimeParts(event.event_end_at);
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">Edit Event</p>
-        <h1 className="mt-3 text-4xl font-bold text-white">Step 1: Event Basics</h1>
-        <p className="mt-3 max-w-2xl text-white/70">
-          Update the basic event identity information.
-        </p>
-      </div>
+    <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
+      <Link
+        href="/dashboard/events"
+        className="text-sm text-white/60 hover:text-accent"
+      >
+        ← Back to My Events
+      </Link>
 
-      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-glow">
-        <form action={updateEventStep1} className="grid gap-6">
-          <input type="hidden" name="event_id" value={event.id} />
+      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[3rem] sm:p-10">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
 
+        <div className="relative grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
           <div>
-            <label htmlFor="flyer_url" className="mb-2 block text-sm font-medium text-white">
-              Flyer Image URL
-            </label>
-            <EventFlyerUpload defaultUrl={event.flyer_url} />
-          </div>
+            <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
+              Edit Event
+            </p>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <label htmlFor="name" className="mb-2 block text-sm font-medium text-white">
-                Event Name
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                required
-                defaultValue={event.name || ''}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
-            </div>
+            <h1 className="mt-3 text-4xl font-black leading-tight text-white sm:text-6xl">
+              Update the event basics.
+            </h1>
 
-            <div>
-              <label htmlFor="venue_name" className="mb-2 block text-sm font-medium text-white">
-                Venue Name
-              </label>
-              <input
-                id="venue_name"
-                name="venue_name"
-                type="text"
-                defaultValue={event.venue_name || ''}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
+            <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
+              Adjust the flyer, name, venue, location, and event time before
+              continuing your listing.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Chip>{event.name || 'Untitled Event'}</Chip>
+              <Chip>Status: {event.status}</Chip>
             </div>
           </div>
 
-          <div>
-            <label htmlFor="address" className="mb-2 block text-sm font-medium text-white">
-              Address
-            </label>
-            <input
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/45">
+              Progress
+            </p>
+
+            <div className="mt-5 grid gap-3">
+              <InfoCard label="Step 1" icon="✅" value="Basics" accent />
+              <InfoCard label="Step 2" icon="•" value="Details" />
+              <InfoCard label="Step 3" icon="•" value="Review / Submit" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <form action={updateEventStep1} className="space-y-8">
+        <input type="hidden" name="event_id" value={event.id} />
+
+        <Panel title="Event flyer" eyebrow="Visual First">
+          <p className="mb-5 text-sm leading-6 text-white/65">
+            Update the flyer if needed. HypeKnight will use this image across
+            public event pages and discovery areas.
+          </p>
+
+          <EventFlyerUpload defaultUrl={event.flyer_url} />
+        </Panel>
+
+        <Panel title="Event identity" eyebrow="What is happening?">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input
+              id="name"
+              name="name"
+              label="Event Name"
+              required
+              defaultValue={event.name || ''}
+              placeholder="Midnight Vibes"
+            />
+
+            <Input
+              id="venue_name"
+              name="venue_name"
+              label="Venue Name"
+              defaultValue={event.venue_name || ''}
+              placeholder="Club Nova"
+            />
+          </div>
+        </Panel>
+
+        <Panel title="Location" eyebrow="Where is it?">
+          <div className="grid gap-4">
+            <Input
               id="address"
               name="address"
-              type="text"
+              label="Street Address"
               defaultValue={event.address || ''}
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
+              placeholder="123 Main St"
+            />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Input
+                id="city"
+                name="city"
+                label="City"
+                required
+                defaultValue={event.city || ''}
+                placeholder="Kansas City"
+              />
+
+              <StateSelect defaultValue={event.state || ''} />
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-accent/20 bg-accent/10 p-5 text-sm leading-6 text-white/75">
+            Use the full address when possible. The event detail page displays
+            the address so users can find the venue without already knowing it.
+          </div>
+        </Panel>
+
+        <Panel title="Date and time" eyebrow="When is it happening?">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input
+              id="start_date"
+              name="start_date"
+              label="Start Date"
+              type="date"
+              required
+              defaultValue={startParts.date}
+            />
+
+            <Input
+              id="start_time"
+              name="start_time"
+              label="Start Time"
+              type="time"
+              required
+              defaultValue={startParts.time}
             />
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <label htmlFor="city" className="mb-2 block text-sm font-medium text-white">
-                City
-              </label>
-              <input
-                id="city"
-                name="city"
-                type="text"
-                required
-                defaultValue={event.city || ''}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
-            </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <Input
+              id="end_date"
+              name="end_date"
+              label="End Date"
+              type="date"
+              defaultValue={endParts.date}
+              helper="Optional. Use this for overnight or multi-day events."
+            />
 
-            <div>
-              <label htmlFor="state" className="mb-2 block text-sm font-medium text-white">
-                State
-              </label>
-              <select
-                id="state"
-                name="state"
-                required
-                defaultValue={event.state || ''}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              >
-                <option value="" disabled>Select a state</option>
-                {[
-                  ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],
-                  ['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['FL','Florida'],['GA','Georgia'],
-                  ['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],
-                  ['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],
-                  ['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],
-                  ['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],
-                  ['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],
-                  ['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],
-                  ['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],
-                  ['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming'],
-                  ['DC','District of Columbia'],
-                ].map(([code, name]) => (
-                  <option key={code} value={code}>{name}</option>
-                ))}
-              </select>
-            </div>
+            <Input
+              id="end_time"
+              name="end_time"
+              label="End Time"
+              type="time"
+              defaultValue={endParts.time}
+              helper="Optional, but helpful for users deciding where to go."
+            />
           </div>
+        </Panel>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <label htmlFor="start_date" className="mb-2 block text-sm font-medium text-white">
-                Start Date
-              </label>
-              <input
-                id="start_date"
-                name="start_date"
-                type="date"
-                required
-                defaultValue={startDate}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
-            </div>
+        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
+          <SectionHeader
+            eyebrow="Save"
+            title="Ready to save the basics?"
+            text="After saving, you can continue editing details, pricing, and promotion options."
+          />
 
-            <div>
-              <label htmlFor="start_time" className="mb-2 block text-sm font-medium text-white">
-                Start Time
-              </label>
-              <input
-                id="start_time"
-                name="start_time"
-                type="time"
-                required
-                defaultValue={startTime}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <label htmlFor="end_date" className="mb-2 block text-sm font-medium text-white">
-                End Date
-              </label>
-              <input
-                id="end_date"
-                name="end_date"
-                type="date"
-                defaultValue={endDate}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="end_time" className="mb-2 block text-sm font-medium text-white">
-                End Time
-              </label>
-              <input
-                id="end_time"
-                name="end_time"
-                type="time"
-                defaultValue={endTime}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-between">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between">
             <Link
-              href={`/events/${event.slug}`}
-              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-white/20"
+              href={event.slug ? `/events/${event.slug}` : '/dashboard/events'}
+              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-4 font-semibold text-white hover:border-white/20 sm:w-auto"
             >
               Cancel
             </Link>
 
             <button
               type="submit"
-              className="inline-flex items-center justify-center rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90"
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90 sm:w-auto"
             >
               Save Step 1
             </button>
           </div>
-        </form>
-      </div>
+        </section>
+      </form>
     </section>
   );
+}
+
+function Input({
+  id,
+  name,
+  label,
+  defaultValue = '',
+  required = false,
+  placeholder,
+  type = 'text',
+  helper,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  defaultValue?: string;
+  required?: boolean;
+  placeholder?: string;
+  type?: string;
+  helper?: string;
+}) {
+  return (
+    <label htmlFor={id} className="block">
+      <span className="text-sm font-semibold text-white/70">{label}</span>
+      <input
+        id={id}
+        name={name}
+        type={type}
+        required={required}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+      />
+      {helper ? (
+        <span className="mt-2 block text-xs leading-5 text-white/45">
+          {helper}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
+function StateSelect({ defaultValue }: { defaultValue?: string }) {
+  return (
+    <label htmlFor="state" className="block">
+      <span className="text-sm font-semibold text-white/70">State</span>
+      <select
+        id="state"
+        name="state"
+        required
+        defaultValue={defaultValue || ''}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
+      >
+        <option value="" disabled>
+          Select a state
+        </option>
+        {US_STATES.map(([abbr, name]) => (
+          <option key={abbr} value={abbr}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function getDateTimeParts(value?: string | null) {
+  if (!value) return { date: '', time: '' };
+
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/
+  );
+
+  if (!match) return { date: '', time: '' };
+
+  return {
+    date: `${match[1]}-${match[2]}-${match[3]}`,
+    time: `${match[4]}:${match[5]}`,
+  };
 }
