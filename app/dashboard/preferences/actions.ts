@@ -17,12 +17,16 @@ export async function saveEventPreferences(formData: FormData) {
   if (!user) redirect('/auth/login');
 
   const preferredCity = String(formData.get('preferred_city') || '').trim();
-  const preferredState = String(formData.get('preferred_state') || '').trim();
+  const preferredState = String(formData.get('preferred_state') || '')
+    .trim()
+    .toUpperCase();
+
   const maxDistanceMiles = Number(formData.get('max_distance_miles') || 25);
 
   const musicGenres = getArray(formData, 'music_genres');
   const eventTypes = getArray(formData, 'event_types');
   const vibeTags = getArray(formData, 'vibe_tags');
+  const budgetPreferences = getArray(formData, 'budget_preferences');
   const preferredSources = getArray(formData, 'preferred_sources');
 
   const { error } = await supabase.from('user_event_preferences').upsert(
@@ -30,10 +34,13 @@ export async function saveEventPreferences(formData: FormData) {
       user_id: user.id,
       preferred_city: preferredCity || null,
       preferred_state: preferredState || null,
-      max_distance_miles: maxDistanceMiles,
+      max_distance_miles: Number.isFinite(maxDistanceMiles)
+        ? maxDistanceMiles
+        : 25,
       music_genres: musicGenres,
       event_types: eventTypes,
       vibe_tags: vibeTags,
+      budget_preferences: budgetPreferences,
       preferred_sources: preferredSources.length
         ? preferredSources
         : ['hypeknight', 'external'],
