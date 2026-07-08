@@ -54,6 +54,41 @@ const EVENT_TYPES = [
   'Hookah',
 ];
 
+const MUSIC_OPTIONS = [
+  'Hip-Hop',
+  'R&B',
+  'Afrobeats',
+  'House',
+  'EDM',
+  'Latin',
+  'Top 40',
+  'Trap',
+  'Dancehall',
+  'Country',
+  'Rock',
+  'Jazz',
+  'Blues',
+  'Pop',
+];
+
+const VIBE_TAGS = [
+  'High Energy',
+  'Chill',
+  'Luxury',
+  'Upscale',
+  'Underground',
+  'Tourist Friendly',
+  'Locals Spot',
+  'Live DJ',
+  'Late Night',
+  'Date Night',
+  'Dance Floor',
+  'Free Entry',
+  'VIP',
+  'Outdoor',
+  'Casual',
+];
+
 const SMOKING_POLICIES = [
   'No Smoking',
   'Patio Only',
@@ -100,6 +135,12 @@ export default async function EventRevisionEditPage({ params }: Props) {
   const startParts = getDateTimeParts(event.event_start_at);
   const endParts = getDateTimeParts(event.event_end_at);
 
+  const selectedMusic = Array.isArray(event.music_selection)
+    ? event.music_selection
+    : [];
+
+  const selectedVibes = Array.isArray(event.vibe_tags) ? event.vibe_tags : [];
+
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
       <Link
@@ -119,12 +160,12 @@ export default async function EventRevisionEditPage({ params }: Props) {
             </p>
 
             <h1 className="mt-3 text-4xl font-black leading-tight text-white sm:text-6xl">
-              Update and resubmit your event.
+              Final review before resubmission.
             </h1>
 
             <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Make changes, save the revision draft, then submit it back to
-              HypeKnight for approval. The event will stay hidden until reviewed.
+              Update any owner-facing event field, save your revision draft,
+              then submit it back to HypeKnight for approval.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -139,7 +180,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
             </p>
 
             <div className="mt-5 grid gap-3">
-              <InfoCard label="Step 1" icon="✏️" value="Edit changes" accent />
+              <InfoCard label="Step 1" icon="✏️" value="Update fields" accent />
               <InfoCard label="Step 2" icon="💾" value="Save draft" />
               <InfoCard label="Step 3" icon="📤" value="Submit review" />
             </div>
@@ -160,7 +201,6 @@ export default async function EventRevisionEditPage({ params }: Props) {
             <Input name="venue_name" label="Venue Name" defaultValue={event.venue_name} />
             <Input name="address" label="Address" defaultValue={event.address} />
             <Input name="city" label="City" defaultValue={event.city} />
-
             <StateSelect defaultValue={event.state || ''} />
 
             <Input
@@ -180,10 +220,10 @@ export default async function EventRevisionEditPage({ params }: Props) {
         </Panel>
 
         <Panel title="Flyer / image" eyebrow="Visual Update">
-          {event.flyer_url || event.image_url ? (
+          {event.flyer_url ? (
             <div className="mb-5 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
               <img
-                src={event.flyer_url || event.image_url}
+                src={event.flyer_url}
                 alt={event.name || 'Current event flyer'}
                 className="max-h-96 w-full object-cover"
               />
@@ -193,7 +233,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
           <Input
             name="flyer_url"
             label="Flyer URL"
-            defaultValue={event.flyer_url || event.image_url}
+            defaultValue={event.flyer_url}
           />
 
           <label className="mt-4 block">
@@ -213,7 +253,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
           </p>
         </Panel>
 
-        <Panel title="Event details" eyebrow="Uniform Info">
+        <Panel title="Public event details" eyebrow="Guest Information">
           <div className="grid gap-4 md:grid-cols-2">
             <Select
               name="dress_code"
@@ -222,7 +262,12 @@ export default async function EventRevisionEditPage({ params }: Props) {
               options={DRESS_CODES}
             />
 
-            <Input name="entry_price" label="Entry Price" defaultValue={event.entry_price} />
+            <Input
+              name="entry_price"
+              label="Entry Price"
+              defaultValue={event.entry_price}
+              placeholder="$10, Free before 11, $20 at door"
+            />
 
             <Select
               name="age_requirement"
@@ -266,7 +311,29 @@ export default async function EventRevisionEditPage({ params }: Props) {
             defaultValue={event.special_notes}
             placeholder="Add anything else guests should know."
           />
+        </Panel>
 
+        <Panel title="Music and vibe" eyebrow="Discovery Tags">
+          <CheckboxGroup
+            title="Music Selection"
+            description="Choose the sounds people can expect."
+            name="music_selection"
+            options={MUSIC_OPTIONS}
+            selected={selectedMusic}
+          />
+
+          <div className="mt-8">
+            <CheckboxGroup
+              title="Vibe Tags"
+              description="Choose the energy, setting, or experience."
+              name="vibe_tags"
+              options={VIBE_TAGS}
+              selected={selectedVibes}
+            />
+          </div>
+        </Panel>
+
+        <Panel title="Revision note" eyebrow="Tell HypeKnight What Changed">
           <Textarea
             name="revision_reason"
             label="Revision Reason"
@@ -327,18 +394,59 @@ export default async function EventRevisionEditPage({ params }: Props) {
   );
 }
 
+function CheckboxGroup({
+  title,
+  description,
+  name,
+  options,
+  selected,
+}: {
+  title: string;
+  description: string;
+  name: string;
+  options: string[];
+  selected: string[];
+}) {
+  return (
+    <section>
+      <h3 className="text-xl font-black text-white">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-white/60">{description}</p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {options.map((option) => (
+          <label
+            key={option}
+            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white transition hover:border-accent/40"
+          >
+            <input
+              type="checkbox"
+              name={name}
+              value={option}
+              defaultChecked={selected.includes(option)}
+              className="h-4 w-4 shrink-0"
+            />
+            <span className="font-semibold">{option}</span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Input({
   name,
   label,
   defaultValue,
   type = 'text',
   required = false,
+  placeholder,
 }: {
   name: string;
   label: string;
   defaultValue?: string | null;
   type?: string;
   required?: boolean;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
@@ -348,6 +456,7 @@ function Input({
         type={type}
         required={required}
         defaultValue={defaultValue || ''}
+        placeholder={placeholder}
         className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
       />
     </label>

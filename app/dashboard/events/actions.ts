@@ -1201,27 +1201,32 @@ if (flyerFile && flyerFile.size > 0) {
   flyerUrl = publicUrlData.publicUrl;
 }
 
-  const payload = {
-    name: String(formData.get('name') || '').trim(),
-    venue_name: String(formData.get('venue_name') || '').trim() || null,
-    address: String(formData.get('address') || '').trim() || null,
-    city: String(formData.get('city') || '').trim() || null,
-    state: String(formData.get('state') || '').trim() || null,
-    event_start_at: String(formData.get('event_start_at') || '') || null,
-    event_end_at: String(formData.get('event_end_at') || '') || null,
-    flyer_url: flyerUrl,
-    image_url: flyerUrl,
-    description: String(formData.get('description') || '').trim() || null,
-    dress_code: String(formData.get('dress_code') || '').trim() || null,
-    entry_price: String(formData.get('entry_price') || '').trim() || null,
-    age_requirement: String(formData.get('age_requirement') || '').trim() || null,
-    event_type: String(formData.get('event_type') || '').trim() || null,
-    smoking_policy: String(formData.get('smoking_policy') || '').trim() || null,
-    parking_notes: String(formData.get('parking_notes') || '').trim() || null,
-    special_notes: String(formData.get('special_notes') || '').trim() || null,
-    revision_reason: String(formData.get('revision_reason') || '').trim() || null,
-    updated_at: new Date().toISOString(),
-  };
+  const musicSelection = formData.getAll('music_selection').map(String).filter(Boolean);
+const vibeTags = formData.getAll('vibe_tags').map(String).filter(Boolean);
+
+const payload = {
+  name: String(formData.get('name') || '').trim(),
+  venue_name: String(formData.get('venue_name') || '').trim() || null,
+  address: String(formData.get('address') || '').trim() || null,
+  city: String(formData.get('city') || '').trim() || null,
+  state: String(formData.get('state') || '').trim().toUpperCase() || null,
+  event_start_at: String(formData.get('event_start_at') || '') || null,
+  event_end_at: String(formData.get('event_end_at') || '') || null,
+  flyer_url: flyerUrl,
+
+  description: String(formData.get('description') || '').trim() || null,
+  dress_code: String(formData.get('dress_code') || '').trim() || null,
+  entry_price: String(formData.get('entry_price') || '').trim() || null,
+  age_requirement: String(formData.get('age_requirement') || '').trim() || null,
+  event_type: String(formData.get('event_type') || '').trim() || null,
+  music_selection: musicSelection,
+  vibe_tags: vibeTags,
+  smoking_policy: String(formData.get('smoking_policy') || '').trim() || null,
+  parking_notes: String(formData.get('parking_notes') || '').trim() || null,
+  special_notes: String(formData.get('special_notes') || '').trim() || null,
+  revision_reason: String(formData.get('revision_reason') || '').trim() || null,
+  updated_at: new Date().toISOString(),
+};
 
   if (!payload.name) throw new Error('Event name is required.');
 
