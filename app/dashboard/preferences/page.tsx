@@ -1,33 +1,28 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getLookupMap } from '@/lib/lookups';
 import { saveEventPreferences } from './actions';
 import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
-const MUSIC_GENRES = [
-  'Hip-Hop', 'R&B', 'EDM', 'House', 'Country', 'Rock',
-  'Latin', 'Afrobeats', 'Jazz', 'Pop', 'Blues', 'Alternative',
-];
-
-const EVENT_TYPES = [
-  'Nightlife', 'Concerts', 'Sports', 'Comedy', 'Festivals',
-  'Day Parties', 'Food & Drink', 'Networking', 'Live DJ',
-  'Private Events', 'Theater', 'Family',
-];
-
-const VIBE_TAGS = [
-  'High Energy', 'Chill', 'Upscale', 'Underground', 'Date Night',
-  'Dance Floor', 'Outdoor', 'Late Night', 'Free Entry', 'VIP',
-  'Casual', 'Local Favorite',
-];
-
-const BUDGETS = ['Free', 'Under $20', '$20–$50', '$50–$100', '$100+'];
+import HomeLocationSection from '@/components/preferences/HomeLocationSection';
+import LookupPreferencesSection from '@/components/preferences/LookupPreferencesSection';
+import BudgetPreferencesSection from '@/components/preferences/BudgetPreferencesSection';
+import NotificationPreferencesSection from '@/components/preferences/NotificationPreferencesSection';
+import EventSourcesSection from '@/components/preferences/EventSourcesSection';
+import HiddenPreferencesSection from '@/components/preferences/HiddenPreferencesSection';
+import PreferredDaysSection from '@/components/preferences/PreferredDaysSection';
+import PreferredTimesSection from '@/components/preferences/PreferredTimesSection';
 
 type Props = {
-  searchParams?: Promise<{ saved?: string }>;
+  searchParams?: Promise<{
+    saved?: string;
+  }>;
 };
 
-export default async function EventPreferencesPage({ searchParams }: Props) {
+export default async function EventPreferencesPage({
+  searchParams,
+}: Props) {
   const query = searchParams ? await searchParams : {};
   const supabase = await createClient();
 
@@ -37,27 +32,64 @@ export default async function EventPreferencesPage({ searchParams }: Props) {
 
   if (!user) redirect('/auth/login');
 
-  const { data: preferences } = await supabase
-    .from('user_event_preferences')
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  const [{ data: preferences, error }, lookups] = await Promise.all([
+    supabase
+      .from('user_event_preferences')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle(),
 
-  const selectedGenres = preferences?.music_genres ?? [];
-  const selectedTypes = preferences?.event_types ?? [];
-  const selectedVibes = preferences?.vibe_tags ?? [];
-  const selectedBudgets = preferences?.budget_preferences ?? [];
-  const selectedSources = preferences?.preferred_sources ?? ['hypeknight', 'external'];
+    getLookupMap([
+      'music_genres',
+      'event_types',
+      'vibe_tags',
+      'event_amenities',
+    ]),
+  ]);
 
-  const preferenceCount =
+  if (error) throw new Error(error.message);
+
+  const selectedGenres = arrayValue(preferences?.music_genres);
+  const selectedTypes = arrayValue(preferences?.event_types);
+  const selectedVibes = arrayValue(preferences?.vibe_tags);
+  const selectedAmenities = arrayValue(preferences?.amenity_preferences);
+  const selectedHidden = arrayValue(preferences?.hidden_preferences);
+  const selectedDays = arrayValue(preferences?.preferred_days);
+  const selectedTimes = arrayValue(preferences?.preferred_times);
+  const selectedNotifications = arrayValue(
+    preferences?.notification_preferences
+  );
+
+  const selectedSources = arrayValue(preferences?.preferred_sources).length
+    ? arrayValue(preferences?.preferred_sources)
+    : ['hypeknight', 'external'];
+
+  const lookupPreferenceCount =
     selectedGenres.length +
     selectedTypes.length +
     selectedVibes.length +
-    selectedBudgets.length;
+    selectedAmenities.length;
+
+  const lifestylePreferenceCount =
+    selectedHidden.length +
+    selectedDays.length +
+    selectedTimes.length +
+    selectedNotifications.length;
+
+  const totalPreferenceCount =
+    lookupPreferenceCount + lifestylePreferenceCount;
+
+  const cityLabel =
+    [preferences?.preferred_city, preferences?.preferred_state]
+      .filter(Boolean)
+      .join(', ') || 'Set your home area';
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
-      <Link href="/dashboard" className="text-sm text-white/60 hover:text-accent">
+      <Link
+        href="/dashboard"
+        className="text-sm text-white/60 hover:text-accent"
+      >
         ← Back to Dashboard
       </Link>
 
@@ -67,45 +99,50 @@ export default async function EventPreferencesPage({ searchParams }: Props) {
         <div className="relative grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-              Personalization
+              Your Nightlife Profile
             </p>
 
             <h1 className="mt-3 text-4xl font-black leading-tight text-white sm:text-6xl">
-              Help HypeKnight find your next great night.
+              Teach HypeKnight what fits your night.
             </h1>
 
             <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Pick your music, event types, vibes, budget, and preferred city so
-              HypeKnight can start shaping discovery around what you actually like.
+              Choose your city, music, event types, vibes, amenities, budget,
+              preferred days, times, and notifications. These signals can power
+              better recommendations throughout HypeKnight.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <Chip>{preferenceCount} preferences selected</Chip>
-              <Chip>{selectedSources.length} sources enabled</Chip>
+              <Chip>{totalPreferenceCount} preferences selected</Chip>
+              <Chip>{selectedSources.length} event sources enabled</Chip>
             </div>
           </div>
 
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
             <p className="text-xs uppercase tracking-[0.25em] text-white/45">
-              Discovery Setup
+              Discovery Profile
             </p>
 
-            <div className="mt-4 grid gap-3">
+            <div className="mt-5 grid gap-3">
               <InfoCard
-                label="Home Base"
+                label="Home Area"
                 icon="🏙️"
-                value={
-                  [preferences?.preferred_city, preferences?.preferred_state]
-                    .filter(Boolean)
-                    .join(', ') || 'Set your city'
-                }
+                value={cityLabel}
                 accent={!preferences?.preferred_city}
               />
 
               <InfoCard
-                label="Distance"
+                label="Travel Radius"
                 icon="📍"
                 value={`${preferences?.max_distance_miles || 25} miles`}
+              />
+
+              <InfoCard
+                label="Max Cover"
+                icon="💵"
+                value={`$${Number(
+                  preferences?.max_cover_price ?? 50
+                ).toFixed(2)}`}
               />
             </div>
           </div>
@@ -114,109 +151,92 @@ export default async function EventPreferencesPage({ searchParams }: Props) {
 
       {query.saved ? (
         <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-green-100">
-          Preferences saved.
+          Your nightlife profile has been saved.
         </div>
       ) : null}
 
       <form action={saveEventPreferences} className="space-y-8">
-        <Panel title="Home base" eyebrow="Where should we look first?">
-          <p className="text-sm leading-6 text-white/65">
-            This tells HypeKnight where to focus your discovery feed first.
-          </p>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <Input
-              name="preferred_city"
-              label="Preferred City"
-              placeholder="Kansas City"
-              defaultValue={preferences?.preferred_city || ''}
-            />
-
-            <Input
-              name="preferred_state"
-              label="State"
-              placeholder="MO"
-              defaultValue={preferences?.preferred_state || ''}
-            />
-
-            <Input
-              name="max_distance_miles"
-              label="Max Distance"
-              type="number"
-              min="1"
-              max="250"
-              placeholder="25"
-              defaultValue={preferences?.max_distance_miles || 25}
-            />
-          </div>
+        <Panel title="Home area" eyebrow="Local Discovery">
+          <HomeLocationSection
+            preferredCity={preferences?.preferred_city}
+            preferredState={preferences?.preferred_state}
+            maxDistanceMiles={preferences?.max_distance_miles}
+          />
         </Panel>
 
-        <PreferenceGroup
-          title="Music"
-          eyebrow="Sound"
-          description="Choose the sounds that usually pull you out."
-          name="music_genres"
-          options={MUSIC_GENRES}
-          selected={selectedGenres}
-        />
+        <Panel title="Music" eyebrow="Your Sound">
+          <LookupPreferencesSection
+            title="Music Preferences"
+            description="Choose the sounds that are most likely to pull you out."
+            name="music_genres"
+            options={lookups.music_genres}
+            selected={selectedGenres}
+          />
+        </Panel>
 
-        <PreferenceGroup
-          title="Event types"
-          eyebrow="Experiences"
-          description="Choose the types of events you want surfaced first."
-          name="event_types"
-          options={EVENT_TYPES}
-          selected={selectedTypes}
-        />
+        <Panel title="Event types" eyebrow="Experiences">
+          <LookupPreferencesSection
+            title="Event Type Preferences"
+            description="Choose the kinds of events you want HypeKnight to surface first."
+            name="event_types"
+            options={lookups.event_types}
+            selected={selectedTypes}
+          />
+        </Panel>
 
-        <PreferenceGroup
-          title="Vibes"
-          eyebrow="Energy"
-          description="Choose the setting, mood, or experience you usually look for."
-          name="vibe_tags"
-          options={VIBE_TAGS}
-          selected={selectedVibes}
-        />
+        <Panel title="Preferred vibes" eyebrow="Energy">
+          <LookupPreferencesSection
+            title="Vibe Preferences"
+            description="Choose the atmosphere, setting, and energy you usually look for."
+            name="vibe_tags"
+            options={lookups.vibe_tags}
+            selected={selectedVibes}
+          />
+        </Panel>
 
-        <PreferenceGroup
-          title="Budget"
-          eyebrow="Price Comfort"
-          description="Help HypeKnight understand what kind of cost range you usually prefer."
-          name="budget_preferences"
-          options={BUDGETS}
-          selected={selectedBudgets}
-        />
+        <Panel title="Amenities" eyebrow="What Matters to You">
+          <LookupPreferencesSection
+            title="Amenity Preferences"
+            description="Choose features that can make an event or venue more appealing."
+            name="amenity_preferences"
+            options={lookups.event_amenities}
+            selected={selectedAmenities}
+          />
+        </Panel>
 
-        <Panel title="Sources" eyebrow="Event Feed">
-          <p className="text-sm leading-6 text-white/65">
-            Choose whether you want only HypeKnight events or supplemental
-            external events too.
-          </p>
+        <Panel title="Budget" eyebrow="Price Comfort">
+          <BudgetPreferencesSection
+            maxCoverPrice={preferences?.max_cover_price}
+          />
+        </Panel>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <CheckCard
-              name="preferred_sources"
-              value="hypeknight"
-              label="HypeKnight Events"
-              text="Events posted directly through HypeKnight."
-              defaultChecked={selectedSources.includes('hypeknight')}
-            />
+        <Panel title="Preferred days" eyebrow="Your Schedule">
+          <PreferredDaysSection selected={selectedDays} />
+        </Panel>
 
-            <CheckCard
-              name="preferred_sources"
-              value="external"
-              label="External Events"
-              text="Supplemental listings from outside providers."
-              defaultChecked={selectedSources.includes('external')}
-            />
-          </div>
+        <Panel title="Preferred times" eyebrow="When You Go Out">
+          <PreferredTimesSection selected={selectedTimes} />
+        </Panel>
+
+        <Panel title="Things to hide" eyebrow="Reduce Noise">
+          <HiddenPreferencesSection selected={selectedHidden} />
+        </Panel>
+
+        <Panel title="Notifications" eyebrow="Stay in the Loop">
+          <NotificationPreferencesSection
+            selected={selectedNotifications}
+          />
+        </Panel>
+
+        <Panel title="Event sources" eyebrow="Discovery Feed">
+          <EventSourcesSection selected={selectedSources} />
         </Panel>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
           <SectionHeader
             eyebrow="Save"
-            title="Ready to personalize your discovery?"
-            text="These preferences can later power recommended events, weekend starter packs, city pulse, saved searches, and alerts."
+            title="Build your HypeKnight experience."
+            text="These preferences can support personalized discovery, nearby recommendations, weekend starter packs, alerts, and future City Pulse features."
           />
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -224,12 +244,12 @@ export default async function EventPreferencesPage({ searchParams }: Props) {
               type="submit"
               className="w-full rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90 sm:w-auto"
             >
-              Save Preferences
+              Save Nightlife Profile
             </button>
 
             <Link
               href="/events"
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-6 py-4 text-center text-white hover:border-accent/40 sm:w-auto"
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-6 py-4 text-center font-semibold text-white hover:border-accent/40 sm:w-auto"
             >
               Explore Events
             </Link>
@@ -240,100 +260,11 @@ export default async function EventPreferencesPage({ searchParams }: Props) {
   );
 }
 
-function PreferenceGroup({
-  title,
-  eyebrow,
-  description,
-  name,
-  options,
-  selected,
-}: {
-  title: string;
-  eyebrow: string;
-  description: string;
-  name: string;
-  options: string[];
-  selected: string[];
-}) {
-  return (
-    <Panel title={title} eyebrow={eyebrow}>
-      <p className="text-sm leading-6 text-white/65">{description}</p>
+function arrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {options.map((option) => (
-          <CheckCard
-            key={option}
-            name={name}
-            value={option}
-            label={option}
-            defaultChecked={selected.includes(option)}
-          />
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function CheckCard({
-  name,
-  value,
-  label,
-  text,
-  defaultChecked,
-}: {
-  name: string;
-  value: string;
-  label: string;
-  text?: string;
-  defaultChecked?: boolean;
-}) {
-  return (
-    <label className="flex cursor-pointer gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white transition hover:border-accent/40">
-      <input
-        type="checkbox"
-        name={name}
-        value={value}
-        defaultChecked={defaultChecked}
-        className="mt-1 h-4 w-4 shrink-0"
-      />
-
-      <span>
-        <span className="block font-semibold">{label}</span>
-        {text ? <span className="mt-1 block text-sm text-white/50">{text}</span> : null}
-      </span>
-    </label>
-  );
-}
-
-function Input({
-  name,
-  label,
-  defaultValue = '',
-  placeholder,
-  type = 'text',
-  min,
-  max,
-}: {
-  name: string;
-  label: string;
-  defaultValue?: string | number;
-  placeholder?: string;
-  type?: string;
-  min?: string;
-  max?: string;
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm font-semibold text-white/70">{label}</span>
-      <input
-        name={name}
-        type={type}
-        min={min}
-        max={max}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-      />
-    </label>
-  );
+  return value
+    .map(String)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
