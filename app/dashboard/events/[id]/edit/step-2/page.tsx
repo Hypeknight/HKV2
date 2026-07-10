@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { updateEventStep2 } from '@/app/dashboard/events/actions';
 import { createClient } from '@/lib/supabase/server';
+import { getLookupMap, type LookupValue } from '@/lib/lookups';
 import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
 type Step2PageProps = {
@@ -10,122 +11,11 @@ type Step2PageProps = {
   }>;
 };
 
-const DRESS_CODES = [
-  'Casual',
-  'Smart Casual',
-  'Upscale',
-  'Streetwear',
-  'Business Casual',
-  'Formal',
-  'Theme / Costume',
-  'All White',
-  'All Black',
-  'No Dress Code Listed',
-];
-
-const AGE_REQUIREMENTS = [
-  'All Ages',
-  'Family Friendly',
-  '18+',
-  '21+',
-  'Kids Welcome',
-  'Adults Only',
-];
-
-const EVENT_TYPES = [
-  'Nightlife',
-  'Club Night',
-  'Lounge',
-  'Concert',
-  'Live Music',
-  'Live DJ',
-  'Festival',
-  'Day Party',
-  'Sports',
-  'Comedy',
-  'Theater',
-  'Food & Drink',
-  'Networking',
-  'Community Event',
-  'Private Event',
-  'Rooftop',
-  'Hookah',
-];
-
-const MUSIC_OPTIONS = [
-  'Hip-Hop',
-  'R&B',
-  'Afrobeats',
-  'House',
-  'EDM',
-  'Latin',
-  'Top 40',
-  'Trap',
-  'Dancehall',
-  'Country',
-  'Rock',
-  'Jazz',
-  'Blues',
-  'Pop',
-];
-
-const VIBE_TAGS = [
-  'High Energy',
-  'Chill',
-  'Luxury',
-  'Upscale',
-  'Underground',
-  'Tourist Friendly',
-  'Locals Spot',
-  'Live DJ',
-  'Late Night',
-  'Date Night',
-  'Dance Floor',
-  'Free Entry',
-  'VIP',
-  'Outdoor',
-  'Casual',
-];
-
-const SMOKING_POLICIES = [
-  'No Smoking',
-  'Patio Only',
-  'Hookah Available',
-  'Smoking Allowed',
-  'Designated Area',
-  'Not Listed',
-];
-
-const PARKING_OPTIONS = [
-  'Street Parking',
-  'Free Parking',
-  'Paid Parking',
-  'Parking Garage',
-  'Valet',
-  'Ride Share Recommended',
-  'Limited Parking',
-  'Not Listed',
-];
-
-const AMENITIES = [
-  'Food Available',
-  'Drink Specials',
-  'Bottle Service',
-  'VIP Sections',
-  'Outdoor Area',
-  'Patio',
-  'Hookah',
-  'Photo Ops',
-  'Dance Floor',
-  'Live Entertainment',
-  'Security',
-  'Accessible Entry',
-];
-
 export default async function EditEventStep2Page({ params }: Step2PageProps) {
   const { id } = await params;
 
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -145,6 +35,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
       age_requirement,
       event_type,
       vibe_tags,
+      amenities,
       smoking_policy,
       parking_notes,
       special_notes,
@@ -156,16 +47,28 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
 
   if (error || !event) notFound();
 
+  const lookups = await getLookupMap([
+    'dress_codes',
+    'age_requirements',
+    'event_types',
+    'music_genres',
+    'vibe_tags',
+    'smoking_policies',
+    'parking_options',
+    'event_amenities',
+  ]);
+
   const selectedMusic = Array.isArray(event.music_selection)
     ? event.music_selection
     : [];
 
-  const selectedVibes = Array.isArray(event.vibe_tags)
-    ? event.vibe_tags
-    : [];
+  const selectedVibes = Array.isArray(event.vibe_tags) ? event.vibe_tags : [];
 
   const selectedEventTypes = splitValue(event.event_type);
-  const selectedAmenities = splitValue((event as any).amenities);
+
+  const selectedAmenities = Array.isArray(event.amenities)
+    ? event.amenities
+    : [];
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -191,11 +94,11 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
 
             <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
               Step 2 helps HypeKnight categorize your event by music, vibe,
-              attire, age, event type, entry cost, and guest expectations.
+              attire, age, event type, entry cost, amenities, and guest expectations.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <Chip>{event.name}</Chip>
+              <Chip>{event.name || 'Untitled Event'}</Chip>
               <Chip>Status: {event.status}</Chip>
             </div>
           </div>
@@ -245,14 +148,14 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
               name="dress_code"
               label="Attire / Dress Code"
               defaultValue={event.dress_code || ''}
-              options={DRESS_CODES}
+              options={lookups.dress_codes}
             />
 
             <Select
               name="age_requirement"
               label="Age Requirement"
               defaultValue={event.age_requirement || ''}
-              options={AGE_REQUIREMENTS}
+              options={lookups.age_requirements}
             />
           </div>
 
@@ -261,7 +164,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
               title="Event Type"
               description="Choose every category that fits. This helps users filter by type."
               name="event_type"
-              options={EVENT_TYPES}
+              options={lookups.event_types}
               selected={selectedEventTypes}
             />
           </div>
@@ -272,7 +175,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
             title="Music Selection"
             description="Choose the sounds people can expect."
             name="music_selection"
-            options={MUSIC_OPTIONS}
+            options={lookups.music_genres}
             selected={selectedMusic}
           />
 
@@ -281,7 +184,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
               title="Vibe Tags"
               description="Choose the energy, setting, or experience."
               name="vibe_tags"
-              options={VIBE_TAGS}
+              options={lookups.vibe_tags}
               selected={selectedVibes}
             />
           </div>
@@ -302,7 +205,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
               name="smoking_policy"
               label="Smoking Policy"
               defaultValue={event.smoking_policy || ''}
-              options={SMOKING_POLICIES}
+              options={lookups.smoking_policies}
             />
           </div>
 
@@ -311,7 +214,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
               name="parking_notes"
               label="Parking / Access"
               defaultValue={event.parking_notes || ''}
-              options={PARKING_OPTIONS}
+              options={lookups.parking_options}
             />
 
             <Input
@@ -329,7 +232,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
             title="Event Amenities"
             description="Optional. These can power future filters and event badges."
             name="amenities"
-            options={AMENITIES}
+            options={lookups.event_amenities}
             selected={selectedAmenities}
           />
         </Panel>
@@ -355,7 +258,7 @@ export default async function EditEventStep2Page({ params }: Step2PageProps) {
           <SectionHeader
             eyebrow="Next"
             title="Ready for review?"
-            text="Step 3 lets you review the listing before submitting it to HypeKnight."
+            text="Step 3 lets you review pricing, promotion windows, and submission readiness."
           />
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between">
@@ -383,13 +286,13 @@ function CheckboxGroup({
   title,
   description,
   name,
-  options,
+  options = [],
   selected,
 }: {
   title: string;
   description: string;
   name: string;
-  options: string[];
+  options?: LookupValue[];
   selected: string[];
 }) {
   return (
@@ -397,17 +300,24 @@ function CheckboxGroup({
       <h3 className="text-xl font-black text-white">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-white/60">{description}</p>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {options.map((option) => (
-          <CheckCard
-            key={option}
-            name={name}
-            value={option}
-            label={option}
-            defaultChecked={selected.includes(option)}
-          />
-        ))}
-      </div>
+      {options.length ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {options.map((option) => (
+            <CheckCard
+              key={option.value}
+              name={name}
+              value={option.value}
+              label={`${option.icon ? `${option.icon} ` : ''}${option.display_name}`}
+              defaultChecked={selected.includes(option.value)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-100">
+          No active lookup values found for this section. Add them in Admin
+          Lookups.
+        </div>
+      )}
     </section>
   );
 }
@@ -441,12 +351,12 @@ function Select({
   name,
   label,
   defaultValue,
-  options,
+  options = [],
 }: {
   name: string;
   label: string;
   defaultValue?: string;
-  options: string[];
+  options?: LookupValue[];
 }) {
   return (
     <label className="block">
@@ -459,11 +369,18 @@ function Select({
       >
         <option value="">Select one</option>
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.icon ? `${option.icon} ` : ''}
+            {option.display_name}
           </option>
         ))}
       </select>
+
+      {!options.length ? (
+        <span className="mt-2 block text-xs text-yellow-200">
+          No active lookup values found.
+        </span>
+      ) : null}
     </label>
   );
 }

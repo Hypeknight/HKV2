@@ -803,17 +803,27 @@ export async function updateEventStep2(formData: FormData) {
 
   if (!eventId) throw new Error('Missing event id.');
 
+  const eventTypes = formData.getAll('event_type').map(String).filter(Boolean);
+  const musicSelection = formData
+    .getAll('music_selection')
+    .map(String)
+    .filter(Boolean);
+  const vibeTags = formData.getAll('vibe_tags').map(String).filter(Boolean);
+  const amenities = formData.getAll('amenities').map(String).filter(Boolean);
+
   const payload = {
-    description: String(formData.get('description') || ''),
-    dress_code: String(formData.get('dress_code') || ''),
-    entry_price: String(formData.get('entry_price') || ''),
-    age_requirement: String(formData.get('age_requirement') || ''),
-    event_type: String(formData.get('event_type') || ''),
-    smoking_policy: String(formData.get('smoking_policy') || ''),
-    parking_notes: String(formData.get('parking_notes') || ''),
-    special_notes: String(formData.get('special_notes') || ''),
-    music_selection: formData.getAll('music_selection').map(String),
-    vibe_tags: formData.getAll('vibe_tags').map(String),
+    description: String(formData.get('description') || '').trim() || null,
+    dress_code: String(formData.get('dress_code') || '').trim() || null,
+    entry_price: String(formData.get('entry_price') || '').trim() || null,
+    age_requirement:
+      String(formData.get('age_requirement') || '').trim() || null,
+    event_type: eventTypes.length ? eventTypes.join(', ') : null,
+    smoking_policy: String(formData.get('smoking_policy') || '').trim() || null,
+    parking_notes: String(formData.get('parking_notes') || '').trim() || null,
+    special_notes: String(formData.get('special_notes') || '').trim() || null,
+    music_selection: musicSelection,
+    vibe_tags: vibeTags,
+    amenities,
     current_step: 2,
     status: 'building',
     updated_at: new Date().toISOString(),
@@ -824,7 +834,7 @@ export async function updateEventStep2(formData: FormData) {
     .update(payload)
     .eq('id', eventId)
     .eq('owner_id', user.id)
-    .in('status', ['draft', 'building', 'rejected']);
+    .in('status', ['draft', 'building', 'rejected', 'revision_draft']);
 
   if (error) throw new Error(error.message);
 

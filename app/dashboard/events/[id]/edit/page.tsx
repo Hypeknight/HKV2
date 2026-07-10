@@ -6,108 +6,12 @@ import {
   updateEventRevision,
 } from '@/app/dashboard/events/actions';
 import { US_STATES } from '@/lib/states';
+import { getLookupMap, type LookupValue } from '@/lib/lookups';
 import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
 type Props = {
   params: Promise<{ id: string }>;
 };
-
-const DRESS_CODES = [
-  'Casual',
-  'Smart Casual',
-  'Upscale',
-  'Streetwear',
-  'Business Casual',
-  'Formal',
-  'Theme / Costume',
-  'All White',
-  'All Black',
-  'No Dress Code Listed',
-];
-
-const AGE_REQUIREMENTS = [
-  'All Ages',
-  'Family Friendly',
-  '18+',
-  '21+',
-  'Kids Welcome',
-  'Adults Only',
-];
-
-const EVENT_TYPES = [
-  'Nightlife',
-  'Club Night',
-  'Lounge',
-  'Concert',
-  'Live Music',
-  'Live DJ',
-  'Festival',
-  'Day Party',
-  'Sports',
-  'Comedy',
-  'Theater',
-  'Food & Drink',
-  'Networking',
-  'Community Event',
-  'Private Event',
-  'Rooftop',
-  'Hookah',
-];
-
-const MUSIC_OPTIONS = [
-  'Hip-Hop',
-  'R&B',
-  'Afrobeats',
-  'House',
-  'EDM',
-  'Latin',
-  'Top 40',
-  'Trap',
-  'Dancehall',
-  'Country',
-  'Rock',
-  'Jazz',
-  'Blues',
-  'Pop',
-];
-
-const VIBE_TAGS = [
-  'High Energy',
-  'Chill',
-  'Luxury',
-  'Upscale',
-  'Underground',
-  'Tourist Friendly',
-  'Locals Spot',
-  'Live DJ',
-  'Late Night',
-  'Date Night',
-  'Dance Floor',
-  'Free Entry',
-  'VIP',
-  'Outdoor',
-  'Casual',
-];
-
-const SMOKING_POLICIES = [
-  'No Smoking',
-  'Patio Only',
-  'Hookah Available',
-  'Smoking Allowed',
-  'Designated Area',
-  'Not Listed',
-];
-
-const PARKING_OPTIONS = [
-  'Street Parking',
-  'Free Parking',
-  'Paid Parking',
-  'Parking Garage',
-  'Valet',
-  'Ride Share Recommended',
-  'Limited Parking',
-  'Not Listed',
-];
 
 export default async function EventRevisionEditPage({ params }: Props) {
   const { id } = await params;
@@ -132,6 +36,17 @@ export default async function EventRevisionEditPage({ params }: Props) {
     redirect(`/dashboard/events/${event.id}/review`);
   }
 
+  const lookups = await getLookupMap([
+    'dress_codes',
+    'age_requirements',
+    'event_types',
+    'music_genres',
+    'vibe_tags',
+    'smoking_policies',
+    'parking_options',
+    'event_amenities',
+  ]);
+
   const startParts = getDateTimeParts(event.event_start_at);
   const endParts = getDateTimeParts(event.event_end_at);
 
@@ -140,6 +55,10 @@ export default async function EventRevisionEditPage({ params }: Props) {
     : [];
 
   const selectedVibes = Array.isArray(event.vibe_tags) ? event.vibe_tags : [];
+
+  const selectedAmenities = Array.isArray(event.amenities)
+    ? event.amenities
+    : [];
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -259,7 +178,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
               name="dress_code"
               label="Dress Code"
               defaultValue={event.dress_code || ''}
-              options={DRESS_CODES}
+              options={lookups.dress_codes}
             />
 
             <Input
@@ -273,28 +192,28 @@ export default async function EventRevisionEditPage({ params }: Props) {
               name="age_requirement"
               label="Age Requirement"
               defaultValue={event.age_requirement || ''}
-              options={AGE_REQUIREMENTS}
+              options={lookups.age_requirements}
             />
 
             <Select
               name="event_type"
               label="Primary Event Type"
               defaultValue={event.event_type || ''}
-              options={EVENT_TYPES}
+              options={lookups.event_types}
             />
 
             <Select
               name="smoking_policy"
               label="Smoking Policy"
               defaultValue={event.smoking_policy || ''}
-              options={SMOKING_POLICIES}
+              options={lookups.smoking_policies}
             />
 
             <Select
               name="parking_notes"
               label="Parking / Access"
               defaultValue={event.parking_notes || ''}
-              options={PARKING_OPTIONS}
+              options={lookups.parking_options}
             />
           </div>
 
@@ -318,7 +237,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
             title="Music Selection"
             description="Choose the sounds people can expect."
             name="music_selection"
-            options={MUSIC_OPTIONS}
+            options={lookups.music_genres}
             selected={selectedMusic}
           />
 
@@ -327,10 +246,20 @@ export default async function EventRevisionEditPage({ params }: Props) {
               title="Vibe Tags"
               description="Choose the energy, setting, or experience."
               name="vibe_tags"
-              options={VIBE_TAGS}
+              options={lookups.vibe_tags}
               selected={selectedVibes}
             />
           </div>
+        </Panel>
+
+        <Panel title="Amenities" eyebrow="What is available?">
+          <CheckboxGroup
+            title="Event Amenities"
+            description="Choose amenities available at the event."
+            name="amenities"
+            options={lookups.event_amenities}
+            selected={selectedAmenities}
+          />
         </Panel>
 
         <Panel title="Revision note" eyebrow="Tell HypeKnight What Changed">
@@ -398,13 +327,13 @@ function CheckboxGroup({
   title,
   description,
   name,
-  options,
+  options = [],
   selected,
 }: {
   title: string;
   description: string;
   name: string;
-  options: string[];
+  options?: LookupValue[];
   selected: string[];
 }) {
   return (
@@ -412,23 +341,33 @@ function CheckboxGroup({
       <h3 className="text-xl font-black text-white">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-white/60">{description}</p>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {options.map((option) => (
-          <label
-            key={option}
-            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white transition hover:border-accent/40"
-          >
-            <input
-              type="checkbox"
-              name={name}
-              value={option}
-              defaultChecked={selected.includes(option)}
-              className="h-4 w-4 shrink-0"
-            />
-            <span className="font-semibold">{option}</span>
-          </label>
-        ))}
-      </div>
+      {options.length ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {options.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white transition hover:border-accent/40"
+            >
+              <input
+                type="checkbox"
+                name={name}
+                value={option.value}
+                defaultChecked={selected.includes(option.value)}
+                className="h-4 w-4 shrink-0"
+              />
+              <span className="font-semibold">
+                {option.icon ? `${option.icon} ` : ''}
+                {option.display_name}
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-100">
+          No active lookup values found for this section. Add them in Admin
+          Lookups.
+        </div>
+      )}
     </section>
   );
 }
@@ -467,12 +406,12 @@ function Select({
   name,
   label,
   defaultValue,
-  options,
+  options = [],
 }: {
   name: string;
   label: string;
   defaultValue?: string;
-  options: string[];
+  options?: LookupValue[];
 }) {
   return (
     <label className="block">
@@ -484,11 +423,18 @@ function Select({
       >
         <option value="">Select one</option>
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.icon ? `${option.icon} ` : ''}
+            {option.display_name}
           </option>
         ))}
       </select>
+
+      {!options.length ? (
+        <span className="mt-2 block text-xs text-yellow-200">
+          No active lookup values found.
+        </span>
+      ) : null}
     </label>
   );
 }
