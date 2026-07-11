@@ -16,8 +16,11 @@ function getNumber(
   key: string,
   fallback: number
 ) {
-  const value = Number(formData.get(key));
+  const raw = formData.get(key);
 
+  if (raw === null || raw === '') return fallback;
+
+  const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
 }
 
@@ -26,7 +29,12 @@ export async function saveEventPreferences(formData: FormData) {
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error(authError.message);
+  }
 
   if (!user) redirect('/auth/login');
 
@@ -41,7 +49,10 @@ export async function saveEventPreferences(formData: FormData) {
     .toUpperCase();
 
   const maxDistanceMiles = Math.min(
-    Math.max(getNumber(formData, 'max_distance_miles', 25), 1),
+    Math.max(
+      Math.round(getNumber(formData, 'max_distance_miles', 25)),
+      1
+    ),
     250
   );
 
@@ -50,66 +61,56 @@ export async function saveEventPreferences(formData: FormData) {
     0
   );
 
-  const musicGenres = getArray(formData, 'music_genres');
-  const eventTypes = getArray(formData, 'event_types');
-  const vibeTags = getArray(formData, 'vibe_tags');
-  const amenityPreferences = getArray(
-    formData,
-    'amenity_preferences'
-  );
+  const payload = {
+    user_id: user.id,
 
-  const hiddenPreferences = getArray(
-    formData,
-    'hidden_preferences'
-  );
+    preferred_city: preferredCity || null,
+    preferred_state: preferredState || null,
+    max_distance_miles: maxDistanceMiles,
+    max_cover_price: maxCoverPrice,
 
-  const preferredDays = getArray(formData, 'preferred_days');
-  const preferredTimes = getArray(formData, 'preferred_times');
+    music_genres: getArray(formData, 'music_genres'),
+    event_types: getArray(formData, 'event_types'),
+    vibe_tags: getArray(formData, 'vibe_tags'),
+    amenity_preferences: getArray(
+      formData,
+      'amenity_preferences'
+    ),
 
-  const notificationPreferences = getArray(
-    formData,
-    'notification_preferences'
-  );
+    hidden_preferences: getArray(
+      formData,
+      'hidden_preferences'
+    ),
+    preferred_days: getArray(formData, 'preferred_days'),
+    preferred_times: getArray(formData, 'preferred_times'),
+    notification_preferences: getArray(
+      formData,
+      'notification_preferences'
+    ),
 
-  const preferredSources = getArray(
-    formData,
-    'preferred_sources'
-  );
+    preferred_sources: getArray(formData, 'preferred_sources').length
+      ? getArray(formData, 'preferred_sources')
+      : ['hypeknight', 'external'],
 
-  const { error } = await supabase
+    onboarding_completed: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
     .from('user_event_preferences')
-    .upsert(
-      {
-        user_id: user.id,
+    .upsert(payload, {
+      onConflict: 'user_id',
+    })
+    .select('user_id')
+    .single();
 
-        preferred_city: preferredCity || null,
-        preferred_state: preferredState || null,
-        max_distance_miles: maxDistanceMiles,
-        max_cover_price: maxCoverPrice,
+  if (error) {
+    throw new Error(`Unable to save preferences: ${error.message}`);
+  }
 
-        music_genres: musicGenres,
-        event_types: eventTypes,
-        vibe_tags: vibeTags,
-        amenity_preferences: amenityPreferences,
-
-        hidden_preferences: hiddenPreferences,
-        preferred_days: preferredDays,
-        preferred_times: preferredTimes,
-        notification_preferences: notificationPreferences,
-
-        preferred_sources: preferredSources.length
-          ? preferredSources
-          : ['hypeknight', 'external'],
-
-        onboarding_completed: true,
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: 'user_id',
-      }
-    );
-
-  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error('Preferences were not saved.');
+  }
 
   redirect('/dashboard/preferences?saved=1');
 }
