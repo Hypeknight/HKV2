@@ -1,3 +1,4 @@
+/*
 'use server';
 
 import { redirect } from 'next/navigation';
@@ -540,4 +541,962 @@ function numberOrNull(value: FormDataEntryValue | null) {
   const number = Number(value);
 
   return Number.isFinite(number) ? number : null;
+}
+  */
+
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { derivePublicState } from '@/lib/events/workflow';
+
+const VALID_EVENT_STATUSES = [
+  'draft',
+  'building',
+  'revision_draft',
+  'submitted',
+  'approved_unpaid',
+  'approved_awaiting_payment',
+  'paid_awaiting_approval',
+  'revision_submitted',
+  'scheduled',
+  'active',
+  'live',
+  'rejected',
+  'removal_requested',
+  'refund_requested',
+  'cancelled',
+  'removed',
+  'ended',
+  'archived',
+] as const;
+
+const PUBLIC_ELIGIBLE_STATUSES = [
+  'scheduled',
+  'active',
+  'live',
+] as const;
+
+type EventStatus = (typeof VALID_EVENT_STATUSES)[number];
+
+type EventWorkflowRecord = {
+  id: string;
+  status: EventStatus;
+  is_approved: boolean | null;
+  is_paid: boolean | null;
+  payment_status: string | null;
+  payment_override: boolean | null;
+  promotion_start_at: string | null;
+  promotion_end_at: string | null;
+  original_status_before_revision?: string | null;
+  hidden_by_admin?: boolean | null;
+  removed_at?: string | null;
+};
+
+async function requireAdmin() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error(authError.message);
+  }
+
+  if (!user) redirect('/auth/login');
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('app_role')
+    .eq('id', user.id)
+    .single();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (profile?.app_role !== 'admin') {
+    redirect('/dashboard');
+  }
+
+  return { supabase, user };
+}
+
+async function getEventWorkflowRecord(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+) {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select(`
+      id,
+      status,
+      is_approved,
+      is_paid,
+      payment_status,
+      payment_override,
+      promotion_start_at,
+      promotion_end_at,
+      original_status_before_revision,
+      hidden_by_admin,
+      removed_at
+    `)
+    .eq('id', eventId)
+    .single();
+
+  if (error || !event) {
+    throw new Error(error?.message || 'Event not found.');
+  }
+
+  if (
+  !VALID_EVENT_STATUSES.includes(
+    event.status as EventStatus
+  )
+) {
+  throw new Error(
+    `Unsupported event status: ${event.status}`
+  );
+}
+
+return {
+  ...event,
+  status: event.status as EventStatus,
+} as EventWorkflowRecord;
+}
+
+function textValue(formData: FormData, key: string) {
+  return String(formData.get(key) || '').trim();
+}
+
+function nullableText(formData: FormData, key: string) {
+  return textValue(formData, key) || null;
+}
+
+function nullableDateTime(formData: FormData, key: string) {
+  const value = textValue(formData, key);
+  return value || null;
+}
+
+function numberOrNull(value: FormDataEntryValue | null) {
+  if (value === null || value === '') return null;
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
+}
+
+function eventIsPaid(event: EventWorkflowRecord) {
+  return (
+    event.is_paid === true ||
+    event.payment_status === 'paid' ||
+    event.payment_override === true
+  );
+}
+
+type PublicWorkflowStatus =
+  Parameters<typeof derivePublicState>[0]['status'];
+
+const PUBLIC_WORKFLOW_STATUSES: PublicWorkflowStatus[] = [
+  'scheduled',
+  'active',
+  'live',
+];
+
+function calculatePublicState(
+  event: EventWorkflowRecord,
+  overrides?: {
+    status?: EventStatus;
+    isApproved?: boolean;
+    isPaid?: boolean;
+    paymentOverride?: boolean;
+    promotionStartAt?: string | null;
+    promotionEndAt?: string | null;
+    hiddenByAdmin?: boolean;
+  }
+) {
+  const status = overrides?.status ?? event.status;
+
+  const hiddenByAdmin =
+    overrides?.hiddenByAdmin ??
+    Boolean(event.hidden_by_admin);
+
+  if (
+    hiddenByAdmin ||
+    !isPublicWorkflowStatus(status)
+  ) {
+    return false;
+  }
+
+  return derivePublicState({
+    isApproved:
+      overrides?.isApproved ??
+      Boolean(event.is_approved),
+
+    isPaid:
+      overrides?.isPaid ??
+      (event.is_paid === true ||
+        event.payment_status === 'paid'),
+
+    paymentOverride:
+      overrides?.paymentOverride ??
+      Boolean(event.payment_override),
+
+    promotionStartAt:
+      overrides?.promotionStartAt ??
+      event.promotion_start_at,
+
+    promotionEndAt:
+      overrides?.promotionEndAt ??
+      event.promotion_end_at,
+
+    status,
+  });
+}
+
+function isPublicWorkflowStatus(
+  status: EventStatus
+): status is PublicWorkflowStatus {
+  return PUBLIC_WORKFLOW_STATUSES.includes(
+    status as PublicWorkflowStatus
+  );
+}
+
+function refreshEventPaths(eventId: string) {
+  revalidatePath('/admin');
+  revalidatePath('/admin/events');
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath('/events');
+  revalidatePath('/dashboard/events');
+  revalidatePath(`/dashboard/events/${eventId}/review`);
+}
+
+export async function reviewEvent(formData: FormData) {
+  const action = textValue(formData, 'action');
+
+  if (action === 'approve') {
+    return approveEvent(formData);
+  }
+
+  if (action === 'reject') {
+    const reason =
+      textValue(formData, 'reason') ||
+      textValue(formData, 'rejection_reason');
+
+    const replacement = new FormData();
+
+    replacement.set(
+      'event_id',
+      textValue(formData, 'event_id')
+    );
+
+    replacement.set('rejection_reason', reason);
+
+    return rejectEvent(replacement);
+  }
+
+  throw new Error('Invalid event review action.');
+}
+
+export async function approveEvent(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  const paid = eventIsPaid(event);
+
+  const nextStatus: EventStatus = paid
+    ? 'scheduled'
+    : 'approved_unpaid';
+
+  const nowIso = new Date().toISOString();
+
+  const isPublic = calculatePublicState(event, {
+    status: nextStatus,
+    isApproved: true,
+  });
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: nextStatus,
+      is_approved: true,
+      is_public: isPublic,
+
+      approved_at: nowIso,
+      approved_by: user.id,
+
+      rejection_reason: null,
+      rejected_at: null,
+      rejected_by: null,
+
+      revision_admin_note: null,
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?approved=1`);
+}
+
+export async function rejectEvent(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+  const rejectionReason = textValue(
+    formData,
+    'rejection_reason'
+  );
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  if (!rejectionReason) {
+    throw new Error(
+      'A rejection or required-change reason is required.'
+    );
+  }
+
+  await getEventWorkflowRecord(supabase, eventId);
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'rejected',
+      is_approved: false,
+      is_public: false,
+
+      rejected_at: nowIso,
+      rejected_by: user.id,
+      rejection_reason: rejectionReason,
+
+      approved_at: null,
+      approved_by: null,
+
+      locked_at: null,
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?rejected=1`);
+}
+
+export async function applyPaymentOverride(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+  const reason = textValue(formData, 'reason');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  if (!reason) {
+    throw new Error('A payment override reason is required.');
+  }
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  const nextStatus: EventStatus = event.is_approved
+    ? 'scheduled'
+    : 'paid_awaiting_approval';
+
+  const nowIso = new Date().toISOString();
+
+  const isPublic = calculatePublicState(event, {
+    status: nextStatus,
+    paymentOverride: true,
+  });
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      payment_override: true,
+      payment_override_by: user.id,
+      payment_override_reason: reason,
+      payment_override_at: nowIso,
+
+      status: nextStatus,
+      is_public: isPublic,
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?override=1`);
+}
+
+export async function approveEventRevision(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+  const adminNote = textValue(formData, 'admin_note');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  if (event.status !== 'revision_submitted') {
+    throw new Error(
+      'This event is not waiting for revision approval.'
+    );
+  }
+
+  const originalStatus =
+    event.original_status_before_revision;
+
+  let restoredStatus: EventStatus;
+
+  if (
+    originalStatus &&
+    [
+      'scheduled',
+      'active',
+      'live',
+      'paid_awaiting_approval',
+      'approved_unpaid',
+    ].includes(originalStatus)
+  ) {
+    restoredStatus = originalStatus as EventStatus;
+  } else {
+    restoredStatus = eventIsPaid(event)
+      ? 'scheduled'
+      : 'approved_unpaid';
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const isPublic = calculatePublicState(event, {
+    status: restoredStatus,
+    isApproved: true,
+  });
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: restoredStatus,
+      is_public: isPublic,
+      is_approved: true,
+
+      revision_admin_note: adminNote || null,
+      revision_reviewed_at: nowIso,
+      revision_reviewed_by: user.id,
+
+      rejection_reason: null,
+      rejected_at: null,
+      rejected_by: null,
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId)
+    .eq('status', 'revision_submitted');
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?revision=approved`);
+}
+
+export async function rejectEventRevision(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+  const adminNote = textValue(formData, 'admin_note');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  if (!adminNote) {
+    throw new Error(
+      'Explain what still needs to change before rejecting the revision.'
+    );
+  }
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  if (event.status !== 'revision_submitted') {
+    throw new Error(
+      'This event is not waiting for revision review.'
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      status: 'revision_draft',
+      is_public: false,
+      is_approved: false,
+
+      revision_admin_note: adminNote,
+      revision_reviewed_at: nowIso,
+      revision_reviewed_by: user.id,
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId)
+    .eq('status', 'revision_submitted');
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?revision=rejected`);
+}
+
+export async function updateAdminEventDetails(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const name = textValue(formData, 'name');
+
+  if (!name) {
+    throw new Error('Event name is required.');
+  }
+
+  const state = textValue(formData, 'state').toUpperCase();
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      name,
+      slug: nullableText(formData, 'slug'),
+      venue_name: nullableText(formData, 'venue_name'),
+      address: nullableText(formData, 'address'),
+      city: nullableText(formData, 'city'),
+      state: state || null,
+
+      event_start_at: nullableDateTime(
+        formData,
+        'event_start_at'
+      ),
+      event_end_at: nullableDateTime(
+        formData,
+        'event_end_at'
+      ),
+
+      flyer_url: nullableText(formData, 'flyer_url'),
+
+      event_type: nullableText(formData, 'event_type'),
+      dress_code: nullableText(formData, 'dress_code'),
+      entry_price: nullableText(formData, 'entry_price'),
+      age_requirement: nullableText(
+        formData,
+        'age_requirement'
+      ),
+      smoking_policy: nullableText(
+        formData,
+        'smoking_policy'
+      ),
+
+      description: nullableText(formData, 'description'),
+      special_notes: nullableText(
+        formData,
+        'special_notes'
+      ),
+      parking_notes: nullableText(
+        formData,
+        'parking_notes'
+      ),
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?details=updated`);
+}
+
+export async function updateAdminEventFinancials(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  const promotionStartAt = nullableDateTime(
+    formData,
+    'promotion_start_at'
+  );
+
+  const promotionEndAt = nullableDateTime(
+    formData,
+    'promotion_end_at'
+  );
+
+  if (
+    promotionStartAt &&
+    promotionEndAt &&
+    new Date(promotionEndAt).getTime() <=
+      new Date(promotionStartAt).getTime()
+  ) {
+    throw new Error(
+      'Promotion end must be after promotion start.'
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const isPublic = calculatePublicState(event, {
+    promotionStartAt,
+    promotionEndAt,
+  });
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      base_price: numberOrNull(
+        formData.get('base_price')
+      ),
+      included_promo_days: numberOrNull(
+        formData.get('included_promo_days')
+      ),
+      extra_promo_days: numberOrNull(
+        formData.get('extra_promo_days')
+      ),
+      extra_promo_price: numberOrNull(
+        formData.get('extra_promo_price')
+      ),
+
+      linkdn_mode: nullableText(formData, 'linkdn_mode'),
+      linkdn_price: numberOrNull(
+        formData.get('linkdn_price')
+      ),
+
+      coupon_code: nullableText(formData, 'coupon_code'),
+      discount_amount: numberOrNull(
+        formData.get('discount_amount')
+      ),
+      total_price: numberOrNull(
+        formData.get('total_price')
+      ),
+      payment_amount: numberOrNull(
+        formData.get('payment_amount')
+      ),
+
+      promotion_start_at: promotionStartAt,
+      promotion_end_at: promotionEndAt,
+      is_public: isPublic,
+
+      package_upgrade_note: nullableText(
+        formData,
+        'package_upgrade_note'
+      ),
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?financials=updated`);
+}
+
+export async function updateAdminEventNotes(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      admin_notes: nullableText(
+        formData,
+        'admin_notes'
+      ),
+      admin_refund_note: nullableText(
+        formData,
+        'admin_refund_note'
+      ),
+
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?notes=updated`);
+}
+
+export async function updateAdminEventStatus(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+  const status = textValue(formData, 'status');
+  const reason = textValue(formData, 'reason');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  if (
+    !VALID_EVENT_STATUSES.includes(
+      status as EventStatus
+    )
+  ) {
+    throw new Error('Unsupported event status.');
+  }
+
+  if (!reason) {
+    throw new Error(
+      'An internal reason is required for a manual status change.'
+    );
+  }
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  const nextStatus = status as EventStatus;
+  const nowIso = new Date().toISOString();
+
+  const isPublic = calculatePublicState(event, {
+    status: nextStatus,
+  });
+
+  const payload: Record<string, unknown> = {
+    status: nextStatus,
+    is_public: isPublic,
+
+    admin_notes: reason,
+
+    admin_last_updated_at: nowIso,
+    admin_last_updated_by: user.id,
+    updated_at: nowIso,
+  };
+
+  if (nextStatus === 'rejected') {
+    payload.is_approved = false;
+    payload.rejection_reason = reason;
+    payload.rejected_at = nowIso;
+    payload.rejected_by = user.id;
+    payload.approved_at = null;
+    payload.approved_by = null;
+  }
+
+  if (nextStatus === 'removed') {
+    payload.removed_at = nowIso;
+    payload.removed_by = user.id;
+    payload.hidden_by_admin = true;
+    payload.is_public = false;
+  }
+
+  if (nextStatus === 'cancelled') {
+    payload.hidden_by_admin = true;
+    payload.is_public = false;
+  }
+
+  if (
+    nextStatus === 'scheduled' ||
+    nextStatus === 'active' ||
+    nextStatus === 'live'
+  ) {
+    if (!event.is_approved) {
+      throw new Error(
+        'The event must be approved before it can be scheduled, active, or live.'
+      );
+    }
+
+    if (!eventIsPaid(event)) {
+      throw new Error(
+        'Payment or a payment override is required before making this event public.'
+      );
+    }
+
+    payload.hidden_by_admin = false;
+    payload.removed_at = null;
+    payload.removed_by = null;
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update(payload)
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?status=updated`);
+}
+
+export async function updateAdminEventVisibility(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = textValue(formData, 'event_id');
+  const action = textValue(formData, 'action');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
+  const nowIso = new Date().toISOString();
+
+  const payload: Record<string, unknown> = {
+    admin_last_updated_at: nowIso,
+    admin_last_updated_by: user.id,
+    updated_at: nowIso,
+  };
+
+  switch (action) {
+    case 'hide':
+      payload.is_public = false;
+      payload.hidden_by_admin = true;
+      break;
+
+    case 'unhide': {
+      const canPublish = calculatePublicState(event, {
+        hiddenByAdmin: false,
+      });
+
+      payload.hidden_by_admin = false;
+      payload.is_public = canPublish;
+
+      if (!canPublish) {
+        throw new Error(
+          'This event cannot be made public until it is approved, paid or overridden, in an eligible status, and within its promotion window.'
+        );
+      }
+
+      break;
+    }
+
+    case 'feature':
+      payload.admin_featured = true;
+      break;
+
+    case 'unfeature':
+      payload.admin_featured = false;
+      break;
+
+    case 'reactivate': {
+      if (!event.is_approved) {
+        throw new Error(
+          'Approve the event before reactivating it.'
+        );
+      }
+
+      if (!eventIsPaid(event)) {
+        throw new Error(
+          'Payment or a payment override is required before reactivation.'
+        );
+      }
+
+      const nextStatus: EventStatus = 'scheduled';
+
+      payload.status = nextStatus;
+      payload.hidden_by_admin = false;
+      payload.removed_at = null;
+      payload.removed_by = null;
+      payload.is_public = calculatePublicState(event, {
+        status: nextStatus,
+        hiddenByAdmin: false,
+      });
+
+      break;
+    }
+
+    case 'cancel':
+      payload.status = 'cancelled';
+      payload.is_public = false;
+      payload.hidden_by_admin = true;
+      break;
+
+    case 'remove':
+      payload.status = 'removed';
+      payload.is_public = false;
+      payload.hidden_by_admin = true;
+      payload.removed_at = nowIso;
+      payload.removed_by = user.id;
+      break;
+
+    default:
+      throw new Error('Invalid visibility action.');
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update(payload)
+    .eq('id', eventId);
+
+  if (error) throw new Error(error.message);
+
+  refreshEventPaths(eventId);
+  redirect(`/admin/events/${eventId}?visibility=updated`);
 }

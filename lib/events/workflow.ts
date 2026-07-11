@@ -6,6 +6,7 @@ export type EventStatus =
   | 'approved_unpaid'
   | 'scheduled'
   | 'live'
+  | 'active'
   | 'ended'
   | 'removal_requested'
   | 'removed'
