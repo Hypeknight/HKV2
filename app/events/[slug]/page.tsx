@@ -795,6 +795,7 @@ function Chip({
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getLookupMap, type LookupValue } from '@/lib/lookups';
 import TrackView from '@/components/analytics/TrackView';
 import {
   ButtonLink,
@@ -809,19 +810,46 @@ type Props = {
   params: Promise<{ slug: string }>;
 };
 
+type LookupMap = Record<string, LookupValue[]>;
+
 export default async function EventDetailPage({ params }: Props) {
   const { slug } = await params;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [
+    {
+      data: { user },
+    },
+    lookups,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+
+    getLookupMap([
+      'event_types',
+      'music_genres',
+      'vibe_tags',
+      'event_amenities',
+      'dress_codes',
+      'age_requirements',
+      'smoking_policies',
+      'parking_options',
+    ]),
+  ]);
 
   const { data: event, error } = await supabase
     .from('events')
-    .select('*, venue:venues(name, slug, city, state)')
+    .select(`
+      *,
+      venue:venues(
+        name,
+        slug,
+        city,
+        state
+      )
+    `)
     .eq('slug', slug)
     .eq('is_public', true)
+    .in('status', ['scheduled', 'active', 'live'])
     .is('removed_at', null)
     .single();
 
@@ -839,10 +867,10 @@ export default async function EventDetailPage({ params }: Props) {
   const isAdmin = profile?.app_role === 'admin';
   const canManage = isOwner || isAdmin;
 
-  const imageUrl = event.flyer_url || event.image_url;
+  const imageUrl = event.flyer_url || null;
+
   const city = event.city || event.venue?.city;
   const state = event.state || event.venue?.state;
-  const eventTimeZone = getTimeZoneForEvent({ city, state });
 
   const fullAddress = [
     event.address,
@@ -857,7 +885,53 @@ export default async function EventDetailPage({ params }: Props) {
     fullAddress ||
     [city, state].filter(Boolean).join(', ') ||
     event.venue_name ||
+    event.venue?.name ||
     'Location TBA';
+
+  const musicValues = arrayValue(event.music_selection);
+  const vibeValues = arrayValue(event.vibe_tags);
+  const amenityValues = arrayValue(event.amenities);
+  const eventTypeValues = splitValue(event.event_type);
+
+  const musicItems = resolveLookupItems(
+    lookups.music_genres,
+    musicValues
+  );
+
+  const vibeItems = resolveLookupItems(
+    lookups.vibe_tags,
+    vibeValues
+  );
+
+  const amenityItems = resolveLookupItems(
+    lookups.event_amenities,
+    amenityValues
+  );
+
+  const eventTypeItems = resolveLookupItems(
+    lookups.event_types,
+    eventTypeValues
+  );
+
+  const dressCode = resolveSingleLookup(
+    lookups.dress_codes,
+    event.dress_code
+  );
+
+  const ageRequirement = resolveSingleLookup(
+    lookups.age_requirements,
+    event.age_requirement
+  );
+
+  const smokingPolicy = resolveSingleLookup(
+    lookups.smoking_policies,
+    event.smoking_policy
+  );
+
+  const parkingOption = resolveSingleLookup(
+    lookups.parking_options,
+    event.parking_notes
+  );
 
   return (
     <>
@@ -871,7 +945,10 @@ export default async function EventDetailPage({ params }: Props) {
       />
 
       <section className="mx-auto max-w-7xl space-y-8 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
-        <Link href="/events" className="text-sm text-white/60 hover:text-accent">
+        <Link
+          href="/events"
+          className="text-sm font-semibold text-white/60 hover:text-accent"
+        >
           ← Back to Events
         </Link>
 
@@ -883,50 +960,49 @@ export default async function EventDetailPage({ params }: Props) {
               <img
                 src={imageUrl}
                 alt={event.name || 'Event flyer'}
-                className="h-[360px] w-full object-cover sm:h-[520px]"
+                className="h-[380px] w-full object-cover sm:h-[540px] lg:h-[620px]"
               />
 
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/10" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/10" />
 
-              <div className="absolute left-4 top-4">
+              <div className="absolute left-4 top-4 sm:left-6 sm:top-6">
                 <EventStatusBadge
                   startAt={event.event_start_at}
                   endAt={event.event_end_at}
                 />
               </div>
 
-              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-8 lg:p-10">
+              <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8 lg:p-10">
                 <HeroContent
                   event={event}
                   locationText={locationText}
-                  eventTimeZone={eventTimeZone}
+                  eventTypes={eventTypeItems}
                   canManage={canManage}
                   isAdmin={isAdmin}
                 />
               </div>
             </div>
           ) : (
-            <div className="relative p-6 sm:p-10">
-              <HeroContent
-                event={event}
-                locationText={locationText}
-                eventTimeZone={eventTimeZone}
-                canManage={canManage}
-                isAdmin={isAdmin}
-              />
+            <div className="relative min-h-[380px] p-6 sm:p-10">
+              <div className="absolute left-5 top-5">
+                <EventStatusBadge
+                  startAt={event.event_start_at}
+                  endAt={event.event_end_at}
+                />
+              </div>
+
+              <div className="flex min-h-[320px] items-end">
+                <HeroContent
+                  event={event}
+                  locationText={locationText}
+                  eventTypes={eventTypeItems}
+                  canManage={canManage}
+                  isAdmin={isAdmin}
+                />
+              </div>
             </div>
           )}
         </section>
-
-        {imageUrl ? (
-          <Panel title="Event Flyer" eyebrow="Official Visual">
-            <img
-              src={imageUrl}
-              alt={`${event.name} flyer`}
-              className="w-full rounded-[1.5rem] border border-white/10 object-contain"
-            />
-          </Panel>
-        ) : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <InfoCard
@@ -945,21 +1021,29 @@ export default async function EventDetailPage({ params }: Props) {
             label="Ends"
             icon="⏳"
             value={
-              <EventTime
-                value={event.event_end_at}
-                mode="wall"
-              />
+              event.event_end_at ? (
+                <EventTime
+                  value={event.event_end_at}
+                  mode="wall"
+                />
+              ) : (
+                'End time not listed'
+              )
             }
           />
 
           <InfoCard
             label="Venue"
             icon="🏢"
-            value={event.venue_name || event.venue?.name || 'Venue TBA'}
+            value={
+              event.venue_name ||
+              event.venue?.name ||
+              'Venue TBA'
+            }
           />
 
           <InfoCard
-            label="Address"
+            label="Full Address"
             icon="📍"
             value={fullAddress || 'Address not listed'}
           />
@@ -967,69 +1051,139 @@ export default async function EventDetailPage({ params }: Props) {
           <InfoCard
             label="Entry"
             icon="💵"
-            value={event.entry_price || event.cover_charge || 'Check details'}
+            value={
+              event.entry_price ||
+              event.cover_charge ||
+              'Check event details'
+            }
           />
 
           <InfoCard
             label="Dress Code"
-            icon="👕"
-            value={event.dress_code || 'Not listed'}
+            icon={dressCode.icon || '👕'}
+            value={dressCode.label || 'Not listed'}
           />
 
           <InfoCard
             label="Age"
-            icon="🔞"
-            value={event.age_requirement || 'Not listed'}
+            icon={ageRequirement.icon || '🔞'}
+            value={ageRequirement.label || 'Not listed'}
           />
 
           <InfoCard
-            label="Music / Type"
-            icon="🎵"
+            label="Event Type"
+            icon="🎉"
             value={
-              Array.isArray(event.music_selection)
-                ? event.music_selection.join(', ')
-                : event.event_type || 'Not listed'
+              eventTypeItems.length
+                ? eventTypeItems
+                    .map((item) => item.display_name)
+                    .join(', ')
+                : 'Not listed'
             }
           />
         </section>
 
+        {musicItems.length ||
+        vibeItems.length ||
+        amenityItems.length ? (
+          <Panel
+            title="What kind of night is this?"
+            eyebrow="Experience"
+          >
+            <div className="space-y-8">
+              {musicItems.length ? (
+                <TagSection
+                  title="Music"
+                  description="The sounds connected to this event."
+                  items={musicItems}
+                />
+              ) : null}
+
+              {vibeItems.length ? (
+                <TagSection
+                  title="Vibe"
+                  description="The atmosphere and energy guests can expect."
+                  items={vibeItems}
+                />
+              ) : null}
+
+              {amenityItems.length ? (
+                <TagSection
+                  title="Amenities"
+                  description="Features and accommodations available at the event."
+                  items={amenityItems}
+                />
+              ) : null}
+            </div>
+          </Panel>
+        ) : null}
+
         {event.description ? (
-          <Panel title="The vibe" eyebrow="About">
+          <Panel title="The vibe" eyebrow="About This Event">
             <p className="whitespace-pre-wrap text-base leading-8 text-white/75 sm:text-lg">
               {event.description}
             </p>
           </Panel>
         ) : null}
 
+        {imageUrl ? (
+          <Panel title="Event flyer" eyebrow="Official Visual">
+            <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/30">
+              <img
+                src={imageUrl}
+                alt={`${event.name} flyer`}
+                className="max-h-[1000px] w-full object-contain"
+              />
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-white/50">
+              Review the official flyer for additional details,
+              restrictions, times, or promotional information supplied by
+              the event owner.
+            </p>
+          </Panel>
+        ) : null}
+
         <section className="grid gap-6 lg:grid-cols-[1fr_0.85fr]">
-          <Panel title="Before you go" eyebrow="Quick Notes">
+          <Panel title="Before you go" eyebrow="Know Before You Go">
             <div className="grid gap-4">
               <InfoCard
-                label="Parking"
-                icon="🅿️"
-                value={event.parking_notes || 'Parking details not listed.'}
+                label="Parking / Access"
+                icon={parkingOption.icon || '🅿️'}
+                value={
+                  parkingOption.label ||
+                  event.parking_notes ||
+                  'Parking details not listed.'
+                }
               />
 
               <InfoCard
                 label="Smoking Policy"
-                icon="💨"
-                value={event.smoking_policy || 'Not listed'}
+                icon={smokingPolicy.icon || '💨'}
+                value={
+                  smokingPolicy.label ||
+                  event.smoking_policy ||
+                  'Not listed'
+                }
               />
 
               <InfoCard
                 label="Special Notes"
                 icon="⭐"
-                value={event.special_notes || 'No special notes listed.'}
+                value={
+                  event.special_notes ||
+                  'No special notes listed.'
+                }
               />
             </div>
           </Panel>
 
           <Panel title="Make your move" eyebrow="HypeKnight">
             <div className="space-y-5">
-              <p className="text-white/70">
-                Save the details, share it with your people, and double-check
-                important information with the venue or organizer before heading
-                out.
+              <p className="leading-7 text-white/70">
+                Save the details, tell your people, and double-check
+                important information with the venue or organizer before
+                heading out.
               </p>
 
               <div className="flex flex-col gap-3">
@@ -1037,8 +1191,15 @@ export default async function EventDetailPage({ params }: Props) {
                   Find More Events
                 </ButtonLink>
 
-                <ButtonLink href="/dashboard/events/new/step-1" variant="secondary">
+                <ButtonLink
+                  href="/dashboard/events/new/step-1"
+                  variant="secondary"
+                >
                   Post Your Event
+                </ButtonLink>
+
+                <ButtonLink href="/promote" variant="secondary">
+                  Learn About Promotion
                 </ButtonLink>
               </div>
             </div>
@@ -1047,9 +1208,18 @@ export default async function EventDetailPage({ params }: Props) {
 
         {canManage ? (
           <Panel
-            title={isAdmin ? 'Admin Event Controls' : 'Owner Event Controls'}
+            title={
+              isAdmin
+                ? 'Admin Event Controls'
+                : 'Owner Event Controls'
+            }
             eyebrow="Management"
           >
+            <p className="mb-6 max-w-3xl text-sm leading-6 text-white/60">
+              These controls are only visible because you own this event
+              or have HypeKnight administrator access.
+            </p>
+
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {isOwner ? (
                 <>
@@ -1057,20 +1227,23 @@ export default async function EventDetailPage({ params }: Props) {
                     href={`/dashboard/events/${event.id}/review`}
                     variant="secondary"
                   >
-                    Owner Review
+                    Owner Mission Control
                   </ButtonLink>
 
                   <ButtonLink
-                    href={`/dashboard/events/${event.id}/revision`}
+                    href={`/dashboard/events/${event.id}/review`}
                     variant="secondary"
                   >
-                    Edit / Revision
+                    Review Event Status
                   </ButtonLink>
                 </>
               ) : null}
 
               {isAdmin ? (
-                <ButtonLink href={`/admin/events/${event.id}`} variant="primary">
+                <ButtonLink
+                  href={`/admin/events/${event.id}`}
+                  variant="primary"
+                >
                   Admin Control Center
                 </ButtonLink>
               ) : null}
@@ -1089,13 +1262,13 @@ export default async function EventDetailPage({ params }: Props) {
 function HeroContent({
   event,
   locationText,
-  eventTimeZone,
+  eventTypes,
   canManage,
   isAdmin,
 }: {
   event: any;
   locationText: string;
-  eventTimeZone: string;
+  eventTypes: LookupValue[];
   canManage: boolean;
   isAdmin: boolean;
 }) {
@@ -1103,34 +1276,50 @@ function HeroContent({
     <div>
       <div className="flex flex-wrap gap-2">
         <Chip>HypeKnight Event</Chip>
-        {event.event_type ? <Chip>{event.event_type}</Chip> : null}
-        {canManage ? <Chip>{isAdmin ? 'Admin View' : 'Owner View'}</Chip> : null}
+
+        {eventTypes.slice(0, 3).map((item) => (
+          <Chip key={item.id}>
+            {item.icon ? `${item.icon} ` : ''}
+            {item.display_name}
+          </Chip>
+        ))}
+
+        {canManage ? (
+          <Chip>{isAdmin ? 'Admin View' : 'Owner View'}</Chip>
+        ) : null}
       </div>
 
-      <h1 className="mt-5 text-4xl font-black leading-[0.95] text-white sm:text-6xl lg:text-7xl">
+      <h1 className="mt-5 max-w-5xl text-4xl font-black leading-[0.95] text-white sm:text-6xl lg:text-7xl">
         {event.name}
       </h1>
 
-      <p className="mt-4 max-w-3xl text-base font-medium text-white/80 sm:text-xl">
+      <p className="mt-4 max-w-3xl text-base font-medium leading-7 text-white/80 sm:text-xl">
         {locationText}
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
-        <div className="rounded-2xl border border-accent/20 bg-accent/10 p-4">
+        <div className="rounded-2xl border border-accent/20 bg-accent/10 p-4 backdrop-blur">
           <p className="text-xs uppercase tracking-[0.25em] text-accent">
             Starts
           </p>
-          <div className="mt-2">
-            <EventTime value={event.event_start_at} mode="wall" />
+
+          <div className="mt-2 font-semibold text-white">
+            <EventTime
+              value={event.event_start_at}
+              mode="wall"
+            />
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur">
           <p className="text-xs uppercase tracking-[0.25em] text-white/45">
             Venue
           </p>
+
           <p className="mt-2 font-semibold text-white">
-            {event.venue_name || event.venue?.name || 'Venue TBA'}
+            {event.venue_name ||
+              event.venue?.name ||
+              'Venue TBA'}
           </p>
         </div>
       </div>
@@ -1140,31 +1329,131 @@ function HeroContent({
           Browse More Events
         </ButtonLink>
 
-        <ButtonLink href={`/events/${event.slug}`} variant="secondary">
-          Share This Event
+        <ButtonLink href="/calendar" variant="secondary">
+          Explore Calendar
         </ButtonLink>
       </div>
     </div>
   );
 }
 
-function getTimeZoneForEvent(event: { city?: string | null; state?: string | null }) {
-  const city = String(event.city || '').toLowerCase();
-  const state = String(event.state || '').toUpperCase();
+function TagSection({
+  title,
+  description,
+  items,
+}: {
+  title: string;
+  description: string;
+  items: LookupValue[];
+}) {
+  return (
+    <section>
+      <h3 className="text-xl font-black text-white">{title}</h3>
 
-  if (state === 'MO' || state === 'KS' || state === 'IL' || state === 'TX') {
-    return 'America/Chicago';
+      <p className="mt-2 text-sm leading-6 text-white/55">
+        {description}
+      </p>
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        {items.map((item) => (
+          <span
+            key={item.id}
+            className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-white/75"
+          >
+            {item.icon ? `${item.icon} ` : ''}
+            {item.display_name}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function resolveLookupItems(
+  options: LookupValue[] = [],
+  selectedValues: string[] = []
+): LookupValue[] {
+  const selected = new Set(
+    selectedValues.map((value) => normalizeLookupValue(value))
+  );
+
+  const resolved = options.filter((option) =>
+    selected.has(normalizeLookupValue(option.value))
+  );
+
+  const resolvedValues = new Set(
+    resolved.map((item) => normalizeLookupValue(item.value))
+  );
+
+  const missingValues = selectedValues.filter(
+    (value) => !resolvedValues.has(normalizeLookupValue(value))
+  );
+
+  return [
+    ...resolved,
+
+    ...missingValues.map((value, index) => ({
+      id: `legacy-${normalizeLookupValue(value)}-${index}`,
+      category_key: 'legacy',
+      value,
+      display_name: value,
+      description: null,
+      icon: null,
+      color: null,
+      sort_order: 999,
+      is_active: true,
+    })),
+  ];
+}
+
+function resolveSingleLookup(
+  options: LookupValue[] = [],
+  selectedValue?: string | null
+) {
+  if (!selectedValue) {
+    return {
+      label: null,
+      icon: null,
+    };
   }
 
-  if (state === 'NY' || state === 'GA' || state === 'FL') {
-    return 'America/New_York';
+  const match = options.find(
+    (option) =>
+      normalizeLookupValue(option.value) ===
+      normalizeLookupValue(selectedValue)
+  );
+
+  return {
+    label: match?.display_name || selectedValue,
+    icon: match?.icon || null,
+  };
+}
+
+function arrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map(String)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function splitValue(value: unknown): string[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return arrayValue(value);
   }
 
-  if (state === 'NV' || state === 'CA') {
-    return 'America/Los_Angeles';
-  }
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
-  if (city.includes('denver')) return 'America/Denver';
-
-  return 'America/Chicago';
+function normalizeLookupValue(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
