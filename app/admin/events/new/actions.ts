@@ -549,9 +549,13 @@ function numberOrNull(value: FormDataEntryValue | null) {
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { derivePublicState } from '@/lib/events/workflow';
+import {
+  derivePublicState,
+  isPublicEventStatus,
+  type EventStatus,
+} from '@/lib/events/workflow';
 
-const VALID_EVENT_STATUSES = [
+const VALID_EVENT_STATUSES: readonly EventStatus[] = [
   'draft',
   'building',
   'revision_draft',
@@ -570,15 +574,7 @@ const VALID_EVENT_STATUSES = [
   'removed',
   'ended',
   'archived',
-] as const;
-
-const PUBLIC_ELIGIBLE_STATUSES = [
-  'scheduled',
-  'active',
-  'live',
-] as const;
-
-type EventStatus = (typeof VALID_EVENT_STATUSES)[number];
+];
 
 type EventWorkflowRecord = {
   id: string;
@@ -652,19 +648,19 @@ async function getEventWorkflowRecord(
   }
 
   if (
-  !VALID_EVENT_STATUSES.includes(
-    event.status as EventStatus
-  )
-) {
-  throw new Error(
-    `Unsupported event status: ${event.status}`
-  );
-}
+    !VALID_EVENT_STATUSES.includes(
+      event.status as EventStatus
+    )
+  ) {
+    throw new Error(
+      `Unsupported event status: ${event.status}`
+    );
+  }
 
-return {
-  ...event,
-  status: event.status as EventStatus,
-} as EventWorkflowRecord;
+  return {
+    ...event,
+    status: event.status as EventStatus,
+  } as EventWorkflowRecord;
 }
 
 function textValue(formData: FormData, key: string) {
@@ -696,15 +692,6 @@ function eventIsPaid(event: EventWorkflowRecord) {
   );
 }
 
-type PublicWorkflowStatus =
-  Parameters<typeof derivePublicState>[0]['status'];
-
-const PUBLIC_WORKFLOW_STATUSES: PublicWorkflowStatus[] = [
-  'scheduled',
-  'active',
-  'live',
-];
-
 function calculatePublicState(
   event: EventWorkflowRecord,
   overrides?: {
@@ -725,7 +712,7 @@ function calculatePublicState(
 
   if (
     hiddenByAdmin ||
-    !isPublicWorkflowStatus(status)
+    !isPublicEventStatus(status)
   ) {
     return false;
   }
@@ -754,14 +741,6 @@ function calculatePublicState(
 
     status,
   });
-}
-
-function isPublicWorkflowStatus(
-  status: EventStatus
-): status is PublicWorkflowStatus {
-  return PUBLIC_WORKFLOW_STATUSES.includes(
-    status as PublicWorkflowStatus
-  );
 }
 
 function refreshEventPaths(eventId: string) {
@@ -913,7 +892,9 @@ export async function applyPaymentOverride(
   if (!eventId) throw new Error('Missing event id.');
 
   if (!reason) {
-    throw new Error('A payment override reason is required.');
+    throw new Error(
+      'A payment override reason is required.'
+    );
   }
 
   const event = await getEventWorkflowRecord(
@@ -983,6 +964,9 @@ export async function approveEventRevision(
 
   if (
     originalStatus &&
+    VALID_EVENT_STATUSES.includes(
+      originalStatus as EventStatus
+    ) &&
     [
       'scheduled',
       'active',
@@ -1101,7 +1085,11 @@ export async function updateAdminEventDetails(
     throw new Error('Event name is required.');
   }
 
-  const state = textValue(formData, 'state').toUpperCase();
+  const state = textValue(
+    formData,
+    'state'
+  ).toUpperCase();
+
   const nowIso = new Date().toISOString();
 
   const { error } = await supabase
@@ -1109,7 +1097,10 @@ export async function updateAdminEventDetails(
     .update({
       name,
       slug: nullableText(formData, 'slug'),
-      venue_name: nullableText(formData, 'venue_name'),
+      venue_name: nullableText(
+        formData,
+        'venue_name'
+      ),
       address: nullableText(formData, 'address'),
       city: nullableText(formData, 'city'),
       state: state || null,
@@ -1118,30 +1109,52 @@ export async function updateAdminEventDetails(
         formData,
         'event_start_at'
       ),
+
       event_end_at: nullableDateTime(
         formData,
         'event_end_at'
       ),
 
-      flyer_url: nullableText(formData, 'flyer_url'),
+      flyer_url: nullableText(
+        formData,
+        'flyer_url'
+      ),
 
-      event_type: nullableText(formData, 'event_type'),
-      dress_code: nullableText(formData, 'dress_code'),
-      entry_price: nullableText(formData, 'entry_price'),
+      event_type: nullableText(
+        formData,
+        'event_type'
+      ),
+
+      dress_code: nullableText(
+        formData,
+        'dress_code'
+      ),
+
+      entry_price: nullableText(
+        formData,
+        'entry_price'
+      ),
+
       age_requirement: nullableText(
         formData,
         'age_requirement'
       ),
+
       smoking_policy: nullableText(
         formData,
         'smoking_policy'
       ),
 
-      description: nullableText(formData, 'description'),
+      description: nullableText(
+        formData,
+        'description'
+      ),
+
       special_notes: nullableText(
         formData,
         'special_notes'
       ),
+
       parking_notes: nullableText(
         formData,
         'parking_notes'
@@ -1207,28 +1220,41 @@ export async function updateAdminEventFinancials(
       base_price: numberOrNull(
         formData.get('base_price')
       ),
+
       included_promo_days: numberOrNull(
         formData.get('included_promo_days')
       ),
+
       extra_promo_days: numberOrNull(
         formData.get('extra_promo_days')
       ),
+
       extra_promo_price: numberOrNull(
         formData.get('extra_promo_price')
       ),
 
-      linkdn_mode: nullableText(formData, 'linkdn_mode'),
+      linkdn_mode: nullableText(
+        formData,
+        'linkdn_mode'
+      ),
+
       linkdn_price: numberOrNull(
         formData.get('linkdn_price')
       ),
 
-      coupon_code: nullableText(formData, 'coupon_code'),
+      coupon_code: nullableText(
+        formData,
+        'coupon_code'
+      ),
+
       discount_amount: numberOrNull(
         formData.get('discount_amount')
       ),
+
       total_price: numberOrNull(
         formData.get('total_price')
       ),
+
       payment_amount: numberOrNull(
         formData.get('payment_amount')
       ),
@@ -1272,6 +1298,7 @@ export async function updateAdminEventNotes(
         formData,
         'admin_notes'
       ),
+
       admin_refund_note: nullableText(
         formData,
         'admin_refund_note'
@@ -1295,14 +1322,14 @@ export async function updateAdminEventStatus(
   const { supabase, user } = await requireAdmin();
 
   const eventId = textValue(formData, 'event_id');
-  const status = textValue(formData, 'status');
+  const statusValue = textValue(formData, 'status');
   const reason = textValue(formData, 'reason');
 
   if (!eventId) throw new Error('Missing event id.');
 
   if (
     !VALID_EVENT_STATUSES.includes(
-      status as EventStatus
+      statusValue as EventStatus
     )
   ) {
     throw new Error('Unsupported event status.');
@@ -1319,7 +1346,7 @@ export async function updateAdminEventStatus(
     eventId
   );
 
-  const nextStatus = status as EventStatus;
+  const nextStatus = statusValue as EventStatus;
   const nowIso = new Date().toISOString();
 
   const isPublic = calculatePublicState(event, {
@@ -1358,11 +1385,7 @@ export async function updateAdminEventStatus(
     payload.is_public = false;
   }
 
-  if (
-    nextStatus === 'scheduled' ||
-    nextStatus === 'active' ||
-    nextStatus === 'live'
-  ) {
+  if (isPublicEventStatus(nextStatus)) {
     if (!event.is_approved) {
       throw new Error(
         'The event must be approved before it can be scheduled, active, or live.'
@@ -1425,15 +1448,14 @@ export async function updateAdminEventVisibility(
         hiddenByAdmin: false,
       });
 
-      payload.hidden_by_admin = false;
-      payload.is_public = canPublish;
-
       if (!canPublish) {
         throw new Error(
           'This event cannot be made public until it is approved, paid or overridden, in an eligible status, and within its promotion window.'
         );
       }
 
+      payload.hidden_by_admin = false;
+      payload.is_public = true;
       break;
     }
 
@@ -1464,6 +1486,7 @@ export async function updateAdminEventVisibility(
       payload.hidden_by_admin = false;
       payload.removed_at = null;
       payload.removed_by = null;
+
       payload.is_public = calculatePublicState(event, {
         status: nextStatus,
         hiddenByAdmin: false,
