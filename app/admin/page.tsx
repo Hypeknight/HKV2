@@ -386,9 +386,9 @@ export default async function AdminPage() {
 
           <AdminCard
             icon="🧩"
-            title="Lookup Manager"
+            title="Platform Configuration"
             description="Manage event types, music, vibes, amenities, age rules, parking, and other selectable values."
-            href="/admin/lookups"
+            href="/admin/configuration"
           />
 
           <AdminCard
