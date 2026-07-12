@@ -27,8 +27,7 @@ type Props = {
 type LookupCategoryRow = {
   id: string;
   category_key: string;
-  name?: string | null;
-  display_name?: string | null;
+  name: string;
   description?: string | null;
   icon?: string | null;
   sort_order?: number | null;
@@ -52,8 +51,13 @@ export default async function AdminLookupsPage({
 }: Props) {
   const query = searchParams ? await searchParams : {};
 
-  const search = String(query.q || '').trim().toLowerCase();
-  const status = String(query.status || '').trim().toLowerCase();
+  const search = String(query.q || '')
+    .trim()
+    .toLowerCase();
+
+  const status = String(query.status || '')
+    .trim()
+    .toLowerCase();
 
   const supabase = await createClient();
 
@@ -68,11 +72,12 @@ export default async function AdminLookupsPage({
 
   if (!user) redirect('/auth/login');
 
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
-    .single();
+  const { data: profile, error: profileError } =
+    await supabase
+      .from('profiles')
+      .select('app_role')
+      .eq('id', user.id)
+      .single();
 
   if (profileError) {
     throw new Error(profileError.message);
@@ -92,7 +97,6 @@ export default async function AdminLookupsPage({
         id,
         category_key,
         name,
-        display_name,
         description,
         icon,
         sort_order,
@@ -127,20 +131,23 @@ export default async function AdminLookupsPage({
     throw new Error(valuesError.message);
   }
 
-  const categories = (categoryRows ?? []) as LookupCategoryRow[];
-  const allValues = (valueRows ?? []) as LookupValueRow[];
+  const categories =
+    (categoryRows ?? []) as LookupCategoryRow[];
 
-  const categorySummaries: LookupCategorySummary[] = categories.map(
-    (category) => {
+  const allValues =
+    (valueRows ?? []) as LookupValueRow[];
+
+  const categorySummaries: LookupCategorySummary[] =
+    categories.map((category) => {
       const categoryValues = allValues.filter(
-        (value) => value.category_key === category.category_key
+        (value) =>
+          value.category_key === category.category_key
       );
 
       return {
         id: category.id,
         category_key: category.category_key,
         name: category.name,
-        display_name: category.display_name,
         description: category.description,
         icon: category.icon,
         is_active: category.is_active,
@@ -149,56 +156,64 @@ export default async function AdminLookupsPage({
           (value) => value.is_active
         ).length,
       };
-    }
-  );
+    });
 
-  const requestedCategory = String(query.category || '').trim();
+  const requestedCategory = String(
+    query.category || ''
+  ).trim();
 
   const activeCategory =
     categorySummaries.find(
-      (category) => category.category_key === requestedCategory
+      (category) =>
+        category.category_key === requestedCategory
     )?.category_key ||
-    categorySummaries.find((category) => category.is_active)
-      ?.category_key ||
+    categorySummaries.find(
+      (category) => category.is_active
+    )?.category_key ||
     categorySummaries[0]?.category_key ||
     'event_types';
 
-  const selectedCategory = categorySummaries.find(
-    (category) => category.category_key === activeCategory
-  );
+  const selectedCategory =
+    categorySummaries.find(
+      (category) =>
+        category.category_key === activeCategory
+    );
 
   const categoryValues = allValues.filter(
-    (value) => value.category_key === activeCategory
+    (value) =>
+      value.category_key === activeCategory
   );
 
-  const filteredValues = categoryValues.filter((value) => {
-    const haystack = [
-      value.display_name,
-      value.value,
-      value.description,
-      value.icon,
-      value.color,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
+  const filteredValues = categoryValues.filter(
+    (value) => {
+      const haystack = [
+        value.display_name,
+        value.value,
+        value.description,
+        value.icon,
+        value.color,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
-    const matchesSearch = search
-      ? haystack.includes(search)
-      : true;
+      const matchesSearch = search
+        ? haystack.includes(search)
+        : true;
 
-    const matchesStatus =
-      status === 'active'
-        ? value.is_active === true
-        : status === 'disabled'
-          ? value.is_active !== true
-          : true;
+      const matchesStatus =
+        status === 'active'
+          ? value.is_active === true
+          : status === 'disabled'
+            ? value.is_active !== true
+            : true;
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    }
+  );
 
-  const lookupValues: LookupValueRecord[] = filteredValues.map(
-    (value) => ({
+  const lookupValues: LookupValueRecord[] =
+    filteredValues.map((value) => ({
       id: value.id,
       category_key: value.category_key,
       value: value.value,
@@ -208,18 +223,18 @@ export default async function AdminLookupsPage({
       color: value.color,
       sort_order: value.sort_order,
       is_active: value.is_active,
-    })
-  );
+    }));
 
   const totalValueCount = allValues.length;
+
   const activeValueCount = allValues.filter(
     (value) => value.is_active
   ).length;
+
   const inactiveValueCount =
     totalValueCount - activeValueCount;
 
   const activeCategoryLabel =
-    selectedCategory?.display_name ||
     selectedCategory?.name ||
     selectedCategory?.category_key ||
     'Lookup Values';
@@ -268,8 +283,8 @@ export default async function AdminLookupsPage({
 
             <p className="mt-5 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
               Manage the categories and values used by event creation,
-              user preferences, public discovery, revisions, moderation,
-              filters, and future recommendation systems.
+              user preferences, public discovery, revisions,
+              moderation, filters, and recommendation systems.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-2">
@@ -319,30 +334,19 @@ export default async function AdminLookupsPage({
       />
 
       {notice ? (
-        <div
-          className={`rounded-2xl border p-4 ${
-            notice.tone === 'green'
-              ? 'border-green-500/20 bg-green-500/10 text-green-100'
-              : 'border-yellow-500/20 bg-yellow-500/10 text-yellow-100'
-          }`}
-        >
-          {notice.text}
+        <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-green-100">
+          {notice}
         </div>
       ) : null}
 
       {!categorySummaries.length ? (
         <section className="rounded-[2rem] border border-yellow-500/20 bg-yellow-500/10 p-8">
-          <p className="text-xs uppercase tracking-[0.25em] text-yellow-200/70">
-            Configuration Required
-          </p>
-
-          <h2 className="mt-3 text-3xl font-black text-white">
+          <h2 className="text-3xl font-black text-white">
             No lookup categories exist.
           </h2>
 
-          <p className="mt-3 max-w-3xl leading-7 text-yellow-100/75">
-            Create or seed lookup categories before adding selectable
-            HypeKnight values.
+          <p className="mt-3 text-yellow-100/75">
+            Seed or create lookup categories before adding values.
           </p>
         </section>
       ) : (
@@ -399,31 +403,19 @@ function getNotice(query: {
   toggled?: string;
 }) {
   if (query.created) {
-    return {
-      tone: 'green' as const,
-      text: 'Lookup value created successfully.',
-    };
+    return 'Lookup value created successfully.';
   }
 
   if (query.updated) {
-    return {
-      tone: 'green' as const,
-      text: 'Lookup value updated successfully.',
-    };
+    return 'Lookup value updated successfully.';
   }
 
   if (query.toggled) {
-    return {
-      tone: 'green' as const,
-      text: 'Lookup visibility updated successfully.',
-    };
+    return 'Lookup visibility updated successfully.';
   }
 
   if (query.saved) {
-    return {
-      tone: 'green' as const,
-      text: 'Lookup configuration saved.',
-    };
+    return 'Lookup configuration saved.';
   }
 
   return null;

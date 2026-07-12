@@ -3,8 +3,7 @@ import Link from 'next/link';
 export type LookupCategorySummary = {
   id: string;
   category_key: string;
-  name?: string | null;
-  display_name?: string | null;
+  name: string;
   description?: string | null;
   icon?: string | null;
   is_active?: boolean | null;
@@ -44,11 +43,6 @@ export default function LookupSidebar({
 
       <div className="mt-5 space-y-2">
         {categories.map((category) => {
-          const label =
-            category.display_name ||
-            category.name ||
-            category.category_key;
-
           const selected =
             activeCategory === category.category_key;
 
@@ -78,7 +72,7 @@ export default function LookupSidebar({
                           : 'text-white'
                       }`}
                     >
-                      {label}
+                      {category.name}
                     </p>
 
                     {!category.is_active ? (

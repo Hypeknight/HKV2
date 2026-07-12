@@ -25,11 +25,6 @@ export default function LookupCategoryHeader({
     );
   }
 
-  const label =
-    category.display_name ||
-    category.name ||
-    category.category_key;
-
   return (
     <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -45,7 +40,7 @@ export default function LookupCategoryHeader({
 
             <div>
               <h2 className="text-3xl font-black text-white">
-                {label}
+                {category.name}
               </h2>
 
               <p className="mt-1 font-mono text-xs text-white/40">
