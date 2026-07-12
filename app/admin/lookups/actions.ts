@@ -483,3 +483,342 @@ export async function toggleLookupValue(
   refreshLookupPaths(categoryKey);
   lookupRedirect(categoryKey, 'toggled');
 }
+
+export async function createLookupCategory(
+  formData: FormData
+) {
+  const { supabase } = await requireAdmin();
+
+  const name = text(formData, 'name');
+
+  if (!name) {
+    throw new Error('Category name is required.');
+  }
+
+  const requestedKey =
+    text(formData, 'category_key') || name;
+
+  const categoryKey =
+    normalizeStoredValue(requestedKey);
+
+  if (!categoryKey) {
+    throw new Error(
+      'The category key could not be generated. Use letters or numbers.'
+    );
+  }
+
+  const { data: existingCategory, error: existingError } =
+    await supabase
+      .from('lookup_categories')
+      .select('id, category_key, name')
+      .or(
+        `category_key.eq.${categoryKey},name.ilike.${escapePostgrestValue(
+          name
+        )}`
+      )
+      .limit(1)
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (existingCategory) {
+    if (existingCategory.category_key === categoryKey) {
+      throw new Error(
+        `The category key "${categoryKey}" already exists.`
+      );
+    }
+
+    throw new Error(
+      `A category named "${name}" already exists.`
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('lookup_categories')
+    .insert({
+      category_key: categoryKey,
+      name,
+      description:
+        nullableText(formData, 'description'),
+      is_active: bool(formData, 'is_active'),
+      sort_order: intValue(
+        formData,
+        'sort_order',
+        100
+      ),
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(
+        'A lookup category with this name or key already exists.'
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+  revalidatePath('/admin/lookups/categories');
+
+  redirect(
+    `/admin/lookups/categories?created=1`
+  );
+}
+
+export async function updateLookupCategory(
+  formData: FormData
+) {
+  const { supabase } = await requireAdmin();
+
+  const id = text(formData, 'id');
+
+  const originalCategoryKey = text(
+    formData,
+    'original_category_key'
+  );
+
+  const name = text(formData, 'name');
+
+  const requestedCategoryKey = text(
+    formData,
+    'category_key'
+  );
+
+  if (!id) {
+    throw new Error('Missing category ID.');
+  }
+
+  if (!originalCategoryKey) {
+    throw new Error(
+      'Missing original category key.'
+    );
+  }
+
+  if (!name) {
+    throw new Error('Category name is required.');
+  }
+
+  const categoryKey = normalizeStoredValue(
+    requestedCategoryKey || name
+  );
+
+  if (!categoryKey) {
+    throw new Error(
+      'The category key could not be generated.'
+    );
+  }
+
+  const { data: existingCategory, error: fetchError } =
+    await supabase
+      .from('lookup_categories')
+      .select(`
+        id,
+        category_key,
+        name,
+        is_active
+      `)
+      .eq('id', id)
+      .maybeSingle();
+
+  if (fetchError) {
+    throw new Error(fetchError.message);
+  }
+
+  if (!existingCategory) {
+    throw new Error(
+      'Lookup category not found.'
+    );
+  }
+
+  if (
+    existingCategory.category_key !==
+    originalCategoryKey
+  ) {
+    throw new Error(
+      'The category key no longer matches the stored category.'
+    );
+  }
+
+  const categoryKeyChanged =
+    categoryKey !== originalCategoryKey;
+
+  if (categoryKeyChanged) {
+    const { count, error: countError } =
+      await supabase
+        .from('lookup_values')
+        .select('*', {
+          count: 'exact',
+          head: true,
+        })
+        .eq(
+          'category_key',
+          originalCategoryKey
+        );
+
+    if (countError) {
+      throw new Error(countError.message);
+    }
+
+    if ((count || 0) > 0) {
+      throw new Error(
+        'This category key cannot be changed because lookup values already use it. Create a new category or remove the connected values first.'
+      );
+    }
+  }
+
+  const { data: conflictingKey, error: keyError } =
+    await supabase
+      .from('lookup_categories')
+      .select('id')
+      .eq('category_key', categoryKey)
+      .neq('id', id)
+      .limit(1)
+      .maybeSingle();
+
+  if (keyError) {
+    throw new Error(keyError.message);
+  }
+
+  if (conflictingKey) {
+    throw new Error(
+      `The category key "${categoryKey}" already exists.`
+    );
+  }
+
+  const { data: conflictingName, error: nameError } =
+    await supabase
+      .from('lookup_categories')
+      .select('id')
+      .ilike('name', name)
+      .neq('id', id)
+      .limit(1)
+      .maybeSingle();
+
+  if (nameError) {
+    throw new Error(nameError.message);
+  }
+
+  if (conflictingName) {
+    throw new Error(
+      `A category named "${name}" already exists.`
+    );
+  }
+
+  const { error } = await supabase
+    .from('lookup_categories')
+    .update({
+      category_key: categoryKey,
+      name,
+      description:
+        nullableText(formData, 'description'),
+      is_active: bool(formData, 'is_active'),
+      sort_order: intValue(
+        formData,
+        'sort_order',
+        100
+      ),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq(
+      'category_key',
+      originalCategoryKey
+    );
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(
+        'A lookup category with this name or key already exists.'
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+  revalidatePath('/admin/lookups/categories');
+
+  redirect(
+    `/admin/lookups/categories?updated=1`
+  );
+}
+
+export async function toggleLookupCategory(
+  formData: FormData
+) {
+  const { supabase } = await requireAdmin();
+
+  const id = text(formData, 'id');
+
+  const categoryKey = text(
+    formData,
+    'category_key'
+  );
+
+  if (!id) {
+    throw new Error('Missing category ID.');
+  }
+
+  if (!categoryKey) {
+    throw new Error(
+      'Missing category key.'
+    );
+  }
+
+  const { data: category, error: fetchError } =
+    await supabase
+      .from('lookup_categories')
+      .select(`
+        id,
+        category_key,
+        is_active
+      `)
+      .eq('id', id)
+      .eq('category_key', categoryKey)
+      .maybeSingle();
+
+  if (fetchError) {
+    throw new Error(fetchError.message);
+  }
+
+  if (!category) {
+    throw new Error(
+      'Lookup category not found.'
+    );
+  }
+
+  const { error } = await supabase
+    .from('lookup_categories')
+    .update({
+      is_active: !category.is_active,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('category_key', categoryKey);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+  revalidatePath('/admin/lookups/categories');
+
+  redirect(
+    `/admin/lookups/categories?toggled=1`
+  );
+}
+
+function escapePostgrestValue(value: string) {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll(',', '\\,')
+    .replaceAll('(', '\\(')
+    .replaceAll(')', '\\)');
+}
