@@ -5,7 +5,6 @@ export type LookupCategorySummary = {
   category_key: string;
   name: string;
   description?: string | null;
-  icon?: string | null;
   is_active?: boolean | null;
   value_count: number;
   active_value_count: number;
@@ -60,7 +59,7 @@ export default function LookupSidebar({
             >
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-xl">
-                  {category.icon || '🧩'}
+                  🧩
                 </span>
 
                 <div className="min-w-0 flex-1">

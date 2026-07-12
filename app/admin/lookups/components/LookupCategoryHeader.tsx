@@ -35,7 +35,7 @@ export default function LookupCategoryHeader({
 
           <div className="mt-3 flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-2xl">
-              {category.icon || '🧩'}
+              🧩
             </span>
 
             <div>

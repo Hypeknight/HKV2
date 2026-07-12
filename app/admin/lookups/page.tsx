@@ -29,7 +29,6 @@ type LookupCategoryRow = {
   category_key: string;
   name: string;
   description?: string | null;
-  icon?: string | null;
   sort_order?: number | null;
   is_active?: boolean | null;
 };
@@ -98,7 +97,6 @@ export default async function AdminLookupsPage({
         category_key,
         name,
         description,
-        icon,
         sort_order,
         is_active
       `)
@@ -149,11 +147,10 @@ export default async function AdminLookupsPage({
         category_key: category.category_key,
         name: category.name,
         description: category.description,
-        icon: category.icon,
         is_active: category.is_active,
         value_count: categoryValues.length,
         active_value_count: categoryValues.filter(
-          (value) => value.is_active
+          (value) => value.is_active === true
         ).length,
       };
     });
@@ -228,7 +225,7 @@ export default async function AdminLookupsPage({
   const totalValueCount = allValues.length;
 
   const activeValueCount = allValues.filter(
-    (value) => value.is_active
+    (value) => value.is_active === true
   ).length;
 
   const inactiveValueCount =
