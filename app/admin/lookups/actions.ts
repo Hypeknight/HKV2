@@ -9,110 +9,477 @@ async function requireAdmin() {
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error(authError.message);
+  }
 
   if (!user) redirect('/auth/login');
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('app_role')
     .eq('id', user.id)
     .single();
 
-  if (profile?.app_role !== 'admin') redirect('/dashboard');
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
 
-  return { supabase };
+  if (profile?.app_role !== 'admin') {
+    redirect('/dashboard');
+  }
+
+  return { supabase, user };
 }
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) || '').trim();
 }
 
-function intValue(formData: FormData, key: string, fallback = 100) {
-  const value = Number(formData.get(key));
-  return Number.isFinite(value) ? Math.round(value) : fallback;
+function nullableText(formData: FormData, key: string) {
+  return text(formData, key) || null;
+}
+
+function intValue(
+  formData: FormData,
+  key: string,
+  fallback = 100
+) {
+  const raw = formData.get(key);
+
+  if (raw === null || raw === '') {
+    return fallback;
+  }
+
+  const value = Number(raw);
+
+  return Number.isFinite(value)
+    ? Math.max(Math.round(value), 0)
+    : fallback;
 }
 
 function bool(formData: FormData, key: string) {
   return formData.get(key) === 'on';
 }
 
-export async function createLookupValue(formData: FormData) {
-  const { supabase } = await requireAdmin();
+function normalizeStoredValue(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+}
 
-  const categoryKey = text(formData, 'category_key');
-  const displayName = text(formData, 'display_name');
-  const value = text(formData, 'value') || displayName;
+function normalizeColor(value: string) {
+  const color = value.trim();
 
-  if (!categoryKey || !displayName) {
-    throw new Error('Category and display name are required.');
+  if (!color) return null;
+
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+    return color.toUpperCase();
   }
 
-  const { error } = await supabase.from('lookup_values').insert({
-    category_key: categoryKey,
-    value,
-    display_name: displayName,
-    description: text(formData, 'description') || null,
-    icon: text(formData, 'icon') || null,
-    color: text(formData, 'color') || null,
-    sort_order: intValue(formData, 'sort_order', 100),
-    is_active: bool(formData, 'is_active'),
-    updated_at: new Date().toISOString(),
+  if (/^#[0-9a-fA-F]{3}$/.test(color)) {
+    const short = color.slice(1);
+
+    return `#${short
+      .split('')
+      .map((character) => character.repeat(2))
+      .join('')
+      .toUpperCase()}`;
+  }
+
+  throw new Error(
+    'Color must be a valid hexadecimal value such as #FFAA00.'
+  );
+}
+
+async function requireCategory(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  categoryKey: string
+) {
+  const { data: category, error } = await supabase
+    .from('lookup_categories')
+    .select('id, category_key, is_active')
+    .eq('category_key', categoryKey)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!category) {
+    throw new Error(
+      `Lookup category "${categoryKey}" does not exist.`
+    );
+  }
+
+  return category;
+}
+
+async function ensureUniqueValue({
+  supabase,
+  categoryKey,
+  storedValue,
+  displayName,
+  excludeId,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  categoryKey: string;
+  storedValue: string;
+  displayName: string;
+  excludeId?: string;
+}) {
+  let valueQuery = supabase
+    .from('lookup_values')
+    .select('id, value, display_name')
+    .eq('category_key', categoryKey)
+    .eq('value', storedValue);
+
+  if (excludeId) {
+    valueQuery = valueQuery.neq('id', excludeId);
+  }
+
+  const { data: valueMatch, error: valueError } =
+    await valueQuery.maybeSingle();
+
+  if (valueError) {
+    throw new Error(valueError.message);
+  }
+
+  if (valueMatch) {
+    throw new Error(
+      `The stored value "${storedValue}" already exists in this category.`
+    );
+  }
+
+  let nameQuery = supabase
+    .from('lookup_values')
+    .select('id, value, display_name')
+    .eq('category_key', categoryKey)
+    .ilike('display_name', displayName);
+
+  if (excludeId) {
+    nameQuery = nameQuery.neq('id', excludeId);
+  }
+
+  const { data: nameMatch, error: nameError } =
+    await nameQuery.maybeSingle();
+
+  if (nameError) {
+    throw new Error(nameError.message);
+  }
+
+  if (nameMatch) {
+    throw new Error(
+      `The display name "${displayName}" already exists in this category.`
+    );
+  }
+}
+
+function refreshLookupPaths(categoryKey?: string) {
+  revalidatePath('/admin');
+  revalidatePath('/admin/configuration');
+  revalidatePath('/admin/lookups');
+
+  revalidatePath('/events');
+  revalidatePath('/dashboard/preferences');
+  revalidatePath('/dashboard/events/new/step-1');
+  revalidatePath('/dashboard/events/new/step-2');
+
+  if (categoryKey) {
+    revalidatePath(
+      `/admin/lookups?category=${encodeURIComponent(
+        categoryKey
+      )}`
+    );
+  }
+}
+
+function lookupRedirect(
+  categoryKey: string,
+  result: 'created' | 'updated' | 'toggled'
+) {
+  redirect(
+    `/admin/lookups?category=${encodeURIComponent(
+      categoryKey
+    )}&${result}=1`
+  );
+}
+
+export async function createLookupValue(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const categoryKey = text(
+    formData,
+    'category_key'
+  );
+
+  const displayName = text(
+    formData,
+    'display_name'
+  );
+
+  if (!categoryKey) {
+    throw new Error('Lookup category is required.');
+  }
+
+  if (!displayName) {
+    throw new Error('Display name is required.');
+  }
+
+  await requireCategory(supabase, categoryKey);
+
+  const requestedValue =
+    text(formData, 'value') || displayName;
+
+  const storedValue =
+    normalizeStoredValue(requestedValue);
+
+  if (!storedValue) {
+    throw new Error(
+      'The stored value could not be generated. Use letters or numbers.'
+    );
+  }
+
+  await ensureUniqueValue({
+    supabase,
+    categoryKey,
+    storedValue,
+    displayName,
   });
 
-  if (error) throw new Error(error.message);
-
-  revalidatePath('/admin/lookups');
-  redirect(`/admin/lookups?category=${categoryKey}&saved=1`);
-}
-
-export async function updateLookupValue(formData: FormData) {
-  const { supabase } = await requireAdmin();
-
-  const id = text(formData, 'id');
-  const categoryKey = text(formData, 'category_key');
-
-  if (!id || !categoryKey) throw new Error('Missing lookup value.');
+  const nowIso = new Date().toISOString();
 
   const { error } = await supabase
     .from('lookup_values')
-    .update({
-      value: text(formData, 'value'),
-      display_name: text(formData, 'display_name'),
-      description: text(formData, 'description') || null,
-      icon: text(formData, 'icon') || null,
-      color: text(formData, 'color') || null,
-      sort_order: intValue(formData, 'sort_order', 100),
+    .insert({
+      category_key: categoryKey,
+      value: storedValue,
+      display_name: displayName,
+      description: nullableText(
+        formData,
+        'description'
+      ),
+      icon: nullableText(formData, 'icon'),
+      color: normalizeColor(
+        text(formData, 'color')
+      ),
+      sort_order: intValue(
+        formData,
+        'sort_order',
+        100
+      ),
       is_active: bool(formData, 'is_active'),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
 
-  if (error) throw new Error(error.message);
+      created_at: nowIso,
+      updated_at: nowIso,
 
-  revalidatePath('/admin/lookups');
-  redirect(`/admin/lookups?category=${categoryKey}&saved=1`);
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(
+        'A lookup value with this category and stored value already exists.'
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+  lookupRedirect(categoryKey, 'created');
 }
 
-export async function toggleLookupValue(formData: FormData) {
-  const { supabase } = await requireAdmin();
+export async function updateLookupValue(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
 
   const id = text(formData, 'id');
-  const categoryKey = text(formData, 'category_key');
-  const isActive = text(formData, 'is_active') === 'true';
 
-  if (!id || !categoryKey) throw new Error('Missing lookup value.');
+  const categoryKey = text(
+    formData,
+    'category_key'
+  );
+
+  const displayName = text(
+    formData,
+    'display_name'
+  );
+
+  if (!id) {
+    throw new Error('Missing lookup value ID.');
+  }
+
+  if (!categoryKey) {
+    throw new Error('Missing lookup category.');
+  }
+
+  if (!displayName) {
+    throw new Error('Display name is required.');
+  }
+
+  await requireCategory(supabase, categoryKey);
+
+  const requestedValue =
+    text(formData, 'value') || displayName;
+
+  const storedValue =
+    normalizeStoredValue(requestedValue);
+
+  if (!storedValue) {
+    throw new Error(
+      'The stored value could not be generated.'
+    );
+  }
+
+  const { data: existing, error: existingError } =
+    await supabase
+      .from('lookup_values')
+      .select('id, category_key')
+      .eq('id', id)
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (!existing) {
+    throw new Error('Lookup value not found.');
+  }
+
+  if (existing.category_key !== categoryKey) {
+    throw new Error(
+      'The lookup value does not belong to the selected category.'
+    );
+  }
+
+  await ensureUniqueValue({
+    supabase,
+    categoryKey,
+    storedValue,
+    displayName,
+    excludeId: id,
+  });
+
+  const nowIso = new Date().toISOString();
 
   const { error } = await supabase
     .from('lookup_values')
     .update({
-      is_active: !isActive,
-      updated_at: new Date().toISOString(),
+      value: storedValue,
+      display_name: displayName,
+      description: nullableText(
+        formData,
+        'description'
+      ),
+      icon: nullableText(formData, 'icon'),
+      color: normalizeColor(
+        text(formData, 'color')
+      ),
+      sort_order: intValue(
+        formData,
+        'sort_order',
+        100
+      ),
+      is_active: bool(formData, 'is_active'),
+
+      updated_at: nowIso,
+      updated_by: user.id,
     })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('category_key', categoryKey);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(
+        'A lookup value with this category and stored value already exists.'
+      );
+    }
 
-  revalidatePath('/admin/lookups');
-  redirect(`/admin/lookups?category=${categoryKey}&saved=1`);
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+  lookupRedirect(categoryKey, 'updated');
+}
+
+export async function toggleLookupValue(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const id = text(formData, 'id');
+
+  const categoryKey = text(
+    formData,
+    'category_key'
+  );
+
+  const currentIsActive =
+    text(formData, 'is_active') === 'true';
+
+  if (!id) {
+    throw new Error('Missing lookup value ID.');
+  }
+
+  if (!categoryKey) {
+    throw new Error('Missing lookup category.');
+  }
+
+  await requireCategory(supabase, categoryKey);
+
+  const { data: existing, error: existingError } =
+    await supabase
+      .from('lookup_values')
+      .select('id, category_key, is_active')
+      .eq('id', id)
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (!existing) {
+    throw new Error('Lookup value not found.');
+  }
+
+  if (existing.category_key !== categoryKey) {
+    throw new Error(
+      'The lookup value does not belong to the selected category.'
+    );
+  }
+
+  const nextActiveState =
+    typeof existing.is_active === 'boolean'
+      ? !existing.is_active
+      : !currentIsActive;
+
+  const { error } = await supabase
+    .from('lookup_values')
+    .update({
+      is_active: nextActiveState,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq('id', id)
+    .eq('category_key', categoryKey);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+  lookupRedirect(categoryKey, 'toggled');
 }
