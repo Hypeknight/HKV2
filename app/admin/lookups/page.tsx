@@ -21,6 +21,9 @@ type Props = {
     created?: string;
     updated?: string;
     toggled?: string;
+    duplicated?: string;
+    archived?: string;
+    restored?: string;
   }>;
 };
 
@@ -43,6 +46,7 @@ type LookupValueRow = {
   color?: string | null;
   sort_order?: number | null;
   is_active?: boolean | null;
+  archived_at?: string | null;
 };
 
 export default async function AdminLookupsPage({
@@ -114,7 +118,8 @@ export default async function AdminLookupsPage({
         icon,
         color,
         sort_order,
-        is_active
+        is_active,
+        archived_at
       `)
       .order('category_key', { ascending: true })
       .order('sort_order', { ascending: true })
@@ -139,7 +144,8 @@ export default async function AdminLookupsPage({
     categories.map((category) => {
       const categoryValues = allValues.filter(
         (value) =>
-          value.category_key === category.category_key
+          value.category_key === category.category_key &&
+          !value.archived_at
       );
 
       return {
@@ -200,10 +206,14 @@ export default async function AdminLookupsPage({
 
       const matchesStatus =
         status === 'active'
-          ? value.is_active === true
+          ? value.is_active === true &&
+            !value.archived_at
           : status === 'disabled'
-            ? value.is_active !== true
-            : true;
+            ? value.is_active !== true &&
+              !value.archived_at
+            : status === 'archived'
+              ? Boolean(value.archived_at)
+              : !value.archived_at;
 
       return matchesSearch && matchesStatus;
     }
@@ -220,21 +230,39 @@ export default async function AdminLookupsPage({
       color: value.color,
       sort_order: value.sort_order,
       is_active: value.is_active,
+      archived_at: value.archived_at,
     }));
 
-  const totalValueCount = allValues.length;
+  const nonArchivedValues = allValues.filter(
+    (value) => !value.archived_at
+  );
 
-  const activeValueCount = allValues.filter(
-    (value) => value.is_active === true
-  ).length;
+  const totalValueCount = nonArchivedValues.length;
+
+  const activeValueCount =
+    nonArchivedValues.filter(
+      (value) => value.is_active === true
+    ).length;
 
   const inactiveValueCount =
-    totalValueCount - activeValueCount;
+    nonArchivedValues.filter(
+      (value) => value.is_active !== true
+    ).length;
+
+  const archivedValueCount =
+    allValues.filter(
+      (value) => Boolean(value.archived_at)
+    ).length;
 
   const activeCategoryLabel =
     selectedCategory?.name ||
     selectedCategory?.category_key ||
     'Lookup Values';
+
+  const visibleCategoryValueCount =
+    categoryValues.filter(
+      (value) => !value.archived_at
+    ).length;
 
   const notice = getNotice(query);
 
@@ -249,6 +277,13 @@ export default async function AdminLookupsPage({
         </Link>
 
         <div className="flex flex-wrap gap-3">
+          <Link
+            href="/admin/lookups/categories"
+            className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-white hover:border-accent/40"
+          >
+            Manage Categories
+          </Link>
+
           <Link
             href="/admin/settings"
             className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-white hover:border-accent/40"
@@ -296,6 +331,10 @@ export default async function AdminLookupsPage({
               <HeroChip
                 label={`${inactiveValueCount} disabled values`}
               />
+
+              <HeroChip
+                label={`${archivedValueCount} archived values`}
+              />
             </div>
           </div>
 
@@ -329,6 +368,33 @@ export default async function AdminLookupsPage({
         activeCount={activeValueCount}
         inactiveCount={inactiveValueCount}
       />
+
+      {archivedValueCount > 0 ? (
+        <section className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-purple-100">
+                {archivedValueCount} archived lookup value
+                {archivedValueCount === 1 ? '' : 's'}
+              </p>
+
+              <p className="mt-1 text-sm text-purple-100/60">
+                Archived values remain stored for historical event and
+                preference data.
+              </p>
+            </div>
+
+            <Link
+              href={`/admin/lookups?category=${encodeURIComponent(
+                activeCategory
+              )}&status=archived`}
+              className="rounded-2xl border border-purple-500/20 bg-purple-500/10 px-5 py-3 text-center text-sm font-semibold text-purple-100 hover:border-purple-500/40"
+            >
+              View Archived
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {notice ? (
         <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-green-100">
@@ -366,13 +432,15 @@ export default async function AdminLookupsPage({
               activeCategory={activeCategory}
               search={query.q || ''}
               status={status}
-              totalCount={categoryValues.length}
+              totalCount={visibleCategoryValueCount}
             />
 
-            <LookupCreateForm
-              activeCategory={activeCategory}
-              activeCategoryLabel={activeCategoryLabel}
-            />
+            {status !== 'archived' ? (
+              <LookupCreateForm
+                activeCategory={activeCategory}
+                activeCategoryLabel={activeCategoryLabel}
+              />
+            ) : null}
 
             <LookupValueList
               values={lookupValues}
@@ -398,7 +466,22 @@ function getNotice(query: {
   created?: string;
   updated?: string;
   toggled?: string;
+  duplicated?: string;
+  archived?: string;
+  restored?: string;
 }) {
+  if (query.duplicated) {
+    return 'Lookup value duplicated successfully. The copy begins disabled.';
+  }
+
+  if (query.archived) {
+    return 'Lookup value archived successfully.';
+  }
+
+  if (query.restored) {
+    return 'Lookup value restored successfully. It remains disabled until reviewed.';
+  }
+
   if (query.created) {
     return 'Lookup value created successfully.';
   }

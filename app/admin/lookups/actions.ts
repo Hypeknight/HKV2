@@ -822,3 +822,318 @@ function escapePostgrestValue(value: string) {
     .replaceAll('(', '\\(')
     .replaceAll(')', '\\)');
 }
+
+export async function duplicateLookupValue(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const id = text(formData, 'id');
+  const categoryKey = text(formData, 'category_key');
+
+  if (!id) {
+    throw new Error('Missing lookup value ID.');
+  }
+
+  if (!categoryKey) {
+    throw new Error('Missing lookup category.');
+  }
+
+  await requireCategory(supabase, categoryKey);
+
+  const { data: sourceValue, error: sourceError } =
+    await supabase
+      .from('lookup_values')
+      .select(`
+        id,
+        category_key,
+        value,
+        display_name,
+        description,
+        icon,
+        color,
+        sort_order
+      `)
+      .eq('id', id)
+      .eq('category_key', categoryKey)
+      .maybeSingle();
+
+  if (sourceError) {
+    throw new Error(sourceError.message);
+  }
+
+  if (!sourceValue) {
+    throw new Error('Lookup value not found.');
+  }
+
+  const duplicateValue = await createAvailableStoredValue({
+    supabase,
+    categoryKey,
+    baseValue: `${sourceValue.value}_copy`,
+  });
+
+  const duplicateDisplayName =
+    await createAvailableDisplayName({
+      supabase,
+      categoryKey,
+      baseName: `${sourceValue.display_name} Copy`,
+    });
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('lookup_values')
+    .insert({
+      category_key: categoryKey,
+      value: duplicateValue,
+      display_name: duplicateDisplayName,
+      description: sourceValue.description,
+      icon: sourceValue.icon,
+      color: sourceValue.color,
+      sort_order:
+        Number(sourceValue.sort_order || 100) + 1,
+
+      // Duplicates begin disabled so admins can review them.
+      is_active: false,
+      archived_at: null,
+
+      created_at: nowIso,
+      updated_at: nowIso,
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(
+        'Unable to generate a unique duplicate value.'
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+
+  redirect(
+    `/admin/lookups?category=${encodeURIComponent(
+      categoryKey
+    )}&duplicated=1`
+  );
+}
+
+export async function archiveLookupValue(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const id = text(formData, 'id');
+  const categoryKey = text(formData, 'category_key');
+
+  if (!id) {
+    throw new Error('Missing lookup value ID.');
+  }
+
+  if (!categoryKey) {
+    throw new Error('Missing lookup category.');
+  }
+
+  await requireCategory(supabase, categoryKey);
+
+  const { data: existing, error: existingError } =
+    await supabase
+      .from('lookup_values')
+      .select(`
+        id,
+        category_key,
+        archived_at
+      `)
+      .eq('id', id)
+      .eq('category_key', categoryKey)
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (!existing) {
+    throw new Error('Lookup value not found.');
+  }
+
+  if (existing.archived_at) {
+    throw new Error('This lookup value is already archived.');
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('lookup_values')
+    .update({
+      is_active: false,
+      archived_at: nowIso,
+      updated_at: nowIso,
+      updated_by: user.id,
+    })
+    .eq('id', id)
+    .eq('category_key', categoryKey);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+
+  redirect(
+    `/admin/lookups?category=${encodeURIComponent(
+      categoryKey
+    )}&archived=1`
+  );
+}
+
+export async function restoreLookupValue(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const id = text(formData, 'id');
+  const categoryKey = text(formData, 'category_key');
+
+  if (!id) {
+    throw new Error('Missing lookup value ID.');
+  }
+
+  if (!categoryKey) {
+    throw new Error('Missing lookup category.');
+  }
+
+  await requireCategory(supabase, categoryKey);
+
+  const { data: existing, error: existingError } =
+    await supabase
+      .from('lookup_values')
+      .select(`
+        id,
+        category_key,
+        archived_at
+      `)
+      .eq('id', id)
+      .eq('category_key', categoryKey)
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (!existing) {
+    throw new Error('Lookup value not found.');
+  }
+
+  if (!existing.archived_at) {
+    throw new Error('This lookup value is not archived.');
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('lookup_values')
+    .update({
+      archived_at: null,
+
+      // Restore disabled so the admin can review it first.
+      is_active: false,
+
+      updated_at: nowIso,
+      updated_by: user.id,
+    })
+    .eq('id', id)
+    .eq('category_key', categoryKey);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  refreshLookupPaths(categoryKey);
+
+  redirect(
+    `/admin/lookups?category=${encodeURIComponent(
+      categoryKey
+    )}&restored=1`
+  );
+}
+
+async function createAvailableStoredValue({
+  supabase,
+  categoryKey,
+  baseValue,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  categoryKey: string;
+  baseValue: string;
+}) {
+  const normalizedBase =
+    normalizeStoredValue(baseValue) || 'lookup_copy';
+
+  for (let index = 0; index < 100; index += 1) {
+    const candidate =
+      index === 0
+        ? normalizedBase
+        : `${normalizedBase}_${index + 1}`;
+
+    const { data, error } = await supabase
+      .from('lookup_values')
+      .select('id')
+      .eq('category_key', categoryKey)
+      .eq('value', candidate)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    'Unable to generate a unique stored value for the duplicate.'
+  );
+}
+
+async function createAvailableDisplayName({
+  supabase,
+  categoryKey,
+  baseName,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  categoryKey: string;
+  baseName: string;
+}) {
+  for (let index = 0; index < 100; index += 1) {
+    const candidate =
+      index === 0
+        ? baseName
+        : `${baseName} ${index + 1}`;
+
+    const { data, error } = await supabase
+      .from('lookup_values')
+      .select('id')
+      .eq('category_key', categoryKey)
+      .ilike('display_name', candidate)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    'Unable to generate a unique display name for the duplicate.'
+  );
+}

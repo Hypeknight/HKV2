@@ -68,9 +68,10 @@ export default function LookupToolbar({
           defaultValue={status}
           className={fieldClass}
         >
-          <option value="">All Statuses</option>
+          <option value="">Active and Disabled</option>
           <option value="active">Active</option>
           <option value="disabled">Disabled</option>
+          <option value="archived">Archived</option>
         </select>
 
         <button className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90">
