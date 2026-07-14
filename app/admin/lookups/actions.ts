@@ -1,6 +1,9 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import {
+  revalidatePath,
+  revalidateTag,
+} from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
@@ -184,6 +187,7 @@ async function ensureUniqueValue({
 }
 
 function refreshLookupPaths(categoryKey?: string) {
+  revalidateTag('lookups');
   revalidatePath('/admin');
   revalidatePath('/admin/configuration');
   revalidatePath('/admin/lookups');
