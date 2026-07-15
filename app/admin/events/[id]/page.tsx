@@ -1617,6 +1617,7 @@ function resolveLookupItems(
       color: null,
       sort_order: 999,
       is_active: true,
+      archived_at: null,
     })),
   ];
 }

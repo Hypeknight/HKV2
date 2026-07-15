@@ -1390,9 +1390,10 @@ function resolveLookupItems(
   );
 
   return [
-    ...resolved,
+  ...resolved,
 
-    ...missingValues.map((value, index) => ({
+  ...missingValues.map(
+    (value, index): LookupValue => ({
       id: `legacy-${normalizeLookupValue(value)}-${index}`,
       category_key: 'legacy',
       value,
@@ -1402,8 +1403,10 @@ function resolveLookupItems(
       color: null,
       sort_order: 999,
       is_active: true,
-    })),
-  ];
+      archived_at: null,
+    })
+  ),
+];
 }
 
 function resolveSingleLookup(
