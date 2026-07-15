@@ -1,5 +1,5 @@
-import { EmptyState } from 'components/empty-state';
-import { VenueCard } from 'components/cards';
+import { EmptyState } from '@/components/empty-state';
+import { VenueCard } from '@/components/cards';
 import { getFeaturedVenues } from '@/lib/data';
 
 export default async function VenuesPage() {
