@@ -583,7 +583,7 @@ type EventWorkflowRecord = {
   is_approved: boolean | null;
   is_paid: boolean | null;
   payment_status: string | null;
-  payment_override: boolean | null;
+  payment_override: boolean;
   promotion_start_at: string | null;
   promotion_end_at: string | null;
   original_status_before_revision?: string | null;
@@ -902,8 +902,11 @@ export async function applyPaymentOverride(
 
   const eventId = textValue(formData, 'event_id');
   const reason = textValue(formData, 'reason');
+  const adminNote = textValue(formData, 'admin_note');
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   if (!reason) {
     throw new Error(
@@ -916,38 +919,96 @@ export async function applyPaymentOverride(
     eventId
   );
 
-  const nextStatus: EventStatus = event.is_approved
-    ? 'scheduled'
-    : 'paid_awaiting_approval';
+  const previouslyOverridden =
+    event.payment_override === true;
+
+  if (previouslyOverridden) {
+    throw new Error(
+      'This event already has a payment override.'
+    );
+  }
+
+  const nextStatus: EventStatus =
+    event.is_approved === true
+      ? 'scheduled'
+      : 'paid_awaiting_approval';
 
   const nowIso = new Date().toISOString();
 
-  const isPublic = calculatePublicState(event, {
-    status: nextStatus,
-    paymentOverride: true,
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'admin',
+    toStatus: nextStatus,
+    source: 'admin_action',
+    reason,
+    note:
+      adminNote ||
+      'Administrative payment override applied.',
+    metadata: {
+      action: 'apply_payment_override',
+      previous_payment_status:
+        event.payment_status || null,
+      previous_payment_override:
+        previouslyOverridden,
+      approved_before_override:
+        event.is_approved === true,
+    },
+    updates: {
+      paymentOverride: true,
+      isPaid: false,
+
+      /*
+       * Use "overridden" only when your payment_status
+       * database constraint accepts it.
+       */
+      paymentStatus: 'overridden',
+
+      isApproved:
+        event.is_approved === true,
+
+      approvedAt:
+        event.is_approved === true
+          ? nowIso
+          : undefined,
+
+      approvedBy:
+        event.is_approved === true
+          ? user.id
+          : undefined,
+
+      hiddenByAdmin: false,
+    },
   });
 
-  const { error } = await supabase
-    .from('events')
-    .update({
-      payment_override: true,
-      payment_override_by: user.id,
-      payment_override_reason: reason,
-      payment_override_at: nowIso,
+  /*
+   * The transition service already sets payment_override.
+   * This update records the additional override audit fields.
+   */
+  const { error: overrideUpdateError } =
+    await supabase
+      .from('events')
+      .update({
+        payment_override_by: user.id,
+        payment_override_reason: reason,
+        payment_override_at: nowIso,
 
-      status: nextStatus,
-      is_public: isPublic,
+        admin_last_updated_at: nowIso,
+        admin_last_updated_by: user.id,
+        updated_at: nowIso,
+      })
+      .eq('id', eventId);
 
-      admin_last_updated_at: nowIso,
-      admin_last_updated_by: user.id,
-      updated_at: nowIso,
-    })
-    .eq('id', eventId);
-
-  if (error) throw new Error(error.message);
+  if (overrideUpdateError) {
+    throw new Error(overrideUpdateError.message);
+  }
 
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?override=1`);
+
+  redirect(
+    `/admin/events/${eventId}?override=1`
+  );
 }
 
 export async function approveEventRevision(
@@ -958,7 +1019,9 @@ export async function approveEventRevision(
   const eventId = textValue(formData, 'event_id');
   const adminNote = textValue(formData, 'admin_note');
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   const event = await getEventWorkflowRecord(
     supabase,
@@ -978,15 +1041,13 @@ export async function approveEventRevision(
 
   if (
     originalStatus &&
-    VALID_EVENT_STATUSES.includes(
-      originalStatus as EventStatus
-    ) &&
     [
       'scheduled',
       'active',
       'live',
-      'paid_awaiting_approval',
       'approved_unpaid',
+      'approved_awaiting_payment',
+      'paid_awaiting_approval',
     ].includes(originalStatus)
   ) {
     restoredStatus = originalStatus as EventStatus;
@@ -996,39 +1057,54 @@ export async function approveEventRevision(
       : 'approved_unpaid';
   }
 
-  const nowIso = new Date().toISOString();
-
-  const isPublic = calculatePublicState(event, {
-    status: restoredStatus,
-    isApproved: true,
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'admin',
+    toStatus: restoredStatus,
+    source: 'admin_action',
+    reason: 'Event revision approved.',
+    note: adminNote || null,
+    metadata: {
+      action: 'approve_event_revision',
+      original_status_before_revision:
+        originalStatus || null,
+      restored_status: restoredStatus,
+    },
+    updates: {
+      isApproved: true,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+    },
   });
 
-  const { error } = await supabase
+  const nowIso = new Date().toISOString();
+
+  const { error: revisionUpdateError } = await supabase
     .from('events')
     .update({
-      status: restoredStatus,
-      is_public: isPublic,
-      is_approved: true,
-
       revision_admin_note: adminNote || null,
       revision_reviewed_at: nowIso,
       revision_reviewed_by: user.id,
-
-      rejection_reason: null,
-      rejected_at: null,
-      rejected_by: null,
+      original_status_before_revision: null,
 
       admin_last_updated_at: nowIso,
       admin_last_updated_by: user.id,
       updated_at: nowIso,
     })
-    .eq('id', eventId)
-    .eq('status', 'revision_submitted');
+    .eq('id', eventId);
 
-  if (error) throw new Error(error.message);
+  if (revisionUpdateError) {
+    throw new Error(revisionUpdateError.message);
+  }
 
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?revision=approved`);
+
+  redirect(
+    `/admin/events/${eventId}?revision=approved`
+  );
 }
 
 export async function rejectEventRevision(
@@ -1039,7 +1115,9 @@ export async function rejectEventRevision(
   const eventId = textValue(formData, 'event_id');
   const adminNote = textValue(formData, 'admin_note');
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   if (!adminNote) {
     throw new Error(
@@ -1058,15 +1136,31 @@ export async function rejectEventRevision(
     );
   }
 
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'admin',
+    toStatus: 'revision_draft',
+    source: 'admin_action',
+    reason: adminNote,
+    note: adminNote,
+    metadata: {
+      action: 'reject_event_revision',
+      original_status_before_revision:
+        event.original_status_before_revision || null,
+    },
+    updates: {
+      isApproved: false,
+      isPublic: false,
+    },
+  });
+
   const nowIso = new Date().toISOString();
 
-  const { error } = await supabase
+  const { error: revisionUpdateError } = await supabase
     .from('events')
     .update({
-      status: 'revision_draft',
-      is_public: false,
-      is_approved: false,
-
       revision_admin_note: adminNote,
       revision_reviewed_at: nowIso,
       revision_reviewed_by: user.id,
@@ -1075,13 +1169,17 @@ export async function rejectEventRevision(
       admin_last_updated_by: user.id,
       updated_at: nowIso,
     })
-    .eq('id', eventId)
-    .eq('status', 'revision_submitted');
+    .eq('id', eventId);
 
-  if (error) throw new Error(error.message);
+  if (revisionUpdateError) {
+    throw new Error(revisionUpdateError.message);
+  }
 
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?revision=rejected`);
+
+  redirect(
+    `/admin/events/${eventId}?revision=rejected`
+  );
 }
 
 export async function updateAdminEventDetails(
@@ -1336,17 +1434,22 @@ export async function updateAdminEventStatus(
   const { supabase, user } = await requireAdmin();
 
   const eventId = textValue(formData, 'event_id');
-  const statusValue = textValue(formData, 'status');
+  const requestedStatus = textValue(formData, 'status');
   const reason = textValue(formData, 'reason');
+  const adminNote = textValue(formData, 'admin_note');
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   if (
     !VALID_EVENT_STATUSES.includes(
-      statusValue as EventStatus
+      requestedStatus as EventStatus
     )
   ) {
-    throw new Error('Unsupported event status.');
+    throw new Error(
+      `Unsupported event status: ${requestedStatus}`
+    );
   }
 
   if (!reason) {
@@ -1360,73 +1463,62 @@ export async function updateAdminEventStatus(
     eventId
   );
 
-  const nextStatus = statusValue as EventStatus;
+  const nextStatus = requestedStatus as EventStatus;
+
+  if (event.status === nextStatus) {
+    throw new Error(
+      `The event is already ${formatAdminStatus(nextStatus)}.`
+    );
+  }
+
   const nowIso = new Date().toISOString();
 
-  const isPublic = calculatePublicState(event, {
-    status: nextStatus,
+  const transitionUpdates =
+    buildManualStatusUpdates({
+      event,
+      nextStatus,
+      userId: user.id,
+      reason,
+      nowIso,
+    });
+
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'admin',
+    toStatus: nextStatus,
+    source: 'admin_action',
+    reason,
+    note: adminNote || null,
+    metadata: {
+      action: 'manual_admin_status_change',
+      previous_status: event.status,
+      requested_status: nextStatus,
+    },
+    updates: transitionUpdates,
   });
 
-  const payload: Record<string, unknown> = {
-    status: nextStatus,
-    is_public: isPublic,
-
-    admin_notes: reason,
-
-    admin_last_updated_at: nowIso,
-    admin_last_updated_by: user.id,
-    updated_at: nowIso,
-  };
-
-  if (nextStatus === 'rejected') {
-    payload.is_approved = false;
-    payload.rejection_reason = reason;
-    payload.rejected_at = nowIso;
-    payload.rejected_by = user.id;
-    payload.approved_at = null;
-    payload.approved_by = null;
-  }
-
-  if (nextStatus === 'removed') {
-    payload.removed_at = nowIso;
-    payload.removed_by = user.id;
-    payload.hidden_by_admin = true;
-    payload.is_public = false;
-  }
-
-  if (nextStatus === 'cancelled') {
-    payload.hidden_by_admin = true;
-    payload.is_public = false;
-  }
-
-  if (isPublicEventStatus(nextStatus)) {
-    if (!event.is_approved) {
-      throw new Error(
-        'The event must be approved before it can be scheduled, active, or live.'
-      );
-    }
-
-    if (!eventIsPaid(event)) {
-      throw new Error(
-        'Payment or a payment override is required before making this event public.'
-      );
-    }
-
-    payload.hidden_by_admin = false;
-    payload.removed_at = null;
-    payload.removed_by = null;
-  }
-
-  const { error } = await supabase
+  const { error: adminUpdateError } = await supabase
     .from('events')
-    .update(payload)
+    .update({
+      admin_notes: adminNote || reason,
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
     .eq('id', eventId);
 
-  if (error) throw new Error(error.message);
+  if (adminUpdateError) {
+    throw new Error(adminUpdateError.message);
+  }
 
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?status=updated`);
-}
+
+  redirect(
+    `/admin/events/${eventId}?status=updated`
+  );
+} 
 
 export async function updateAdminEventVisibility(
   formData: FormData
@@ -1435,8 +1527,15 @@ export async function updateAdminEventVisibility(
 
   const eventId = textValue(formData, 'event_id');
   const action = textValue(formData, 'action');
+  const reason = textValue(formData, 'reason');
+  const adminNote = textValue(
+    formData,
+    'admin_note'
+  );
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   const event = await getEventWorkflowRecord(
     supabase,
@@ -1445,44 +1544,89 @@ export async function updateAdminEventVisibility(
 
   const nowIso = new Date().toISOString();
 
-  const payload: Record<string, unknown> = {
-    admin_last_updated_at: nowIso,
-    admin_last_updated_by: user.id,
-    updated_at: nowIso,
-  };
+  /*
+   * These actions affect presentation but do not change
+   * the event's lifecycle status.
+   */
+  if (
+    ['hide', 'unhide', 'feature', 'unfeature'].includes(
+      action
+    )
+  ) {
+    const payload: Record<string, unknown> = {
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    };
 
-  switch (action) {
-    case 'hide':
-      payload.is_public = false;
-      payload.hidden_by_admin = true;
-      break;
+    switch (action) {
+      case 'hide':
+        payload.is_public = false;
+        payload.hidden_by_admin = true;
+        break;
 
-    case 'unhide': {
-      const canPublish = calculatePublicState(event, {
-        hiddenByAdmin: false,
-      });
-
-      if (!canPublish) {
-        throw new Error(
-          'This event cannot be made public until it is approved, paid or overridden, in an eligible status, and within its promotion window.'
+      case 'unhide': {
+        const canPublish = calculatePublicState(
+          event,
+          {
+            hiddenByAdmin: false,
+          }
         );
+
+        if (!canPublish) {
+          throw new Error(
+            'This event cannot be made public until it is approved, financially eligible, in a public status, and within its promotion window.'
+          );
+        }
+
+        payload.hidden_by_admin = false;
+        payload.is_public = true;
+        break;
       }
 
-      payload.hidden_by_admin = false;
-      payload.is_public = true;
-      break;
+      case 'feature':
+        payload.admin_featured = true;
+        break;
+
+      case 'unfeature':
+        payload.admin_featured = false;
+        break;
     }
 
-    case 'feature':
-      payload.admin_featured = true;
-      break;
+    const { error } = await supabase
+      .from('events')
+      .update(payload)
+      .eq('id', eventId);
 
-    case 'unfeature':
-      payload.admin_featured = false;
-      break;
+    if (error) {
+      throw new Error(error.message);
+    }
 
+    refreshEventPaths(eventId);
+
+    redirect(
+      `/admin/events/${eventId}?visibility=updated`
+    );
+  }
+
+  /*
+   * These actions change the lifecycle and therefore
+   * must use the transition engine.
+   */
+  if (
+    ['reactivate', 'cancel', 'remove'].includes(
+      action
+    ) &&
+    !reason
+  ) {
+    throw new Error(
+      'A reason is required for this lifecycle action.'
+    );
+  }
+
+  switch (action) {
     case 'reactivate': {
-      if (!event.is_approved) {
+      if (event.is_approved !== true) {
         throw new Error(
           'Approve the event before reactivating it.'
         );
@@ -1494,46 +1638,235 @@ export async function updateAdminEventVisibility(
         );
       }
 
-      const nextStatus: EventStatus = 'scheduled';
-
-      payload.status = nextStatus;
-      payload.hidden_by_admin = false;
-      payload.removed_at = null;
-      payload.removed_by = null;
-
-      payload.is_public = calculatePublicState(event, {
-        status: nextStatus,
-        hiddenByAdmin: false,
+      await transitionEventStatus({
+        supabase,
+        eventId,
+        actorId: user.id,
+        actor: 'admin',
+        toStatus: 'scheduled',
+        source: 'admin_action',
+        reason,
+        note:
+          adminNote ||
+          'Event reactivated by administrator.',
+        metadata: {
+          action: 'reactivate_event',
+          previous_status: event.status,
+        },
+        updates: {
+          isApproved: true,
+          hiddenByAdmin: false,
+          removedAt: null,
+          removedBy: null,
+        },
       });
 
       break;
     }
 
-    case 'cancel':
-      payload.status = 'cancelled';
-      payload.is_public = false;
-      payload.hidden_by_admin = true;
-      break;
+    case 'cancel': {
+      await transitionEventStatus({
+        supabase,
+        eventId,
+        actorId: user.id,
+        actor: 'admin',
+        toStatus: 'cancelled',
+        source: 'admin_action',
+        reason,
+        note:
+          adminNote ||
+          'Event cancelled by administrator.',
+        metadata: {
+          action: 'cancel_event',
+          previous_status: event.status,
+        },
+        updates: {
+          isPublic: false,
+          hiddenByAdmin: true,
+        },
+      });
 
-    case 'remove':
-      payload.status = 'removed';
-      payload.is_public = false;
-      payload.hidden_by_admin = true;
-      payload.removed_at = nowIso;
-      payload.removed_by = user.id;
       break;
+    }
+
+    case 'remove': {
+      await transitionEventStatus({
+        supabase,
+        eventId,
+        actorId: user.id,
+        actor: 'admin',
+        toStatus: 'removed',
+        source: 'admin_action',
+        reason,
+        note:
+          adminNote ||
+          'Event removed by administrator.',
+        metadata: {
+          action: 'remove_event',
+          previous_status: event.status,
+        },
+        updates: {
+          isPublic: false,
+          hiddenByAdmin: true,
+          removedAt: nowIso,
+          removedBy: user.id,
+        },
+      });
+
+      break;
+    }
 
     default:
-      throw new Error('Invalid visibility action.');
+      throw new Error(
+        'Invalid visibility or lifecycle action.'
+      );
   }
 
-  const { error } = await supabase
+  const { error: auditError } = await supabase
     .from('events')
-    .update(payload)
+    .update({
+      admin_notes: adminNote || reason,
+      admin_last_updated_at: nowIso,
+      admin_last_updated_by: user.id,
+      updated_at: nowIso,
+    })
     .eq('id', eventId);
 
-  if (error) throw new Error(error.message);
+  if (auditError) {
+    throw new Error(auditError.message);
+  }
 
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?visibility=updated`);
+
+  redirect(
+    `/admin/events/${eventId}?visibility=updated`
+  );
+}
+
+function buildManualStatusUpdates({
+  event,
+  nextStatus,
+  userId,
+  reason,
+  nowIso,
+}: {
+  event: EventWorkflowRecord;
+  nextStatus: EventStatus;
+  userId: string;
+  reason: string;
+  nowIso: string;
+}) {
+  const updates: {
+    isApproved?: boolean;
+    isPaid?: boolean;
+    isPublic?: boolean;
+    paymentOverride?: boolean;
+    paymentStatus?: string | null;
+
+    approvedAt?: string | null;
+    approvedBy?: string | null;
+
+    rejectedAt?: string | null;
+    rejectedBy?: string | null;
+    rejectionReason?: string | null;
+
+    hiddenByAdmin?: boolean;
+
+    removedAt?: string | null;
+    removedBy?: string | null;
+  } = {};
+
+  switch (nextStatus) {
+    case 'draft':
+    case 'building':
+    case 'revision_draft':
+    case 'submitted':
+    case 'revision_submitted':
+      updates.isPublic = false;
+      updates.hiddenByAdmin = false;
+      break;
+
+    case 'approved_unpaid':
+    case 'approved_awaiting_payment':
+      updates.isApproved = true;
+      updates.isPublic = false;
+      updates.approvedAt = nowIso;
+      updates.approvedBy = userId;
+
+      updates.rejectedAt = null;
+      updates.rejectedBy = null;
+      updates.rejectionReason = null;
+      break;
+
+    case 'paid_awaiting_approval':
+      updates.isPaid = true;
+      updates.paymentStatus = 'paid';
+      updates.isPublic = false;
+      break;
+
+    case 'scheduled':
+    case 'active':
+    case 'live':
+      if (!event.is_approved) {
+        throw new Error(
+          'The event must be approved before it can become scheduled, active, or live.'
+        );
+      }
+
+      if (!eventIsPaid(event)) {
+        throw new Error(
+          'Payment or a payment override is required before the event can become scheduled, active, or live.'
+        );
+      }
+
+      updates.isApproved = true;
+      updates.hiddenByAdmin = false;
+      updates.removedAt = null;
+      updates.removedBy = null;
+      break;
+
+    case 'rejected':
+      updates.isApproved = false;
+      updates.isPublic = false;
+
+      updates.rejectedAt = nowIso;
+      updates.rejectedBy = userId;
+      updates.rejectionReason = reason;
+
+      updates.approvedAt = null;
+      updates.approvedBy = null;
+      break;
+
+    case 'removal_requested':
+    case 'refund_requested':
+      updates.isPublic = false;
+      break;
+
+    case 'cancelled':
+      updates.isPublic = false;
+      updates.hiddenByAdmin = true;
+      break;
+
+    case 'removed':
+      updates.isPublic = false;
+      updates.hiddenByAdmin = true;
+      updates.removedAt = nowIso;
+      updates.removedBy = userId;
+      break;
+
+    case 'ended':
+    case 'archived':
+      updates.isPublic = false;
+      break;
+  }
+
+  return updates;
+}
+
+function formatAdminStatus(status: EventStatus) {
+  return status
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase()
+    );
 }

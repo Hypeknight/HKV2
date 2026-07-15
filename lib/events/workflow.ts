@@ -82,7 +82,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     from: ['submitted', 'approved_unpaid'],
     to: 'paid_awaiting_approval',
     actors: ['payment', 'admin', 'system'],
-    description: 'Payment was completed before final approval.',
+    description: 'Payment was completed or an administrative payment override was applied before final approval.',
   },
   {
     from: ['submitted', 'paid_awaiting_approval'],
@@ -94,12 +94,16 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     from: [
       'submitted',
       'paid_awaiting_approval',
-      'approved_unpaid',
-      'approved_awaiting_payment',
     ],
     to: 'scheduled',
     actors: ['admin', 'payment', 'system'],
     description: 'The event is approved, financially eligible, and scheduled.',
+  },
+  {
+    from: ['approved_unpaid', 'approved_awaiting_payment'],
+    to: 'scheduled',
+    actors: ['admin', 'payment', 'system'],
+    description: 'Payment or an administrrative override cleared the event for scheduling.',
   },
   {
     from: ['submitted', 'paid_awaiting_approval'],
@@ -154,7 +158,43 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     from: ['revision_submitted'],
     to: 'scheduled',
     actors: ['admin'],
-    description: 'The submitted event revision was approved.',
+    description:
+      'The submitted event revision was approved and returned to scheduled.',
+  },
+  {
+    from: ['revision_submitted'],
+    to: 'active',
+    actors: ['admin'],
+    description:
+      'The submitted event revision was approved and returned to active.',
+  },
+  {
+    from: ['revision_submitted'],
+    to: 'live',
+    actors: ['admin'],
+    description:
+      'The submitted event revision was approved and returned to live.',
+  },
+  {
+    from: ['revision_submitted'],
+    to: 'approved_unpaid',
+    actors: ['admin'],
+    description:
+      'The submitted revision was approved but payment is still required.',
+  },
+  {
+    from: ['revision_submitted'],
+    to: 'approved_awaiting_payment',
+    actors: ['admin'],
+    description:
+      'The submitted revision was approved and remains awaiting payment.',
+  },
+  {
+    from: ['revision_submitted'],
+    to: 'paid_awaiting_approval',
+    actors: ['admin'],
+    description:
+      'The submitted revision was approved into the paid review state.',
   },
   {
     from: ['revision_submitted'],
@@ -189,17 +229,112 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
   },
   {
     from: [
+      'draft',
+      'building',
       'submitted',
+      'approved_unpaid',
+      'approved_awaiting_payment',
+      'paid_awaiting_approval',
+      'revision_draft',
+      'revision_submitted',
+      'scheduled',
+      'active',
+      'live',
       'rejected',
-      'cancelled',
       'removal_requested',
+      'refund_requested',
+      'cancelled',
       'ended',
+      'archived'
     ],
     to: 'removed',
     actors: ['admin'],
     requiresReason: true,
     description: 'The event was removed from HypeKnight.',
   },
+
+  {
+  from: ['draft', 'building'],
+  to: 'submitted',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator submitted an event into moderation.',
+},
+{
+  from: ['approved_unpaid', 'approved_awaiting_payment'],
+  to: 'paid_awaiting_approval',
+  actors: ['admin', 'payment', 'system'],
+  description:
+    'Payment eligibility was recorded while approval remained pending.',
+},
+{
+  from: ['rejected'],
+  to: 'submitted',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator returned a rejected event to moderation.',
+},
+{
+  from: ['cancelled', 'removed'],
+  to: 'scheduled',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator restored an eligible event to scheduled status.',
+},
+{
+  from: ['ended', 'archived'],
+  to: 'scheduled',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator reopened an eligible event.',
+},
+{
+  from: ['active', 'live'],
+  to: 'scheduled',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator returned the event to scheduled status.',
+},
+{
+  from: ['live'],
+  to: 'active',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator returned a live event to active promotion.',
+},
+{
+  from: [
+    'draft',
+    'building',
+    'revision_draft',
+    'submitted',
+    'approved_unpaid',
+    'approved_awaiting_payment',
+    'paid_awaiting_approval',
+    'revision_submitted',
+    'scheduled',
+    'active',
+    'live',
+    'rejected',
+    'removal_requested',
+    'refund_requested',
+    'cancelled',
+    'ended',
+  ],
+  to: 'archived',
+  actors: ['admin'],
+  requiresReason: true,
+  description:
+    'An administrator archived the event.',
+},
+
+
 ] as const;
 
 export function isEventStatus(
