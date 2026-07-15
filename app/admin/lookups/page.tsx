@@ -283,7 +283,21 @@ export default async function AdminLookupsPage({
           >
             Manage Categories
           </Link>
+              <a
+                href={`/admin/lookups/export?category=${encodeURIComponent(
+                  activeCategory
+                )}`}
+                className="rounded-2xl border border-blue-500/20 bg-blue-500/10 px-5 py-3 text-sm font-semibold text-blue-200 hover:border-blue-500/40"
+              >
+                Export Current Category
+              </a>
 
+              <a
+                href="/admin/lookups/export"
+                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-white hover:border-accent/40"
+              >
+                Export Full Registry
+              </a>
           <Link
             href="/admin/settings"
             className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-white hover:border-accent/40"
