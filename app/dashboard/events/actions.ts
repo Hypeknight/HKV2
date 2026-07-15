@@ -485,36 +485,62 @@ export async function updateEventStep1(formData: FormData) {
 
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { calculateTotalPrice } from '@/lib/events/workflow';
 import { getPlatformSettings } from '@/lib/settings';
+import { transitionEventStatus } from '@/lib/events/transition';
 
 async function requireUser() {
   const supabase = await createClient();
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error(authError.message);
+  }
 
   if (!user) redirect('/auth/login');
 
   return { supabase, user };
 }
 
-function canEditBeforePromotion(event: any) {
+function cleanText(formData: FormData, key: string) {
+  return String(formData.get(key) || '').trim();
+}
+
+function canEditBeforePromotion(event: {
+  promotion_start_at?: string | null;
+}) {
   if (!event.promotion_start_at) return false;
 
-  const now = new Date();
   const promoStart = new Date(event.promotion_start_at);
 
-  return now < promoStart;
+  if (Number.isNaN(promoStart.getTime())) {
+    return false;
+  }
+
+  return new Date() < promoStart;
+}
+
+function refreshOwnerEventPaths(eventId: string) {
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/events');
+  revalidatePath(`/dashboard/events/${eventId}/review`);
+  revalidatePath(`/dashboard/events/${eventId}/edit`);
+  revalidatePath('/admin/events');
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath('/events');
 }
 
 export async function startEventRevision(formData: FormData) {
   const { supabase, user } = await requireUser();
 
-  const eventId = String(formData.get('event_id') || '');
+  const eventId = cleanText(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -532,35 +558,58 @@ export async function startEventRevision(formData: FormData) {
     throw new Error('You do not have permission to edit this event.');
   }
 
-  if (!['scheduled', 'paid_awaiting_approval', 'active'].includes(event.status)) {
+  if (!['scheduled', 'active', 'live'].includes(event.status)) {
     throw new Error('This event is not eligible for revision.');
   }
 
   if (!canEditBeforePromotion(event)) {
-    throw new Error('This event can no longer be edited because it is inside its promotion window.');
+    throw new Error(
+      'This event can no longer be edited because it is inside its promotion window.'
+    );
   }
 
-  const { error } = await supabase
+  const originalStatus = event.status;
+  const nowIso = new Date().toISOString();
+
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'owner',
+    toStatus: 'revision_draft',
+    source: 'owner_action',
+    note: 'Owner opened the event for revision.',
+    metadata: {
+      action: 'start_event_revision',
+      original_status: originalStatus,
+    },
+    updates: {
+      isPublic: false,
+    },
+  });
+
+  const { error: revisionError } = await supabase
     .from('events')
     .update({
-      status: 'revision_draft',
-      is_public: false,
-      original_status_before_revision: event.status,
-      revision_requested_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      original_status_before_revision: originalStatus,
+      revision_requested_at: nowIso,
+      revision_admin_note: null,
+      updated_at: nowIso,
     })
-    .eq('id', eventId);
+    .eq('id', eventId)
+    .eq('owner_id', user.id);
 
-  if (error) throw new Error(error.message);
+  if (revisionError) throw new Error(revisionError.message);
 
+  refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/edit`);
 }
 
 export async function submitEventRevision(formData: FormData) {
   const { supabase, user } = await requireUser();
 
-  const eventId = String(formData.get('event_id') || '');
-  const revisionReason = String(formData.get('revision_reason') || '').trim();
+  const eventId = cleanText(formData, 'event_id');
+  const revisionReason = cleanText(formData, 'revision_reason');
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -582,31 +631,55 @@ export async function submitEventRevision(formData: FormData) {
     throw new Error('This event is not in revision draft.');
   }
 
-  const { error } = await supabase
+  const nowIso = new Date().toISOString();
+
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'owner',
+    toStatus: 'revision_submitted',
+    source: 'owner_action',
+    reason: revisionReason || null,
+    note: 'Owner submitted an event revision for review.',
+    metadata: {
+      action: 'submit_event_revision',
+    },
+    updates: {
+      isPublic: false,
+    },
+  });
+
+  const { error: revisionError } = await supabase
     .from('events')
     .update({
-      status: 'revision_submitted',
-      is_public: false,
       revision_reason: revisionReason || null,
-      revision_submitted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      revision_submitted_at: nowIso,
+      revision_admin_note: null,
+      updated_at: nowIso,
     })
-    .eq('id', eventId);
+    .eq('id', eventId)
+    .eq('owner_id', user.id);
 
-  if (error) throw new Error(error.message);
+  if (revisionError) throw new Error(revisionError.message);
 
-  redirect(`/dashboard/events/${eventId}/review`);
+  refreshOwnerEventPaths(eventId);
+  redirect(`/dashboard/events/${eventId}/review?revision=submitted`);
 }
 
 export async function requestEventRemovalOrRefund(formData: FormData) {
   const { supabase, user } = await requireUser();
 
-  const eventId = String(formData.get('event_id') || '');
-  const removalReason = String(formData.get('removal_reason') || '').trim();
-  const refundReason = String(formData.get('refund_reason') || '').trim();
+  const eventId = cleanText(formData, 'event_id');
+  const removalReason = cleanText(formData, 'removal_reason');
+  const refundReason = cleanText(formData, 'refund_reason');
   const wantsRefund = formData.get('wants_refund') === 'on';
 
   if (!eventId) throw new Error('Missing event id.');
+
+  if (!removalReason) {
+    throw new Error('A removal-request reason is required.');
+  }
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
@@ -622,24 +695,51 @@ export async function requestEventRemovalOrRefund(formData: FormData) {
     throw new Error('You do not have permission to request removal.');
   }
 
-  const { error } = await supabase
+  const nowIso = new Date().toISOString();
+
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'owner',
+    toStatus: 'removal_requested',
+    source: 'owner_action',
+    reason: removalReason,
+    note: wantsRefund
+      ? 'Owner requested event removal and refund review.'
+      : 'Owner requested event removal.',
+    metadata: {
+      action: 'request_event_removal_or_refund',
+      wants_refund: wantsRefund,
+      refund_reason: wantsRefund
+        ? refundReason || removalReason
+        : null,
+    },
+    updates: {
+      isPublic: false,
+    },
+  });
+
+  const { error: requestError } = await supabase
     .from('events')
     .update({
-      status: 'removal_requested',
-      is_public: false,
-      removal_requested_at: new Date().toISOString(),
-      removal_reason: removalReason || null,
+      removal_requested_at: nowIso,
+      removal_reason: removalReason,
       refund_requested: wantsRefund,
       refund_status: wantsRefund ? 'requested' : null,
-      refund_requested_at: wantsRefund ? new Date().toISOString() : null,
-      refund_reason: wantsRefund ? refundReason || removalReason || null : null,
-      updated_at: new Date().toISOString(),
+      refund_requested_at: wantsRefund ? nowIso : null,
+      refund_reason: wantsRefund
+        ? refundReason || removalReason
+        : null,
+      updated_at: nowIso,
     })
-    .eq('id', eventId);
+    .eq('id', eventId)
+    .eq('owner_id', user.id);
 
-  if (error) throw new Error(error.message);
+  if (requestError) throw new Error(requestError.message);
 
-  redirect('/dashboard');
+  refreshOwnerEventPaths(eventId);
+  redirect('/dashboard?removal_requested=1');
 }
 
 function getOwnerType(
@@ -707,21 +807,23 @@ export async function createEventStep1(formData: FormData) {
     .eq('id', user.id)
     .single();
 
-  const eventName = String(formData.get('name') || '').trim();
-  const venueName = String(formData.get('venue_name') || '').trim();
-  const address = String(formData.get('address') || '').trim();
-  const city = String(formData.get('city') || '').trim();
-  const state = String(formData.get('state') || '').trim();
-  const startDate = String(formData.get('start_date') || '').trim();
-  const startTime = String(formData.get('start_time') || '').trim();
-  const endDate = String(formData.get('end_date') || '').trim();
-  const endTime = String(formData.get('end_time') || '').trim();
-  const flyerUrl = String(formData.get('flyer_url') || '').trim();
+  const eventName = cleanText(formData, 'name');
+  const venueName = cleanText(formData, 'venue_name');
+  const address = cleanText(formData, 'address');
+  const city = cleanText(formData, 'city');
+  const state = cleanText(formData, 'state');
+  const startDate = cleanText(formData, 'start_date');
+  const startTime = cleanText(formData, 'start_time');
+  const endDate = cleanText(formData, 'end_date');
+  const endTime = cleanText(formData, 'end_time');
+  const flyerUrl = cleanText(formData, 'flyer_url');
 
   if (!eventName) throw new Error('Event name is required.');
   if (!city) throw new Error('City is required.');
   if (!state) throw new Error('State is required.');
-  if (!startDate || !startTime) throw new Error('Event start date and time are required.');
+  if (!startDate || !startTime) {
+    throw new Error('Event start date and time are required.');
+  }
 
   const baseSlug = slugify(`${eventName} ${city} ${state}`);
   const slug = `${baseSlug}-${Date.now()}`;
@@ -742,9 +844,9 @@ export async function createEventStep1(formData: FormData) {
 
   const settings = await getPlatformSettings();
 
-const includedPromoDays = Number(settings.included_promo_days || 14);
-const extraPromoDays = 0;
-const basePrice = Number(settings.event_base_price || 19.99);
+  const includedPromoDays = Number(settings.included_promo_days || 14);
+  const extraPromoDays = 0;
+  const basePrice = Number(settings.event_base_price || 19.99);
 
   const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
     eventStartAt: eventStartAt.toISOString(),
@@ -791,41 +893,78 @@ const basePrice = Number(settings.event_base_price || 19.99);
 }
 
 export async function updateEventStep2(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase, user } = await requireUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
-  const eventId = String(formData.get('event_id') || '');
+  const eventId = cleanText(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
 
-  const eventTypes = formData.getAll('event_type').map(String).filter(Boolean);
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status')
+    .eq('id', eventId)
+    .eq('owner_id', user.id)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (!['draft', 'building', 'rejected', 'revision_draft'].includes(event.status)) {
+    throw new Error('This event cannot be edited at its current status.');
+  }
+
+  if (event.status === 'draft' || event.status === 'rejected') {
+    await transitionEventStatus({
+      supabase,
+      eventId,
+      actorId: user.id,
+      actor: 'owner',
+      toStatus: 'building',
+      source: 'owner_action',
+      note: 'Owner resumed building the event.',
+      metadata: {
+        action: 'resume_event_builder_step_2',
+      },
+      updates: {
+        isApproved: false,
+        isPublic: false,
+        hiddenByAdmin: false,
+      },
+    });
+  }
+
+  const eventTypes = formData
+    .getAll('event_type')
+    .map(String)
+    .filter(Boolean);
   const musicSelection = formData
     .getAll('music_selection')
     .map(String)
     .filter(Boolean);
-  const vibeTags = formData.getAll('vibe_tags').map(String).filter(Boolean);
-  const amenities = formData.getAll('amenities').map(String).filter(Boolean);
+  const vibeTags = formData
+    .getAll('vibe_tags')
+    .map(String)
+    .filter(Boolean);
+  const amenities = formData
+    .getAll('amenities')
+    .map(String)
+    .filter(Boolean);
 
   const payload = {
-    description: String(formData.get('description') || '').trim() || null,
-    dress_code: String(formData.get('dress_code') || '').trim() || null,
-    entry_price: String(formData.get('entry_price') || '').trim() || null,
-    age_requirement:
-      String(formData.get('age_requirement') || '').trim() || null,
+    description: cleanText(formData, 'description') || null,
+    dress_code: cleanText(formData, 'dress_code') || null,
+    entry_price: cleanText(formData, 'entry_price') || null,
+    age_requirement: cleanText(formData, 'age_requirement') || null,
     event_type: eventTypes.length ? eventTypes.join(', ') : null,
-    smoking_policy: String(formData.get('smoking_policy') || '').trim() || null,
-    parking_notes: String(formData.get('parking_notes') || '').trim() || null,
-    special_notes: String(formData.get('special_notes') || '').trim() || null,
+    smoking_policy: cleanText(formData, 'smoking_policy') || null,
+    parking_notes: cleanText(formData, 'parking_notes') || null,
+    special_notes: cleanText(formData, 'special_notes') || null,
     music_selection: musicSelection,
     vibe_tags: vibeTags,
     amenities,
     current_step: 2,
-    status: 'building',
+    is_public: false,
     updated_at: new Date().toISOString(),
   };
 
@@ -833,26 +972,19 @@ export async function updateEventStep2(formData: FormData) {
     .from('events')
     .update(payload)
     .eq('id', eventId)
-    .eq('owner_id', user.id)
-    .in('status', ['draft', 'building', 'rejected', 'revision_draft']);
+    .eq('owner_id', user.id);
 
   if (error) throw new Error(error.message);
 
+  refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/edit/step-3`);
 }
 
 export async function updateEventStep3(formData: FormData) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
+  const { supabase, user } = await requireUser();
   const settings = await getPlatformSettings();
 
-  const eventId = String(formData.get('event_id') || '');
+  const eventId = cleanText(formData, 'event_id');
   const extraPromoDays = Number(formData.get('extra_promo_days') || 0);
   const linkdnMode = String(formData.get('linkdn_mode') || 'none') as
     | 'none'
@@ -879,7 +1011,11 @@ export async function updateEventStep3(formData: FormData) {
   }
 
   const linkdnPrice =
-    linkdnMode === 'full' ? fullPrice : linkdnMode === 'lite' ? litePrice : 0;
+    linkdnMode === 'full'
+      ? fullPrice
+      : linkdnMode === 'lite'
+        ? litePrice
+        : 0;
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
@@ -889,14 +1025,36 @@ export async function updateEventStep3(formData: FormData) {
     .single();
 
   if (fetchError || !event) {
-    throw new Error(fetchError?.message || 'Event not found');
+    throw new Error(fetchError?.message || 'Event not found.');
   }
 
   if (!['draft', 'building', 'rejected'].includes(event.status)) {
     redirect('/dashboard');
   }
 
-  const extraPromoPrice = Number((extraPromoDays * extraDayPrice).toFixed(2));
+  if (event.status === 'draft' || event.status === 'rejected') {
+    await transitionEventStatus({
+      supabase,
+      eventId,
+      actorId: user.id,
+      actor: 'owner',
+      toStatus: 'building',
+      source: 'owner_action',
+      note: 'Owner resumed building the event.',
+      metadata: {
+        action: 'resume_event_builder_step_3',
+      },
+      updates: {
+        isApproved: false,
+        isPublic: false,
+        hiddenByAdmin: false,
+      },
+    });
+  }
+
+  const extraPromoPrice = Number(
+    (extraPromoDays * extraDayPrice).toFixed(2)
+  );
 
   const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
     eventStartAt: event.event_start_at,
@@ -924,7 +1082,6 @@ export async function updateEventStep3(formData: FormData) {
       total_price: totalPrice,
       payment_amount: totalPrice,
       current_step: 3,
-      status: 'building',
       is_public: false,
       updated_at: new Date().toISOString(),
     })
@@ -933,19 +1090,14 @@ export async function updateEventStep3(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
+  refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/review`);
 }
 
 export async function submitEventForModeration(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase, user } = await requireUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
-  const eventId = String(formData.get('event_id') || '');
+  const eventId = cleanText(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -955,48 +1107,74 @@ export async function submitEventForModeration(formData: FormData) {
       id,
       owner_id,
       status,
+      name,
+      event_start_at,
       is_paid,
       payment_status,
       payment_override,
       total_price,
-      payment_amount,
-      promotion_start_at,
-      promotion_end_at,
-      event_start_at,
-      event_end_at
+      payment_amount
     `)
     .eq('id', eventId)
     .eq('owner_id', user.id)
     .single();
 
   if (eventError || !event) {
-    throw new Error(eventError?.message || 'Event not found');
+    throw new Error(eventError?.message || 'Event not found.');
   }
 
-  const amountDue = Number(event.payment_amount || event.total_price || 0);
+  if (!event.name?.trim()) {
+    throw new Error('An event name is required before submission.');
+  }
 
-  const isPaid =
+  if (!event.event_start_at) {
+    throw new Error('An event start date is required before submission.');
+  }
+
+  const amountDue = Number(event.payment_amount ?? event.total_price ?? 0);
+
+  const financiallyEligible =
     event.is_paid === true ||
     event.payment_status === 'paid' ||
     event.payment_override === true ||
     amountDue <= 0;
 
-  const nextStatus = isPaid ? 'paid_awaiting_approval' : 'NPNA';
+  const nowIso = new Date().toISOString();
 
-  const { error } = await supabase
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'owner',
+    toStatus: 'submitted',
+    source: 'owner_action',
+    note: 'Owner submitted the event for HypeKnight moderation.',
+    metadata: {
+      action: 'submit_event_for_moderation',
+      amount_due: amountDue,
+      financially_eligible: financiallyEligible,
+    },
+    updates: {
+      isApproved: false,
+      isPublic: false,
+      hiddenByAdmin: false,
+    },
+  });
+
+  const { error: submittedError } = await supabase
     .from('events')
     .update({
-      status: nextStatus,
-      is_public: false,
-      submitted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      submitted_at: nowIso,
+      updated_at: nowIso,
     })
     .eq('id', eventId)
     .eq('owner_id', user.id);
 
-  if (error) throw new Error(error.message);
+  if (submittedError) throw new Error(submittedError.message);
 
-  if (nextStatus === 'NPNA') {
+  refreshOwnerEventPaths(eventId);
+
+  if (!financiallyEligible) {
     redirect(`/dashboard/events/${eventId}/payment`);
   }
 
@@ -1004,15 +1182,9 @@ export async function submitEventForModeration(formData: FormData) {
 }
 
 export async function discardDraftEvent(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase, user } = await requireUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
-  const eventId = String(formData.get('event_id') || '');
+  const eventId = cleanText(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -1025,74 +1197,89 @@ export async function discardDraftEvent(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/events');
   redirect('/dashboard?draft_deleted=1');
 }
 
 export async function requestEventRemoval(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase, user } = await requireUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
-  const eventId = String(formData.get('event_id') || '');
-  const removalReason = String(formData.get('removal_reason') || '').trim();
-  const refundRequested = String(formData.get('refund_requested') || '') === 'yes';
+  const eventId = cleanText(formData, 'event_id');
+  const removalReason = cleanText(formData, 'removal_reason');
+  const refundRequested =
+    cleanText(formData, 'refund_requested') === 'yes';
 
   if (!eventId) throw new Error('Missing event id.');
 
+  if (!removalReason) {
+    throw new Error('A removal-request reason is required.');
+  }
+
   const nowIso = new Date().toISOString();
 
-  const { error } = await supabase
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'owner',
+    toStatus: 'removal_requested',
+    source: 'owner_action',
+    reason: removalReason,
+    note: refundRequested
+      ? 'Owner requested event removal and refund review.'
+      : 'Owner requested event removal.',
+    metadata: {
+      action: 'request_event_removal',
+      refund_requested: refundRequested,
+    },
+    updates: {
+      isPublic: false,
+    },
+  });
+
+  const { error: requestError } = await supabase
     .from('events')
     .update({
-      status: 'removal_requested',
       removal_requested_at: nowIso,
-      removal_reason: removalReason || null,
+      removal_reason: removalReason,
       refund_requested: refundRequested,
       refund_status: refundRequested ? 'requested' : 'none',
       refund_requested_at: refundRequested ? nowIso : null,
-      refund_reason: refundRequested ? removalReason || null : null,
-      is_public: false,
+      refund_reason: refundRequested ? removalReason : null,
       updated_at: nowIso,
     })
     .eq('id', eventId)
-    .eq('owner_id', user.id)
-    .in('status', ['scheduled', 'active', 'live']);
+    .eq('owner_id', user.id);
 
-  if (error) throw new Error(error.message);
+  if (requestError) throw new Error(requestError.message);
 
+  refreshOwnerEventPaths(eventId);
   redirect('/dashboard/payments?removal_requested=1');
 }
 
 export async function updateEventStep1(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase, user } = await requireUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
-
-  const eventId = String(formData.get('event_id') || '');
-  const flyerUrl = String(formData.get('flyer_url') || '').trim();
-  const eventName = String(formData.get('name') || '').trim();
-  const venueName = String(formData.get('venue_name') || '').trim();
-  const address = String(formData.get('address') || '').trim();
-  const city = String(formData.get('city') || '').trim();
-  const state = String(formData.get('state') || '').trim();
-  const startDate = String(formData.get('start_date') || '').trim();
-  const startTime = String(formData.get('start_time') || '').trim();
-  const endDate = String(formData.get('end_date') || '').trim();
-  const endTime = String(formData.get('end_time') || '').trim();
+  const eventId = cleanText(formData, 'event_id');
+  const flyerUrl = cleanText(formData, 'flyer_url');
+  const eventName = cleanText(formData, 'name');
+  const venueName = cleanText(formData, 'venue_name');
+  const address = cleanText(formData, 'address');
+  const city = cleanText(formData, 'city');
+  const state = cleanText(formData, 'state');
+  const startDate = cleanText(formData, 'start_date');
+  const startTime = cleanText(formData, 'start_time');
+  const endDate = cleanText(formData, 'end_date');
+  const endTime = cleanText(formData, 'end_time');
 
   if (!eventId) throw new Error('Missing event id.');
   if (!eventName) throw new Error('Event name is required.');
   if (!city) throw new Error('City is required.');
   if (!state) throw new Error('State is required.');
-  if (!startDate || !startTime) throw new Error('Event start date and time are required.');
+  if (!startDate || !startTime) {
+    throw new Error('Event start date and time are required.');
+  }
 
   const eventStartAt = new Date(`${startDate}T${startTime}`);
   const eventEndAt =
@@ -1118,15 +1305,34 @@ export async function updateEventStep1(formData: FormData) {
     .single();
 
   if (currentEventError || !currentEvent) {
-    throw new Error(currentEventError?.message || 'Event not found');
+    throw new Error(currentEventError?.message || 'Event not found.');
   }
 
   if (!['draft', 'building', 'rejected'].includes(currentEvent.status)) {
     redirect('/dashboard');
   }
 
-  const slug = currentEvent.slug || `${baseSlug}-${Date.now()}`;
+  if (currentEvent.status === 'draft' || currentEvent.status === 'rejected') {
+    await transitionEventStatus({
+      supabase,
+      eventId,
+      actorId: user.id,
+      actor: 'owner',
+      toStatus: 'building',
+      source: 'owner_action',
+      note: 'Owner resumed building the event.',
+      metadata: {
+        action: 'resume_event_builder_step_1',
+      },
+      updates: {
+        isApproved: false,
+        isPublic: false,
+        hiddenByAdmin: false,
+      },
+    });
+  }
 
+  const slug = currentEvent.slug || `${baseSlug}-${Date.now()}`;
   const includedPromoDays = Number(currentEvent.included_promo_days || 14);
   const extraPromoDays = Number(currentEvent.extra_promo_days || 0);
 
@@ -1151,7 +1357,6 @@ export async function updateEventStep1(formData: FormData) {
       promotion_start_at: promotionStartAt,
       promotion_end_at: promotionEndAt,
       current_step: 1,
-      status: 'building',
       is_public: false,
       updated_at: new Date().toISOString(),
     })
@@ -1160,13 +1365,14 @@ export async function updateEventStep1(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
+  refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/edit/step-2`);
 }
 
 export async function updateEventRevision(formData: FormData) {
   const { supabase, user } = await requireUser();
 
-  const eventId = String(formData.get('event_id') || '');
+  const eventId = cleanText(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
 
@@ -1188,65 +1394,73 @@ export async function updateEventRevision(formData: FormData) {
     throw new Error('This event is not open for revision editing.');
   }
 
-const flyerFile = formData.get('flyer_file') as File | null;
-let flyerUrl = String(formData.get('flyer_url') || '').trim() || null;
+  const flyerFile = formData.get('flyer_file') as File | null;
+  let flyerUrl = cleanText(formData, 'flyer_url') || null;
 
-if (flyerFile && flyerFile.size > 0) {
-  const fileExt = flyerFile.name.split('.').pop();
-  const filePath = `${user.id}/${eventId}-${Date.now()}.${fileExt}`;
+  if (flyerFile && flyerFile.size > 0) {
+    const fileExt = flyerFile.name.split('.').pop() || 'jpg';
+    const filePath = `${user.id}/${eventId}-${Date.now()}.${fileExt}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from('event-flyers')
-    .upload(filePath, flyerFile, {
-      cacheControl: '3600',
-      upsert: true,
-    });
+    const { error: uploadError } = await supabase.storage
+      .from('event-flyers')
+      .upload(filePath, flyerFile, {
+        cacheControl: '3600',
+        upsert: true,
+      });
 
-  if (uploadError) throw new Error(uploadError.message);
+    if (uploadError) throw new Error(uploadError.message);
 
-  const { data: publicUrlData } = supabase.storage
-    .from('event-flyers')
-    .getPublicUrl(filePath);
+    const { data: publicUrlData } = supabase.storage
+      .from('event-flyers')
+      .getPublicUrl(filePath);
 
-  flyerUrl = publicUrlData.publicUrl;
-}
+    flyerUrl = publicUrlData.publicUrl;
+  }
 
-  const musicSelection = formData.getAll('music_selection').map(String).filter(Boolean);
-const vibeTags = formData.getAll('vibe_tags').map(String).filter(Boolean);
+  const musicSelection = formData
+    .getAll('music_selection')
+    .map(String)
+    .filter(Boolean);
+  const vibeTags = formData
+    .getAll('vibe_tags')
+    .map(String)
+    .filter(Boolean);
 
-const payload = {
-  name: String(formData.get('name') || '').trim(),
-  venue_name: String(formData.get('venue_name') || '').trim() || null,
-  address: String(formData.get('address') || '').trim() || null,
-  city: String(formData.get('city') || '').trim() || null,
-  state: String(formData.get('state') || '').trim().toUpperCase() || null,
-  event_start_at: String(formData.get('event_start_at') || '') || null,
-  event_end_at: String(formData.get('event_end_at') || '') || null,
-  flyer_url: flyerUrl,
+  const payload = {
+    name: cleanText(formData, 'name'),
+    venue_name: cleanText(formData, 'venue_name') || null,
+    address: cleanText(formData, 'address') || null,
+    city: cleanText(formData, 'city') || null,
+    state: cleanText(formData, 'state').toUpperCase() || null,
+    event_start_at: cleanText(formData, 'event_start_at') || null,
+    event_end_at: cleanText(formData, 'event_end_at') || null,
+    flyer_url: flyerUrl,
 
-  description: String(formData.get('description') || '').trim() || null,
-  dress_code: String(formData.get('dress_code') || '').trim() || null,
-  entry_price: String(formData.get('entry_price') || '').trim() || null,
-  age_requirement: String(formData.get('age_requirement') || '').trim() || null,
-  event_type: String(formData.get('event_type') || '').trim() || null,
-  music_selection: musicSelection,
-  vibe_tags: vibeTags,
-  smoking_policy: String(formData.get('smoking_policy') || '').trim() || null,
-  parking_notes: String(formData.get('parking_notes') || '').trim() || null,
-  special_notes: String(formData.get('special_notes') || '').trim() || null,
-  revision_reason: String(formData.get('revision_reason') || '').trim() || null,
-  updated_at: new Date().toISOString(),
-};
+    description: cleanText(formData, 'description') || null,
+    dress_code: cleanText(formData, 'dress_code') || null,
+    entry_price: cleanText(formData, 'entry_price') || null,
+    age_requirement: cleanText(formData, 'age_requirement') || null,
+    event_type: cleanText(formData, 'event_type') || null,
+    music_selection: musicSelection,
+    vibe_tags: vibeTags,
+    smoking_policy: cleanText(formData, 'smoking_policy') || null,
+    parking_notes: cleanText(formData, 'parking_notes') || null,
+    special_notes: cleanText(formData, 'special_notes') || null,
+    revision_reason: cleanText(formData, 'revision_reason') || null,
+    updated_at: new Date().toISOString(),
+  };
 
   if (!payload.name) throw new Error('Event name is required.');
 
   const { error } = await supabase
     .from('events')
     .update(payload)
-    .eq('id', eventId);
+    .eq('id', eventId)
+    .eq('owner_id', user.id)
+    .eq('status', 'revision_draft');
 
   if (error) throw new Error(error.message);
 
+  refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/edit`);
 }
-

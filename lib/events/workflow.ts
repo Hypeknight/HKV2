@@ -73,7 +73,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     description: 'The owner started completing the event.',
   },
   {
-    from: ['building', 'rejected'],
+    from: ['building', 'rejected', 'draft'],
     to: 'submitted',
     actors: ['owner'],
     description: 'The owner submitted the event for review.',

@@ -14,6 +14,9 @@ import {
   updateAdminEventFinancials,
   updateAdminEventNotes,
 } from '../new/actions';
+import EventLifecycleTimeline, {
+  type EventStatusHistoryItem,
+} from '@/components/admin/EventLifecycleTimeline';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -39,6 +42,7 @@ const EVENT_STATUSES = [
   'removed',
   'ended',
   'archived',
+  'refund_requested'
 ];
 
 export default async function AdminEventDetailPage({ params }: Props) {
@@ -59,26 +63,54 @@ export default async function AdminEventDetailPage({ params }: Props) {
 
   if (adminProfile?.app_role !== 'admin') redirect('/dashboard');
 
-  const [{ data: event, error }, lookups] = await Promise.all([
-    supabase
-      .from('events')
-      .select('*')
-      .eq('id', id)
-      .single(),
+  const [
+  { data: event, error: eventError },
+  { data: statusHistory, error: historyError },
+  lookups,
+] = await Promise.all([
+  supabase
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single(),
 
-    getLookupMap([
-      'event_types',
-      'music_genres',
-      'vibe_tags',
-      'event_amenities',
-      'dress_codes',
-      'age_requirements',
-      'smoking_policies',
-      'parking_options',
-    ]),
-  ]);
+  supabase
+    .from('event_status_history')
+    .select(`
+      id,
+      event_id,
+      from_status,
+      to_status,
+      changed_by,
+      changed_by_role,
+      reason,
+      note,
+      source,
+      metadata,
+      created_at
+    `)
+    .eq('event_id', id)
+    .order('created_at', { ascending: false }),
 
-  if (error || !event) notFound();
+  getLookupMap([
+    'event_types',
+    'music_genres',
+    'vibe_tags',
+    'event_amenities',
+    'dress_codes',
+    'age_requirements',
+    'smoking_policies',
+    'parking_options',
+  ]),
+]);
+
+if (eventError || !event) {
+  notFound();
+}
+
+if (historyError) {
+  throw new Error(historyError.message);
+}
 
   const [
     { data: owner },
@@ -125,6 +157,42 @@ export default async function AdminEventDetailPage({ params }: Props) {
           .eq('status', 'rejected')
       : Promise.resolve({ count: 0 }),
   ]);
+
+  const lifecycleHistory: EventStatusHistoryItem[] = (
+      statusHistory ?? []
+    ).map((item) => ({
+      id: String(item.id),
+      event_id: String(item.event_id),
+      from_status:
+        item.from_status === null
+          ? null
+          : String(item.from_status),
+      to_status: String(item.to_status),
+      changed_by:
+        item.changed_by === null
+          ? null
+          : String(item.changed_by),
+      changed_by_role:
+        item.changed_by_role === null
+          ? null
+          : String(item.changed_by_role),
+      reason:
+        item.reason === null
+          ? null
+          : String(item.reason),
+      note:
+        item.note === null
+          ? null
+          : String(item.note),
+      source: String(item.source || 'system'),
+      metadata:
+        item.metadata &&
+        typeof item.metadata === 'object' &&
+        !Array.isArray(item.metadata)
+          ? (item.metadata as Record<string, unknown>)
+          : null,
+      created_at: String(item.created_at),
+    }));
 
   const imageUrl = event.flyer_url || null;
 
@@ -184,7 +252,7 @@ export default async function AdminEventDetailPage({ params }: Props) {
 
   const qualityChecks = buildQualityChecks(event);
   const qualityScore = calculateQualityScore(qualityChecks);
-  const timeline = buildTimeline(event);
+  
 
   return (
     <section className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -466,6 +534,11 @@ export default async function AdminEventDetailPage({ params }: Props) {
               ))}
             </div>
           </Panel>
+
+          <EventLifecycleTimeline
+            history={lifecycleHistory}
+          />
+
 
           <Panel
             title="Customer Service Edit"
@@ -1023,22 +1096,6 @@ export default async function AdminEventDetailPage({ params }: Props) {
             </div>
           </Panel>
 
-          <Panel
-            title="Moderation Timeline"
-            eyebrow="Event History"
-          >
-            <div className="space-y-4">
-              {timeline.map((item) => (
-                <TimelineItem
-                  key={`${item.label}-${item.value}`}
-                  label={item.label}
-                  value={item.value}
-                  tone={item.tone}
-                />
-              ))}
-            </div>
-          </Panel>
-
           <Panel title="Quick Facts" eyebrow="Identifiers">
             <div className="space-y-3">
               <Info label="Event ID" value={event.id} />
@@ -1086,12 +1143,63 @@ function StatusForm({
   label: string;
   tone: 'green' | 'yellow' | 'red';
 }) {
-  return (
-    <form action={updateAdminEventVisibility}>
-      <input type="hidden" name="event_id" value={eventId} />
-      <input type="hidden" name="action" value={actionName} />
+  const requiresReason = [
+    'reactivate',
+    'cancel',
+    'remove',
+  ].includes(actionName);
 
-      <ActionButton tone={tone}>{label}</ActionButton>
+  return (
+    <form
+      action={updateAdminEventVisibility}
+      className="space-y-3"
+    >
+      <input
+        type="hidden"
+        name="event_id"
+        value={eventId}
+      />
+
+      <input
+        type="hidden"
+        name="action"
+        value={actionName}
+      />
+
+      {requiresReason ? (
+        <label className="block">
+          <span className="text-sm font-semibold text-white/70">
+            {label} Reason
+          </span>
+
+          <textarea
+            name="reason"
+            rows={3}
+            required
+            placeholder={`Explain why you are choosing to ${label.toLowerCase()}.`}
+            className={fieldClass}
+          />
+        </label>
+      ) : null}
+
+      {requiresReason ? (
+        <label className="block">
+          <span className="text-sm font-semibold text-white/70">
+            Additional Admin Note
+          </span>
+
+          <textarea
+            name="admin_note"
+            rows={3}
+            placeholder="Optional internal context."
+            className={fieldClass}
+          />
+        </label>
+      ) : null}
+
+      <ActionButton tone={tone}>
+        {label}
+      </ActionButton>
     </form>
   );
 }
@@ -1400,40 +1508,7 @@ function QualityCheck({
   );
 }
 
-function TimelineItem({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: 'green' | 'yellow' | 'red' | 'neutral';
-}) {
-  const dotClasses = {
-    green: 'bg-green-400',
-    yellow: 'bg-yellow-400',
-    red: 'bg-red-400',
-    neutral: 'bg-white/40',
-  };
 
-  return (
-    <div className="flex gap-3">
-      <span
-        className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dotClasses[tone]}`}
-      />
-
-      <div>
-        <p className="text-sm font-semibold text-white">
-          {label}
-        </p>
-
-        <p className="mt-1 text-xs text-white/45">
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function buildQualityChecks(event: any) {
   return [
@@ -1527,60 +1602,7 @@ function calculateQualityScore(
   return Math.round((passed / checks.length) * 100);
 }
 
-function buildTimeline(event: any) {
-  const items = [
-    {
-      label: 'Event created',
-      value: formatDate(event.created_at),
-      raw: event.created_at,
-      tone: 'neutral' as const,
-    },
-    {
-      label: 'Event submitted',
-      value: formatDate(event.submitted_at),
-      raw: event.submitted_at,
-      tone: 'yellow' as const,
-    },
-    {
-      label: 'Payment completed',
-      value: formatDate(event.paid_at),
-      raw: event.paid_at,
-      tone: 'green' as const,
-    },
-    {
-      label: 'Event approved',
-      value: formatDate(event.approved_at),
-      raw: event.approved_at,
-      tone: 'green' as const,
-    },
-    {
-      label: 'Event rejected',
-      value: formatDate(event.rejected_at),
-      raw: event.rejected_at,
-      tone: 'red' as const,
-    },
-    {
-      label: 'Event removed',
-      value: formatDate(event.removed_at),
-      raw: event.removed_at,
-      tone: 'red' as const,
-    },
-    {
-      label: 'Last updated',
-      value: formatDate(event.updated_at),
-      raw: event.updated_at,
-      tone: 'neutral' as const,
-    },
-  ];
 
-  return items
-    .filter((item) => Boolean(item.raw))
-    .sort(
-      (a, b) =>
-        new Date(a.raw).getTime() -
-        new Date(b.raw).getTime()
-    );
-}
 
 function resolveLookupItems(
   options: LookupValue[] = [],
