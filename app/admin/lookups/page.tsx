@@ -299,6 +299,13 @@ export default async function AdminLookupsPage({
                 Export Full Registry
               </a>
           <Link
+                href="/admin/lookups/import"
+                className="rounded-2xl border border-green-500/20 bg-green-500/10 px-5 py-3 text-sm font-semibold text-green-200 hover:border-green-500/40"
+              >
+                Import CSV
+          </Link>
+          
+          <Link
             href="/admin/settings"
             className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-white hover:border-accent/40"
           >

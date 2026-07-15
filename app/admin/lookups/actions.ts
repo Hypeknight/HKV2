@@ -1141,3 +1141,562 @@ async function createAvailableDisplayName({
     'Unable to generate a unique display name for the duplicate.'
   );
 }
+
+export async function importLookupCsv(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const csvFile = formData.get('csv_file');
+  const categoryOverride = text(formData, 'category_override');
+  const skipDuplicates = bool(formData, 'skip_duplicates');
+
+  if (!(csvFile instanceof File)) {
+    throw new Error('A CSV file is required.');
+  }
+
+  if (!csvFile.name.toLowerCase().endsWith('.csv')) {
+    throw new Error('The uploaded file must be a CSV.');
+  }
+
+  const maxFileSize = 2 * 1024 * 1024;
+
+  if (csvFile.size > maxFileSize) {
+    throw new Error('CSV files must be 2 MB or smaller.');
+  }
+
+  const csvContent = await csvFile.text();
+
+  if (!csvContent.trim()) {
+    throw new Error('The uploaded CSV file is empty.');
+  }
+
+  const parsedRows = parseLookupCsv(csvContent);
+
+  if (parsedRows.length < 2) {
+    throw new Error(
+      'The CSV must contain a header row and at least one data row.'
+    );
+  }
+
+  const maxRows = 1000;
+  const dataRows = parsedRows
+    .slice(1)
+    .filter((row) =>
+      row.some((cell) => cell.trim().length > 0)
+    );
+
+  if (dataRows.length > maxRows) {
+    throw new Error(
+      `A maximum of ${maxRows} lookup values can be imported at once.`
+    );
+  }
+
+  const headers = parsedRows[0].map(normalizeCsvHeader);
+
+  const columnIndexes = {
+    categoryKey: headers.indexOf('category_key'),
+    value: headers.indexOf('value'),
+    displayName: headers.indexOf('display_name'),
+    description: headers.indexOf('description'),
+    icon: headers.indexOf('icon'),
+    color: headers.indexOf('color'),
+    sortOrder: headers.indexOf('sort_order'),
+    isActive: headers.indexOf('is_active'),
+    archivedAt: headers.indexOf('archived_at'),
+  };
+
+  if (columnIndexes.displayName < 0) {
+    throw new Error(
+      'The CSV must contain a display_name column.'
+    );
+  }
+
+  if (
+    !categoryOverride &&
+    columnIndexes.categoryKey < 0
+  ) {
+    throw new Error(
+      'The CSV must contain category_key unless a category override is selected.'
+    );
+  }
+
+  const { data: categoryRows, error: categoryError } =
+    await supabase
+      .from('lookup_categories')
+      .select('category_key, is_active');
+
+  if (categoryError) {
+    throw new Error(categoryError.message);
+  }
+
+  const categoryMap = new Map(
+    (categoryRows ?? []).map((category) => [
+      category.category_key,
+      category,
+    ])
+  );
+
+  if (
+    categoryOverride &&
+    !categoryMap.has(categoryOverride)
+  ) {
+    throw new Error(
+      `The category override "${categoryOverride}" does not exist.`
+    );
+  }
+
+  const candidates: Array<{
+    rowNumber: number;
+    category_key: string;
+    value: string;
+    display_name: string;
+    description: string | null;
+    icon: string | null;
+    color: string | null;
+    sort_order: number;
+    is_active: boolean;
+    archived_at: string | null;
+  }> = [];
+
+  const invalidRows: string[] = [];
+  const fileDuplicateKeys = new Set<string>();
+
+  for (
+    let index = 0;
+    index < dataRows.length;
+    index += 1
+  ) {
+    const row = dataRows[index];
+    const rowNumber = index + 2;
+
+    const categoryKey =
+      categoryOverride ||
+      csvCell(row, columnIndexes.categoryKey);
+
+    const displayName = csvCell(
+      row,
+      columnIndexes.displayName
+    );
+
+    const rawValue = csvCell(
+      row,
+      columnIndexes.value
+    );
+
+    const storedValue = normalizeStoredValue(
+      rawValue || displayName
+    );
+
+    if (!categoryKey) {
+      invalidRows.push(
+        `Row ${rowNumber}: category_key is required.`
+      );
+      continue;
+    }
+
+    if (!categoryMap.has(categoryKey)) {
+      invalidRows.push(
+        `Row ${rowNumber}: category "${categoryKey}" does not exist.`
+      );
+      continue;
+    }
+
+    if (!displayName) {
+      invalidRows.push(
+        `Row ${rowNumber}: display_name is required.`
+      );
+      continue;
+    }
+
+    if (!storedValue) {
+      invalidRows.push(
+        `Row ${rowNumber}: stored value could not be generated.`
+      );
+      continue;
+    }
+
+    const duplicateKey =
+      `${categoryKey}:${storedValue}`.toLowerCase();
+
+    if (fileDuplicateKeys.has(duplicateKey)) {
+      invalidRows.push(
+        `Row ${rowNumber}: duplicate value "${storedValue}" appears more than once in this CSV.`
+      );
+      continue;
+    }
+
+    fileDuplicateKeys.add(duplicateKey);
+
+    let color: string | null = null;
+
+    try {
+      color = normalizeImportedColor(
+        csvCell(row, columnIndexes.color)
+      );
+    } catch (error) {
+      invalidRows.push(
+        `Row ${rowNumber}: ${
+          error instanceof Error
+            ? error.message
+            : 'Invalid color.'
+        }`
+      );
+      continue;
+    }
+
+    const archivedAtRaw = csvCell(
+      row,
+      columnIndexes.archivedAt
+    );
+
+    const archivedAt =
+      parseImportedDate(archivedAtRaw);
+
+    if (archivedAtRaw && !archivedAt) {
+      invalidRows.push(
+        `Row ${rowNumber}: archived_at must be a valid date or left blank.`
+      );
+      continue;
+    }
+
+    candidates.push({
+      rowNumber,
+      category_key: categoryKey,
+      value: storedValue,
+      display_name: displayName,
+      description:
+        csvCell(
+          row,
+          columnIndexes.description
+        ) || null,
+      icon:
+        csvCell(row, columnIndexes.icon) ||
+        null,
+      color,
+      sort_order: parseImportedInteger(
+        csvCell(row, columnIndexes.sortOrder),
+        100
+      ),
+      is_active:
+        archivedAt !== null
+          ? false
+          : parseImportedBoolean(
+              csvCell(
+                row,
+                columnIndexes.isActive
+              ),
+              false
+            ),
+      archived_at: archivedAt,
+    });
+  }
+
+  if (invalidRows.length) {
+    throw new Error(
+      [
+        `${invalidRows.length} invalid CSV row${
+          invalidRows.length === 1 ? '' : 's'
+        } found.`,
+        ...invalidRows.slice(0, 20),
+        invalidRows.length > 20
+          ? `Additional errors omitted: ${
+              invalidRows.length - 20
+            }.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    );
+  }
+
+  if (!candidates.length) {
+    throw new Error(
+      'No valid lookup rows were found in the CSV.'
+    );
+  }
+
+  const categoryKeys = Array.from(
+    new Set(
+      candidates.map(
+        (candidate) => candidate.category_key
+      )
+    )
+  );
+
+  const { data: existingRows, error: existingError } =
+    await supabase
+      .from('lookup_values')
+      .select('category_key, value')
+      .in('category_key', categoryKeys);
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  const existingKeys = new Set(
+    (existingRows ?? []).map(
+      (row) =>
+        `${row.category_key}:${row.value}`.toLowerCase()
+    )
+  );
+
+  const duplicateRows = candidates.filter(
+    (candidate) =>
+      existingKeys.has(
+        `${candidate.category_key}:${candidate.value}`.toLowerCase()
+      )
+  );
+
+  if (duplicateRows.length && !skipDuplicates) {
+    const firstDuplicates = duplicateRows
+      .slice(0, 20)
+      .map(
+        (row) =>
+          `Row ${row.rowNumber}: "${row.value}" already exists in ${row.category_key}.`
+      );
+
+    throw new Error(
+      [
+        `${duplicateRows.length} existing duplicate${
+          duplicateRows.length === 1 ? '' : 's'
+        } found.`,
+        ...firstDuplicates,
+      ].join('\n')
+    );
+  }
+
+  const rowsToInsert = candidates.filter(
+    (candidate) =>
+      !existingKeys.has(
+        `${candidate.category_key}:${candidate.value}`.toLowerCase()
+      )
+  );
+
+  if (!rowsToInsert.length) {
+    redirect(
+      `/admin/lookups/import?imported=0&skipped=${duplicateRows.length}`
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const insertPayload = rowsToInsert.map((row) => ({
+    category_key: row.category_key,
+    value: row.value,
+    display_name: row.display_name,
+    description: row.description,
+    icon: row.icon,
+    color: row.color,
+    sort_order: row.sort_order,
+    is_active: row.is_active,
+    archived_at: row.archived_at,
+
+    created_at: nowIso,
+    updated_at: nowIso,
+    created_by: user.id,
+    updated_by: user.id,
+  }));
+
+  const batchSize = 250;
+
+  for (
+    let start = 0;
+    start < insertPayload.length;
+    start += batchSize
+  ) {
+    const batch = insertPayload.slice(
+      start,
+      start + batchSize
+    );
+
+    const { error: insertError } = await supabase
+      .from('lookup_values')
+      .insert(batch);
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        throw new Error(
+          'A duplicate value was created while the import was running. Export the latest registry and try again.'
+        );
+      }
+
+      throw new Error(insertError.message);
+    }
+  }
+
+  refreshLookupPaths(categoryOverride || undefined);
+  revalidatePath('/admin/lookups/import');
+
+  redirect(
+    `/admin/lookups/import?imported=${
+      rowsToInsert.length
+    }&skipped=${duplicateRows.length}`
+  );
+}
+
+function parseLookupCsv(content: string) {
+  const rows: string[][] = [];
+
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+
+  const normalized = content
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  for (
+    let index = 0;
+    index < normalized.length;
+    index += 1
+  ) {
+    const character = normalized[index];
+    const nextCharacter = normalized[index + 1];
+
+    if (character === '"') {
+      if (quoted && nextCharacter === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+
+      continue;
+    }
+
+    if (character === ',' && !quoted) {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+
+    if (character === '\n' && !quoted) {
+      row.push(cell);
+      rows.push(row);
+
+      row = [];
+      cell = '';
+      continue;
+    }
+
+    cell += character;
+  }
+
+  if (quoted) {
+    throw new Error(
+      'The CSV contains an unclosed quoted value.'
+    );
+  }
+
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function normalizeCsvHeader(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function csvCell(
+  row: string[],
+  index: number
+) {
+  if (index < 0) return '';
+
+  return String(row[index] || '').trim();
+}
+
+function parseImportedBoolean(
+  value: string,
+  fallback: boolean
+) {
+  if (!value) return fallback;
+
+  const normalized = value
+    .trim()
+    .toLowerCase();
+
+  if (
+    ['1', 'true', 'yes', 'on', 'active'].includes(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    [
+      '0',
+      'false',
+      'no',
+      'off',
+      'inactive',
+      'disabled',
+    ].includes(normalized)
+  ) {
+    return false;
+  }
+
+  return fallback;
+}
+
+function parseImportedInteger(
+  value: string,
+  fallback: number
+) {
+  if (!value) return fallback;
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+
+  return Math.max(Math.round(number), 0);
+}
+
+function normalizeImportedColor(
+  value: string
+) {
+  const color = value.trim();
+
+  if (!color) return null;
+
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+    return color.toUpperCase();
+  }
+
+  if (/^#[0-9a-fA-F]{3}$/.test(color)) {
+    const short = color.slice(1);
+
+    return `#${short
+      .split('')
+      .map((character) =>
+        character.repeat(2)
+      )
+      .join('')
+      .toUpperCase()}`;
+  }
+
+  throw new Error(
+    `color "${color}" must use a hexadecimal format such as #FFAA00.`
+  );
+}
+
+function parseImportedDate(value: string) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
