@@ -554,6 +554,7 @@ import {
   isPublicEventStatus,
   type EventStatus,
 } from '@/lib/events/workflow';
+import { transitionEventStatus } from '@/lib/events/transition';
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = [
   'draft',
@@ -752,7 +753,9 @@ function refreshEventPaths(eventId: string) {
   revalidatePath(`/dashboard/events/${eventId}/review`);
 }
 
-export async function reviewEvent(formData: FormData) {
+export async function reviewEvent(
+  formData: FormData
+) {
   const action = textValue(formData, 'action');
 
   if (action === 'approve') {
@@ -760,10 +763,6 @@ export async function reviewEvent(formData: FormData) {
   }
 
   if (action === 'reject') {
-    const reason =
-      textValue(formData, 'reason') ||
-      textValue(formData, 'rejection_reason');
-
     const replacement = new FormData();
 
     replacement.set(
@@ -771,7 +770,20 @@ export async function reviewEvent(formData: FormData) {
       textValue(formData, 'event_id')
     );
 
-    replacement.set('rejection_reason', reason);
+    replacement.set(
+      'rejection_reason',
+      textValue(formData, 'rejection_reason') ||
+        textValue(formData, 'reason')
+    );
+
+    const adminNote = textValue(
+      formData,
+      'admin_note'
+    );
+
+    if (adminNote) {
+      replacement.set('admin_note', adminNote);
+    }
 
     return rejectEvent(replacement);
   }
@@ -784,7 +796,9 @@ export async function approveEvent(formData: FormData) {
 
   const eventId = textValue(formData, 'event_id');
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   const event = await getEventWorkflowRecord(
     supabase,
@@ -797,51 +811,53 @@ export async function approveEvent(formData: FormData) {
     ? 'scheduled'
     : 'approved_unpaid';
 
-  const nowIso = new Date().toISOString();
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'admin',
+    toStatus: nextStatus,
+    source: 'admin_action',
+    reason: paid
+      ? 'Event approved and cleared for scheduling.'
+      : 'Event approved and awaiting payment.',
+    note: textValue(formData, 'admin_note') || null,
+    metadata: {
+      action: 'approve_event',
+      payment_status: event.payment_status,
+      payment_override: event.payment_override === true,
+    },
+    updates: {
+      isApproved: true,
+      approvedAt: new Date().toISOString(),
+      approvedBy: user.id,
 
-  const isPublic = calculatePublicState(event, {
-    status: nextStatus,
-    isApproved: true,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+    },
   });
 
-  const { error } = await supabase
-    .from('events')
-    .update({
-      status: nextStatus,
-      is_approved: true,
-      is_public: isPublic,
-
-      approved_at: nowIso,
-      approved_by: user.id,
-
-      rejection_reason: null,
-      rejected_at: null,
-      rejected_by: null,
-
-      revision_admin_note: null,
-
-      admin_last_updated_at: nowIso,
-      admin_last_updated_by: user.id,
-      updated_at: nowIso,
-    })
-    .eq('id', eventId);
-
-  if (error) throw new Error(error.message);
-
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?approved=1`);
+
+  redirect(
+    `/admin/events/${eventId}?approved=1`
+  );
 }
 
 export async function rejectEvent(formData: FormData) {
   const { supabase, user } = await requireAdmin();
 
   const eventId = textValue(formData, 'event_id');
+
   const rejectionReason = textValue(
     formData,
     'rejection_reason'
   );
 
-  if (!eventId) throw new Error('Missing event id.');
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
 
   if (!rejectionReason) {
     throw new Error(
@@ -849,36 +865,34 @@ export async function rejectEvent(formData: FormData) {
     );
   }
 
-  await getEventWorkflowRecord(supabase, eventId);
-
-  const nowIso = new Date().toISOString();
-
-  const { error } = await supabase
-    .from('events')
-    .update({
-      status: 'rejected',
-      is_approved: false,
-      is_public: false,
-
-      rejected_at: nowIso,
-      rejected_by: user.id,
-      rejection_reason: rejectionReason,
-
-      approved_at: null,
-      approved_by: null,
-
-      locked_at: null,
-
-      admin_last_updated_at: nowIso,
-      admin_last_updated_by: user.id,
-      updated_at: nowIso,
-    })
-    .eq('id', eventId);
-
-  if (error) throw new Error(error.message);
+  await transitionEventStatus({
+    supabase,
+    eventId,
+    actorId: user.id,
+    actor: 'admin',
+    toStatus: 'rejected',
+    source: 'admin_action',
+    reason: rejectionReason,
+    note: textValue(formData, 'admin_note') || null,
+    metadata: {
+      action: 'reject_event',
+    },
+    updates: {
+      isApproved: false,
+      isPublic: false,
+      rejectedAt: new Date().toISOString(),
+      rejectedBy: user.id,
+      rejectionReason,
+      approvedAt: null,
+      approvedBy: null,
+    },
+  });
 
   refreshEventPaths(eventId);
-  redirect(`/admin/events/${eventId}?rejected=1`);
+
+  redirect(
+    `/admin/events/${eventId}?rejected=1`
+  );
 }
 
 export async function applyPaymentOverride(
