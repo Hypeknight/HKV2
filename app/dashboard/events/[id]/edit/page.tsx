@@ -6,7 +6,7 @@ import {
   updateEventRevision,
 } from '@/app/dashboard/events/actions';
 import { US_STATES } from '@/lib/states';
-import { getLookupMap, type LookupValue } from '@/lib/lookups';
+import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
 type Props = {

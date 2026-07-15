@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getLookupMap, type LookupValue } from '@/lib/lookups';
+import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import {
   approveEvent,
   rejectEvent,

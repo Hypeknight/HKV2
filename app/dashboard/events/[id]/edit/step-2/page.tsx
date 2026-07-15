@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { updateEventStep2 } from '@/app/dashboard/events/actions';
 import { createClient } from '@/lib/supabase/server';
-import { getLookupMap, type LookupValue } from '@/lib/lookups';
+import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
 type Step2PageProps = {

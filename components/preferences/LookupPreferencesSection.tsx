@@ -1,9 +1,9 @@
-import type { LookupValue } from '@/lib/lookups';
+import type { LookupValue } from '@/lib/config/lookups';
 import PreferenceCheckboxGroup from './PreferenceCheckboxGroup';
 
 type Props = {
   title: string;
-  description?: string;
+  description: string;
   name: string;
   options?: LookupValue[];
   selected?: string[];

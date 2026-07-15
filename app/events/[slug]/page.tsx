@@ -795,7 +795,7 @@ function Chip({
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getLookupMap, type LookupValue } from '@/lib/lookups';
+import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import TrackView from '@/components/analytics/TrackView';
 import {
   ButtonLink,

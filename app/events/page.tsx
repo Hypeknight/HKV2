@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { expandCitySearch } from '@/lib/city-aliases';
-import { getLookupMap, type LookupValue } from '@/lib/lookups';
+import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { US_STATES, normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
 import {

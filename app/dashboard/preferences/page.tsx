@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getLookupMap } from '@/lib/lookups';
+import { getLookupMap } from '@/lib/config/lookups';
 import { saveEventPreferences } from './actions';
 import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
@@ -24,44 +24,80 @@ export default async function EventPreferencesPage({
   searchParams,
 }: Props) {
   const query = searchParams ? await searchParams : {};
+
   const supabase = await createClient();
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) redirect('/auth/login');
+  if (authError) {
+    throw new Error(authError.message);
+  }
 
-  const [{ data: preferences, error }, lookups] = await Promise.all([
-    supabase
-      .from('user_event_preferences')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle(),
+  if (!user) {
+    redirect('/auth/login');
+  }
 
-    getLookupMap([
-      'music_genres',
-      'event_types',
-      'vibe_tags',
-      'event_amenities',
-    ]),
-  ]);
+  const [{ data: preferences, error: preferencesError }, lookups] =
+    await Promise.all([
+      supabase
+        .from('user_event_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle(),
 
-  if (error) throw new Error(error.message);
+      getLookupMap([
+        'music_genres',
+        'event_types',
+        'vibe_tags',
+        'event_amenities',
+      ]),
+    ]);
 
-  const selectedGenres = arrayValue(preferences?.music_genres);
-  const selectedTypes = arrayValue(preferences?.event_types);
-  const selectedVibes = arrayValue(preferences?.vibe_tags);
-  const selectedAmenities = arrayValue(preferences?.amenity_preferences);
-  const selectedHidden = arrayValue(preferences?.hidden_preferences);
-  const selectedDays = arrayValue(preferences?.preferred_days);
-  const selectedTimes = arrayValue(preferences?.preferred_times);
+  if (preferencesError) {
+    throw new Error(preferencesError.message);
+  }
+
+  const selectedGenres = arrayValue(
+    preferences?.music_genres
+  );
+
+  const selectedTypes = arrayValue(
+    preferences?.event_types
+  );
+
+  const selectedVibes = arrayValue(
+    preferences?.vibe_tags
+  );
+
+  const selectedAmenities = arrayValue(
+    preferences?.amenity_preferences
+  );
+
+  const selectedHidden = arrayValue(
+    preferences?.hidden_preferences
+  );
+
+  const selectedDays = arrayValue(
+    preferences?.preferred_days
+  );
+
+  const selectedTimes = arrayValue(
+    preferences?.preferred_times
+  );
+
   const selectedNotifications = arrayValue(
     preferences?.notification_preferences
   );
 
-  const selectedSources = arrayValue(preferences?.preferred_sources).length
-    ? arrayValue(preferences?.preferred_sources)
+  const storedSources = arrayValue(
+    preferences?.preferred_sources
+  );
+
+  const selectedSources = storedSources.length
+    ? storedSources
     : ['hypeknight', 'external'];
 
   const lookupPreferenceCount =
@@ -80,9 +116,19 @@ export default async function EventPreferencesPage({
     lookupPreferenceCount + lifestylePreferenceCount;
 
   const cityLabel =
-    [preferences?.preferred_city, preferences?.preferred_state]
+    [
+      preferences?.preferred_city,
+      preferences?.preferred_state,
+    ]
       .filter(Boolean)
       .join(', ') || 'Set your home area';
+
+  const maxDistanceMiles =
+    Number(preferences?.max_distance_miles) || 25;
+
+  const maxCoverPrice = Number(
+    preferences?.max_cover_price ?? 50
+  );
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -107,14 +153,20 @@ export default async function EventPreferencesPage({
             </h1>
 
             <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Choose your city, music, event types, vibes, amenities, budget,
-              preferred days, times, and notifications. These signals can power
-              better recommendations throughout HypeKnight.
+              Choose your city, music, event types, vibes,
+              amenities, budget, preferred days, times, and
+              notifications. These signals can power better
+              recommendations throughout HypeKnight.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <Chip>{totalPreferenceCount} preferences selected</Chip>
-              <Chip>{selectedSources.length} event sources enabled</Chip>
+              <Chip>
+                {totalPreferenceCount} preferences selected
+              </Chip>
+
+              <Chip>
+                {selectedSources.length} event sources enabled
+              </Chip>
             </div>
           </div>
 
@@ -134,15 +186,13 @@ export default async function EventPreferencesPage({
               <InfoCard
                 label="Travel Radius"
                 icon="📍"
-                value={`${preferences?.max_distance_miles || 25} miles`}
+                value={`${maxDistanceMiles} miles`}
               />
 
               <InfoCard
                 label="Max Cover"
                 icon="💵"
-                value={`$${Number(
-                  preferences?.max_cover_price ?? 50
-                ).toFixed(2)}`}
+                value={`$${maxCoverPrice.toFixed(2)}`}
               />
             </div>
           </div>
@@ -155,12 +205,20 @@ export default async function EventPreferencesPage({
         </div>
       ) : null}
 
-      <form action={saveEventPreferences} className="space-y-8">
-        <Panel title="Home area" eyebrow="Local Discovery">
+      <form
+        action={saveEventPreferences}
+        className="space-y-8"
+      >
+        <Panel
+          title="Home area"
+          eyebrow="Local Discovery"
+        >
           <HomeLocationSection
             preferredCity={preferences?.preferred_city}
             preferredState={preferences?.preferred_state}
-            maxDistanceMiles={preferences?.max_distance_miles}
+            maxDistanceMiles={
+              preferences?.max_distance_miles
+            }
           />
         </Panel>
 
@@ -169,67 +227,102 @@ export default async function EventPreferencesPage({
             title="Music Preferences"
             description="Choose the sounds that are most likely to pull you out."
             name="music_genres"
-            options={lookups.music_genres}
+            options={lookups.music_genres ?? []}
             selected={selectedGenres}
           />
         </Panel>
 
-        <Panel title="Event types" eyebrow="Experiences">
+        <Panel
+          title="Event types"
+          eyebrow="Experiences"
+        >
           <LookupPreferencesSection
             title="Event Type Preferences"
             description="Choose the kinds of events you want HypeKnight to surface first."
             name="event_types"
-            options={lookups.event_types}
+            options={lookups.event_types ?? []}
             selected={selectedTypes}
           />
         </Panel>
 
-        <Panel title="Preferred vibes" eyebrow="Energy">
+        <Panel
+          title="Preferred vibes"
+          eyebrow="Energy"
+        >
           <LookupPreferencesSection
             title="Vibe Preferences"
             description="Choose the atmosphere, setting, and energy you usually look for."
             name="vibe_tags"
-            options={lookups.vibe_tags}
+            options={lookups.vibe_tags ?? []}
             selected={selectedVibes}
           />
         </Panel>
 
-        <Panel title="Amenities" eyebrow="What Matters to You">
+        <Panel
+          title="Amenities"
+          eyebrow="What Matters to You"
+        >
           <LookupPreferencesSection
             title="Amenity Preferences"
             description="Choose features that can make an event or venue more appealing."
             name="amenity_preferences"
-            options={lookups.event_amenities}
+            options={lookups.event_amenities ?? []}
             selected={selectedAmenities}
           />
         </Panel>
 
-        <Panel title="Budget" eyebrow="Price Comfort">
+        <Panel
+          title="Budget"
+          eyebrow="Price Comfort"
+        >
           <BudgetPreferencesSection
             maxCoverPrice={preferences?.max_cover_price}
           />
         </Panel>
 
-        <Panel title="Preferred days" eyebrow="Your Schedule">
-          <PreferredDaysSection selected={selectedDays} />
+        <Panel
+          title="Preferred days"
+          eyebrow="Your Schedule"
+        >
+          <PreferredDaysSection
+            selected={selectedDays}
+          />
         </Panel>
 
-        <Panel title="Preferred times" eyebrow="When You Go Out">
-          <PreferredTimesSection selected={selectedTimes} />
+        <Panel
+          title="Preferred times"
+          eyebrow="When You Go Out"
+        >
+          <PreferredTimesSection
+            selected={selectedTimes}
+          />
         </Panel>
 
-        <Panel title="Things to hide" eyebrow="Reduce Noise">
-          <HiddenPreferencesSection selected={selectedHidden} />
+        <Panel
+          title="Things to hide"
+          eyebrow="Reduce Noise"
+        >
+          <HiddenPreferencesSection
+            selected={selectedHidden}
+          />
         </Panel>
 
-        <Panel title="Notifications" eyebrow="Stay in the Loop">
+        <Panel
+          title="Notifications"
+          eyebrow="Stay in the Loop"
+        >
           <NotificationPreferencesSection
             selected={selectedNotifications}
           />
         </Panel>
 
-        <Panel title="Event sources" eyebrow="Discovery Feed">
-          <EventSourcesSection selected={selectedSources} />
+        <Panel
+          title="Event sources"
+          eyebrow="Discovery Feed"
+        >
+          <EventSourcesSection
+            selected={selectedSources}
+          />
         </Panel>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
@@ -261,7 +354,9 @@ export default async function EventPreferencesPage({
 }
 
 function arrayValue(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
   return value
     .map(String)
