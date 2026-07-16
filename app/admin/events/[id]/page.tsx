@@ -18,6 +18,8 @@ import {
 import EventLifecycleTimeline, {
   type EventStatusHistoryItem,
 } from "@/components/admin/EventLifecycleTimeline";
+import AdminActivityFeed from "@/components/admin/AdminActivityFeed";
+import { getAdminActivity } from "@/lib/admin/activity";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -121,6 +123,7 @@ export default async function AdminEventDetailPage({ params }: Props) {
   const [
     { data: event, error: eventError },
     { data: statusHistory, error: historyError },
+    activity,
     lookups,
   ] = await Promise.all([
     supabase.from("events").select("*").eq("id", id).single(),
@@ -144,6 +147,13 @@ export default async function AdminEventDetailPage({ params }: Props) {
       )
       .eq("event_id", id)
       .order("created_at", { ascending: false }),
+
+    getAdminActivity(supabase, {
+      entityType: "event",
+      search: id,
+      page: 1,
+      pageSize: 12,
+    }),
 
     getLookupMap([
       "event_types",
@@ -547,6 +557,32 @@ export default async function AdminEventDetailPage({ params }: Props) {
           </Panel>
 
           <EventLifecycleTimeline history={lifecycleHistory} />
+
+          <Panel
+            title="Administrative Activity"
+            eyebrow="Global Audit History"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-3xl text-sm leading-6 text-white/60">
+                This history includes moderation, visibility, payment,
+                customer-service, and other administrative operations recorded
+                for this event.
+              </p>
+
+              <Link
+                href={`/admin/activity?entity_type=event&q=${encodeURIComponent(
+                  event.id,
+                )}`}
+                className="shrink-0 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-sm font-semibold text-white hover:border-accent/40"
+              >
+                Open Full Audit History
+              </Link>
+            </div>
+
+            <div className="mt-6">
+              <AdminActivityFeed items={activity.items} compact />
+            </div>
+          </Panel>
 
           <Panel title="Customer Service Edit" eyebrow="Public Information">
             <form action={updateAdminEventDetails} className="space-y-6">
