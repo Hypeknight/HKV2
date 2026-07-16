@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { EventStatus } from '@/lib/events/workflow';
 
 export type EventQueueSort =
   | 'newest'
@@ -155,19 +154,13 @@ type EventQueueDatabaseRow = {
   refund_status: string | null;
 
   current_step: number | null;
+};
 
-  profiles:
-    | {
-        display_name: string | null;
-        username: string | null;
-        app_role: string | null;
-      }
-    | Array<{
-        display_name: string | null;
-        username: string | null;
-        app_role: string | null;
-      }>
-    | null;
+type EventQueueOwnerRow = {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+  app_role: string | null;
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -205,41 +198,36 @@ export async function getAdminEventQueue(
     .from('events')
     .select(
       `
-        id,
-        owner_id,
-        name,
-        slug,
-        venue_name,
-        city,
-        state,
-        flyer_url,
-        status,
-        is_public,
-        is_approved,
-        is_paid,
-        payment_override,
-        payment_status,
-        total_price,
-        payment_amount,
-        event_start_at,
-        event_end_at,
-        promotion_start_at,
-        promotion_end_at,
-        submitted_at,
-        created_at,
-        updated_at,
-        status_changed_at,
-        status_change_reason,
-        rejection_reason,
-        removal_reason,
-        refund_requested,
-        refund_status,
-        current_step,
-        profiles:owner_id (
-          display_name,
-          username,
-          app_role
-        )
+    id,
+    owner_id,
+    name,
+    slug,
+    venue_name,
+    city,
+    state,
+    flyer_url,
+    status,
+    is_public,
+    is_approved,
+    is_paid,
+    payment_override,
+    payment_status,
+    total_price,
+    payment_amount,
+    event_start_at,
+    event_end_at,
+    promotion_start_at,
+    promotion_end_at,
+    submitted_at,
+    created_at,
+    updated_at,
+    status_changed_at,
+    status_change_reason,
+    rejection_reason,
+    removal_reason,
+    refund_requested,
+    refund_status,
+    current_step
       `,
       {
         count: 'exact',
@@ -347,9 +335,61 @@ export async function getAdminEventQueue(
     throw new Error(error.message);
   }
 
-  const normalized = (
-    (data ?? []) as EventQueueDatabaseRow[]
-  ).map(normalizeQueueItem);
+  const eventRows =
+    (data ?? []) as EventQueueDatabaseRow[];
+
+  const ownerIds = Array.from(
+    new Set(
+      eventRows
+        .map((event) => event.owner_id)
+        .filter(
+          (ownerId): ownerId is string =>
+            Boolean(ownerId)
+        )
+    )
+  );
+
+  let ownerMap = new Map<
+    string,
+    EventQueueOwnerRow
+  >();
+
+  if (ownerIds.length) {
+    const {
+      data: ownerRows,
+      error: ownerError,
+    } = await supabase
+      .from('profiles')
+      .select(`
+        id,
+        display_name,
+        username,
+        app_role
+      `)
+      .in('id', ownerIds);
+
+    if (ownerError) {
+      throw new Error(ownerError.message);
+    }
+
+    ownerMap = new Map(
+      (
+        (ownerRows ?? []) as EventQueueOwnerRow[]
+      ).map((owner) => [
+        owner.id,
+        owner,
+      ])
+    );
+  }
+
+  const normalized = eventRows.map((row) =>
+    normalizeQueueItem(
+      row,
+      row.owner_id
+        ? ownerMap.get(row.owner_id)
+        : undefined
+    )
+  );
 
   const urgencyFiltered =
     urgency === 'all'
@@ -550,11 +590,9 @@ async function countEvents(
 }
 
 function normalizeQueueItem(
-  row: EventQueueDatabaseRow
+  row: EventQueueDatabaseRow,
+  owner?: EventQueueOwnerRow
 ): EventQueueItem {
-  const owner = Array.isArray(row.profiles)
-    ? row.profiles[0]
-    : row.profiles;
 
   const totalPrice = Number(
     row.total_price ?? 0
