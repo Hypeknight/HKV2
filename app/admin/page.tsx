@@ -5,6 +5,8 @@ import {
   getOperationsSummary,
   type OperationsActivity,
 } from '@/lib/admin/operations';
+import { getAdminActivity } from '@/lib/admin/activity';
+import AdminActivityFeed from '@/components/admin/AdminActivityFeed';
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -39,11 +41,17 @@ export default async function AdminPage() {
 
   const [
     operations,
+    globalActivity,
     { count: couponCount, error: couponError },
     { count: lookupValueCount, error: lookupError },
     { count: rejectedCount, error: rejectedError },
   ] = await Promise.all([
     getOperationsSummary(),
+
+    getAdminActivity(supabase, {
+      page: 1,
+      pageSize: 8,
+    }),
 
     supabase
       .from('event_coupons')
@@ -171,12 +179,21 @@ export default async function AdminPage() {
               decisions.
             </p>
 
-            <Link
-              href="/admin/events"
-              className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
-            >
-              Open Event Queue
-            </Link>
+            <div className="mt-5 grid gap-3">
+              <Link
+                href="/admin/events"
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
+              >
+                Open Event Queue
+              </Link>
+
+              <Link
+                href="/admin/activity"
+                className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-semibold text-white hover:border-accent/40"
+              >
+                Open Activity Center
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -375,6 +392,30 @@ export default async function AdminPage() {
       </section>
 
       <section>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <SectionTitle
+            eyebrow="Administrative Activity"
+            title="Recent platform operations"
+            text="The latest administrative actions across moderation, revisions, payments, financial updates, visibility, and event management."
+          />
+
+          <Link
+            href="/admin/activity"
+            className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center text-sm font-semibold text-white hover:border-accent/40"
+          >
+            View Full Activity Center
+          </Link>
+        </div>
+
+        <div className="mt-6">
+          <AdminActivityFeed
+            items={globalActivity.items}
+            compact
+          />
+        </div>
+      </section>
+
+      <section>
         <SectionTitle
           eyebrow="Platform Activity"
           title="Recent lifecycle changes"
@@ -434,6 +475,18 @@ export default async function AdminPage() {
                 : undefined
             }
             accent
+          />
+
+          <AdminCard
+            icon="🧭"
+            title="Activity Center"
+            description="Review administrative operations, audit changes, trace decisions, and open affected records."
+            href="/admin/activity"
+            badge={
+              globalActivity.total
+                ? `${globalActivity.total} records`
+                : undefined
+            }
           />
 
           <AdminCard
