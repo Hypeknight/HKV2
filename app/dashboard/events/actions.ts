@@ -1369,6 +1369,205 @@ export async function updateEventStep1(formData: FormData) {
   redirect(`/dashboard/events/${eventId}/edit/step-2`);
 }
 
+
+export async function duplicateEvent(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const sourceEventId = cleanText(formData, 'event_id');
+  const copyFlyer = cleanText(formData, 'copy_flyer') !== 'no';
+
+  if (!sourceEventId) {
+    throw new Error('Missing event id.');
+  }
+
+  const { data: sourceEvent, error: sourceError } = await supabase
+    .from('events')
+    .select(`
+      id,
+      owner_id,
+      owner_type,
+      name,
+      flyer_url,
+      image_url,
+      venue_name,
+      venue_id,
+      address,
+      city,
+      state,
+      description,
+      event_type,
+      music_selection,
+      vibe_tags,
+      amenities,
+      dress_code,
+      entry_price,
+      cover_charge,
+      age_requirement,
+      smoking_policy,
+      parking_notes,
+      special_notes,
+      ticket_url,
+      website_url,
+      instagram_url,
+      facebook_url
+    `)
+    .eq('id', sourceEventId)
+    .eq('owner_id', user.id)
+    .single();
+
+  if (sourceError || !sourceEvent) {
+    throw new Error(sourceError?.message || 'Source event not found.');
+  }
+
+  const nowIso = new Date().toISOString();
+  const duplicateName = `${String(
+    sourceEvent.name || 'Untitled Event'
+  ).trim()} Copy`;
+
+  const baseSlug = slugify(
+    `${duplicateName} ${sourceEvent.city || ''} ${sourceEvent.state || ''}`
+  );
+
+  const duplicateSlug = `${baseSlug || 'event-copy'}-${Date.now()}`;
+
+  const { data: duplicatedEvent, error } = await supabase
+    .from('events')
+    .insert({
+      owner_id: user.id,
+      owner_type: sourceEvent.owner_type || 'user',
+
+      name: duplicateName,
+      slug: duplicateSlug,
+
+      flyer_url: copyFlyer ? sourceEvent.flyer_url || null : null,
+      image_url: copyFlyer ? sourceEvent.image_url || null : null,
+
+      venue_name: sourceEvent.venue_name || null,
+      venue_id: sourceEvent.venue_id || null,
+      address: sourceEvent.address || null,
+      city: sourceEvent.city || null,
+      state: sourceEvent.state || null,
+
+      description: sourceEvent.description || null,
+      event_type: sourceEvent.event_type || null,
+      music_selection: Array.isArray(sourceEvent.music_selection)
+        ? sourceEvent.music_selection
+        : [],
+      vibe_tags: Array.isArray(sourceEvent.vibe_tags)
+        ? sourceEvent.vibe_tags
+        : [],
+      amenities: Array.isArray(sourceEvent.amenities)
+        ? sourceEvent.amenities
+        : [],
+
+      dress_code: sourceEvent.dress_code || null,
+      entry_price: sourceEvent.entry_price || null,
+      cover_charge: sourceEvent.cover_charge || null,
+      age_requirement: sourceEvent.age_requirement || null,
+      smoking_policy: sourceEvent.smoking_policy || null,
+      parking_notes: sourceEvent.parking_notes || null,
+      special_notes: sourceEvent.special_notes || null,
+
+      ticket_url: sourceEvent.ticket_url || null,
+      website_url: sourceEvent.website_url || null,
+      instagram_url: sourceEvent.instagram_url || null,
+      facebook_url: sourceEvent.facebook_url || null,
+
+      event_start_at: null,
+      event_end_at: null,
+      promotion_start_at: null,
+      promotion_end_at: null,
+
+      status: 'draft',
+      current_step: 0,
+      is_public: false,
+      is_approved: false,
+      is_paid: false,
+      payment_override: false,
+      payment_status: null,
+
+      base_price: null,
+      included_promo_days: null,
+      extra_promo_days: 0,
+      extra_promo_price: 0,
+      linkdn_mode: 'none',
+      linkdn_price: 0,
+      total_price: 0,
+      payment_amount: 0,
+
+      submitted_at: null,
+      approved_at: null,
+      approved_by: null,
+      rejected_at: null,
+      rejected_by: null,
+      rejection_reason: null,
+
+      original_status_before_revision: null,
+      revision_requested_at: null,
+      revision_submitted_at: null,
+      revision_reviewed_at: null,
+      revision_reviewed_by: null,
+      revision_reason: null,
+      revision_admin_note: null,
+
+      removal_requested_at: null,
+      removal_reason: null,
+      removed_at: null,
+      removed_by: null,
+
+      refund_requested: false,
+      refund_status: null,
+      refund_requested_at: null,
+      refund_reason: null,
+
+      hidden_by_admin: false,
+      admin_featured: false,
+      admin_notes: null,
+      admin_refund_note: null,
+      admin_last_updated_at: null,
+      admin_last_updated_by: null,
+
+      created_at: nowIso,
+      updated_at: nowIso,
+    })
+    .select('id')
+    .single();
+
+  if (error || !duplicatedEvent) {
+    throw new Error(error?.message || 'Unable to duplicate the event.');
+  }
+
+  await transitionEventStatus({
+    supabase,
+    eventId: duplicatedEvent.id,
+    actorId: user.id,
+    actor: 'owner',
+    toStatus: 'draft',
+    source: 'owner_action',
+    reason: 'Event duplicated from an existing listing.',
+    note: `Duplicated from event ${sourceEventId}.`,
+    metadata: {
+      action: 'duplicate_event',
+      source_event_id: sourceEventId,
+      copied_flyer: copyFlyer,
+    },
+    updates: {
+      isApproved: false,
+      isPublic: false,
+      isPaid: false,
+      paymentOverride: false,
+      hiddenByAdmin: false,
+    },
+  });
+
+  refreshOwnerEventPaths(duplicatedEvent.id);
+  revalidatePath(`/dashboard/events/${sourceEventId}/review`);
+
+  redirect(
+    `/dashboard/events/${duplicatedEvent.id}/edit/step-1?duplicated=1`
+  );
+}
+
 export async function updateEventRevision(formData: FormData) {
   const { supabase, user } = await requireUser();
 

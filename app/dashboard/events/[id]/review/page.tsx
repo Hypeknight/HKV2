@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getPlatformSettings } from '@/lib/settings';
 import {
+  duplicateEvent,
   requestEventRemovalOrRefund,
   startEventRevision,
   submitEventForModeration,
@@ -14,6 +15,9 @@ import {
   Panel,
   SectionHeader,
 } from '@/components/ui';
+import EventLifecycleTimeline, {
+  type EventStatusHistoryItem,
+} from '@/components/admin/EventLifecycleTimeline';
 
 type ReviewPageProps = {
   params: Promise<{
@@ -33,19 +37,56 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
 
   if (!user) redirect('/auth/login');
 
-  const { data: viewerProfile } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
-    .maybeSingle();
+  const [
+    { data: viewerProfile, error: profileError },
+    { data: event, error: eventError },
+    { data: lifecycleRows, error: lifecycleError },
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('app_role')
+      .eq('id', user.id)
+      .maybeSingle(),
 
-  const { data: event, error } = await supabase
-    .from('events')
-    .select('*')
-    .eq('id', id)
-    .single();
+    supabase
+      .from('events')
+      .select('*')
+      .eq('id', id)
+      .single(),
 
-  if (error || !event) notFound();
+    supabase
+      .from('event_status_history')
+      .select(`
+        id,
+        event_id,
+        from_status,
+        to_status,
+        changed_by,
+        changed_by_role,
+        reason,
+        note,
+        source,
+        metadata,
+        created_at
+      `)
+      .eq('event_id', id)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (eventError || !event) {
+    notFound();
+  }
+
+  if (lifecycleError) {
+    throw new Error(lifecycleError.message);
+  }
+
+  const lifecycleHistory =
+    (lifecycleRows || []) as EventStatusHistoryItem[];
 
   const isOwner = event.owner_id === user.id;
   const isAdmin = viewerProfile?.app_role === 'admin';
@@ -55,8 +96,6 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
   const now = new Date();
   const promotionStart = parseWallTime(event.promotion_start_at);
   const promotionEnd = parseWallTime(event.promotion_end_at);
-  const eventStart = parseWallTime(event.event_start_at);
-
   const isBeforePromotionWindow = promotionStart ? now < promotionStart : false;
 
   const canViewPublicEvent =
@@ -283,6 +322,15 @@ export default async function EventReviewPage({ params }: ReviewPageProps) {
           {publicDisplayText}
         </div>
       </Panel>
+
+      <EventLifecycleTimeline
+        history={lifecycleHistory}
+        currentStatus={event.status}
+        perspective="owner"
+        title="Your Event Timeline"
+        eyebrow="Event Progress"
+        emptyText="Lifecycle updates will appear here after the event moves through review, payment, promotion, and completion."
+      />
 
       <Panel title="Package and pricing" eyebrow="Owner Information">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -527,6 +575,37 @@ function OwnerCommandPanel({
             </button>
           </form>
         ) : null}
+
+        <form
+          action={duplicateEvent}
+          className="rounded-2xl border border-white/10 bg-black/20 p-5"
+        >
+          <input
+            type="hidden"
+            name="event_id"
+            value={event.id}
+          />
+
+          <input
+            type="hidden"
+            name="copy_flyer"
+            value="yes"
+          />
+
+          <h3 className="text-xl font-black text-white">
+            Duplicate Event
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-white/60">
+            Create a new draft using this event&apos;s venue,
+            description, settings, and flyer. Dates, payment,
+            approval, and workflow history will reset.
+          </p>
+
+          <button className="mt-5 w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
+            Duplicate Event
+          </button>
+        </form>
 
         <DeadAction title="Upgrade Package" text="Upgrade tools can be connected later." />
 
