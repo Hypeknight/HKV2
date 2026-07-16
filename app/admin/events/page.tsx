@@ -545,6 +545,14 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import {
+  getAdminEventQueue,
+  type EventQueueApprovalFilter,
+  type EventQueueItem,
+  type EventQueuePaymentFilter,
+  type EventQueueSort,
+  type EventQueueUrgency,
+} from '@/lib/admin/event-queue';
+import {
   approveEvent,
   rejectEvent,
   applyPaymentOverride,
@@ -557,63 +565,31 @@ type Props = {
     q?: string;
     status?: string;
     payment?: string;
+    approval?: string;
+    urgency?: string;
     city?: string;
-    queue?: string;
+    state?: string;
+    sort?: string;
+    page?: string;
   }>;
-};
-
-type AdminEvent = {
-  id: string;
-  owner_id?: string | null;
-  slug?: string | null;
-  name?: string | null;
-  venue_name?: string | null;
-  address?: string | null;
-  city?: string | null;
-  state?: string | null;
-  flyer_url?: string | null;
-  description?: string | null;
-  event_start_at?: string | null;
-  event_end_at?: string | null;
-  promotion_start_at?: string | null;
-  promotion_end_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  submitted_at?: string | null;
-  status?: string | null;
-  is_public?: boolean | null;
-  is_paid?: boolean | null;
-  payment_override?: boolean | null;
-  payment_status?: string | null;
-  payment_amount?: number | string | null;
-  total_price?: number | string | null;
-  coupon_code?: string | null;
-  rejection_reason?: string | null;
-  revision_reason?: string | null;
-  revision_admin_note?: string | null;
-  removal_reason?: string | null;
-  refund_reason?: string | null;
-};
-
-type OwnerSummary = {
-  id: string;
-  display_name?: string | null;
-  username?: string | null;
 };
 
 const PIPELINE_STATUSES = [
   'draft',
   'building',
+  'revision_draft',
   'submitted',
+  'approved_unpaid',
   'approved_awaiting_payment',
   'paid_awaiting_approval',
-  'revision_draft',
   'revision_submitted',
   'scheduled',
   'active',
   'live',
   'rejected',
   'removal_requested',
+  'refund_requested',
+  'cancelled',
   'removed',
   'ended',
   'archived',
@@ -623,158 +599,85 @@ const REVIEW_STATUSES = [
   'submitted',
   'paid_awaiting_approval',
   'approved_unpaid',
+  'approved_awaiting_payment',
 ];
 
 const PUBLIC_STATUSES = ['scheduled', 'active', 'live'];
 
-export default async function AdminEventsPage({ searchParams }: Props) {
+export default async function AdminEventsPage({
+  searchParams,
+}: Props) {
   const query = searchParams ? await searchParams : {};
-
-  const search = clean(query.q);
-  const statusFilter = clean(query.status);
-  const paymentFilter = clean(query.payment);
-  const cityFilter = clean(query.city);
-  const queueFilter = clean(query.queue);
-
   const supabase = await createClient();
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) redirect('/auth/login');
+  if (authError) {
+    throw new Error(authError.message);
+  }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
-    .single();
+  if (!user) {
+    redirect('/auth/login');
+  }
 
-  if (profile?.app_role !== 'admin') redirect('/dashboard');
+  const { data: profile, error: profileError } =
+    await supabase
+      .from('profiles')
+      .select('app_role')
+      .eq('id', user.id)
+      .single();
 
-  const { data: events, error } = await supabase
-    .from('events')
-    .select('*')
-    .order('created_at', { ascending: false });
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
 
-  if (error) throw new Error(error.message);
+  if (profile?.app_role !== 'admin') {
+    redirect('/dashboard');
+  }
 
-  const allEvents = (events ?? []) as AdminEvent[];
+  const filters = {
+    search: clean(query.q),
+    status: clean(query.status),
+    payment: asPaymentFilter(query.payment),
+    approval: asApprovalFilter(query.approval),
+    urgency: asUrgencyFilter(query.urgency),
+    city: clean(query.city),
+    state: clean(query.state),
+    sort: asSort(query.sort),
+    page: positiveInteger(query.page, 1),
+    pageSize: 25,
+  };
 
-  const ownerIds = Array.from(
-    new Set(
-      allEvents
-        .map((event) => event.owner_id)
-        .filter((value): value is string => Boolean(value))
-    )
+  const queue = await getAdminEventQueue(
+    supabase,
+    filters
   );
-
-  const { data: owners } = ownerIds.length
-    ? await supabase
-        .from('profiles')
-        .select('id, display_name, username')
-        .in('id', ownerIds)
-    : { data: [] as OwnerSummary[] };
-
-  const ownerMap = new Map(
-    ((owners ?? []) as OwnerSummary[]).map((owner) => [owner.id, owner])
-  );
-
-  const cityOptions = Array.from(
-    new Set(
-      allEvents
-        .map((event) =>
-          [event.city, event.state].filter(Boolean).join(', ').trim()
-        )
-        .filter(Boolean)
-    )
-  ).sort((a, b) => a.localeCompare(b));
-
-  const counts = buildCounts(allEvents);
-
-  let filteredEvents = allEvents.filter((event) => {
-    const owner = event.owner_id
-      ? ownerMap.get(event.owner_id)
-      : undefined;
-
-    const haystack = [
-      event.name,
-      event.venue_name,
-      event.city,
-      event.state,
-      event.status,
-      event.payment_status,
-      event.coupon_code,
-      event.description,
-      owner?.display_name,
-      owner?.username,
-      event.owner_id,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-
-    const matchesSearch = search
-      ? haystack.includes(search.toLowerCase())
-      : true;
-
-    const matchesStatus = statusFilter
-      ? event.status === statusFilter
-      : true;
-
-    const matchesPayment =
-      paymentFilter === 'paid'
-        ? isEventPaid(event)
-        : paymentFilter === 'unpaid'
-          ? !isEventPaid(event)
-          : paymentFilter === 'override'
-            ? event.payment_override === true
-            : true;
-
-    const eventCity = [event.city, event.state]
-      .filter(Boolean)
-      .join(', ')
-      .toLowerCase();
-
-    const matchesCity = cityFilter
-      ? eventCity === cityFilter.toLowerCase()
-      : true;
-
-    const matchesQueue =
-      queueFilter === 'review'
-        ? REVIEW_STATUSES.includes(event.status || '')
-        : queueFilter === 'revision'
-          ? event.status === 'revision_submitted'
-          : queueFilter === 'removal'
-            ? ['removal_requested', 'refund_requested'].includes(
-                event.status || ''
-              )
-            : queueFilter === 'public'
-              ? PUBLIC_STATUSES.includes(event.status || '')
-              : queueFilter === 'drafts'
-                ? ['draft', 'building', 'revision_draft'].includes(
-                    event.status || ''
-                  )
-                : true;
-
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesPayment &&
-      matchesCity &&
-      matchesQueue
-    );
-  });
-
-  filteredEvents = filteredEvents.sort(sortPriorityFirst);
 
   const activeFilterCount = [
-    search,
-    statusFilter,
-    paymentFilter,
-    cityFilter,
-    queueFilter,
+    filters.search,
+    filters.status,
+    filters.payment !== 'all'
+      ? filters.payment
+      : '',
+    filters.approval !== 'all'
+      ? filters.approval
+      : '',
+    filters.urgency !== 'all'
+      ? filters.urgency
+      : '',
+    filters.city,
+    filters.state,
+    filters.sort !== 'newest'
+      ? filters.sort
+      : '',
   ].filter(Boolean).length;
+
+  const oldestQueueItem = getOldestQueueItem(
+    queue.items
+  );
 
   return (
     <section className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -817,28 +720,50 @@ export default async function AdminEventsPage({ searchParams }: Props) {
             </h1>
 
             <p className="mt-5 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Search, filter, inspect, approve, reject, revise, and monitor
-              HypeKnight events from one operational workspace.
+              Search, filter, prioritize, approve, reject, revise,
+              and monitor HypeKnight events from one operational
+              workspace.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-2">
               <StatusChip
-                label={`${counts.review} awaiting review`}
-                tone={counts.review ? 'yellow' : 'green'}
+                label={`${queue.summary.awaitingReview} awaiting review`}
+                tone={
+                  queue.summary.awaitingReview
+                    ? 'yellow'
+                    : 'green'
+                }
               />
 
               <StatusChip
-                label={`${counts.revisions} revisions`}
-                tone={counts.revisions ? 'purple' : 'neutral'}
+                label={`${queue.summary.revisions} revisions`}
+                tone={
+                  queue.summary.revisions
+                    ? 'purple'
+                    : 'neutral'
+                }
               />
 
               <StatusChip
-                label={`${counts.removals} removals`}
-                tone={counts.removals ? 'red' : 'neutral'}
+                label={`${queue.summary.removalRequests} removals`}
+                tone={
+                  queue.summary.removalRequests
+                    ? 'red'
+                    : 'neutral'
+                }
               />
 
               <StatusChip
-                label={`${counts.public} public`}
+                label={`${queue.summary.paymentExceptions} payment exceptions`}
+                tone={
+                  queue.summary.paymentExceptions
+                    ? 'red'
+                    : 'neutral'
+                }
+              />
+
+              <StatusChip
+                label={`${queue.summary.publicPipeline} public pipeline`}
                 tone="green"
               />
             </div>
@@ -846,104 +771,105 @@ export default async function AdminEventsPage({ searchParams }: Props) {
 
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
             <p className="text-xs uppercase tracking-[0.25em] text-white/45">
-              Oldest Review Item
+              Oldest Visible Queue Item
             </p>
 
             <p className="mt-3 text-3xl font-black text-white">
-              {getOldestQueueAge(allEvents)}
+              {oldestQueueItem
+                ? formatRelativeTime(
+                    oldestQueueItem.submitted_at ||
+                      oldestQueueItem.status_changed_at ||
+                      oldestQueueItem.created_at
+                  )
+                : 'Queue clear'}
             </p>
 
             <p className="mt-3 text-sm leading-6 text-white/60">
-              Time since the oldest submitted or revision event entered the
-              moderation queue.
+              Age of the oldest moderation or revision item on
+              this page.
             </p>
 
             <Link
-              href="/admin/events?queue=review"
+              href="/admin/events?status=submitted&sort=oldest"
               className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
             >
-              Open Review Queue
+              Open Oldest Reviews
             </Link>
           </div>
         </div>
       </section>
 
       <section>
-        <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-accent">
-            Priority Queue
-          </p>
+        <SectionTitle
+          eyebrow="Priority Queue"
+          title="Work that needs attention"
+          text="Start with moderation, revisions, removals, refunds, and payment exceptions before browsing the full inventory."
+        />
 
-          <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">
-            Work that needs attention
-          </h2>
-
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60 sm:text-base">
-            Start with reviews, revisions, removals, and payment exceptions
-            before browsing the full inventory.
-          </p>
-        </div>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <PriorityCard
-            title="New Reviews"
-            value={counts.review}
-            text="Submitted or paid events waiting for approval."
-            href="/admin/events?queue=review"
+            title="Reviews"
+            value={queue.summary.awaitingReview}
+            text="Events waiting for a moderation decision."
+            href="/admin/events?status=submitted"
             tone="yellow"
           />
 
           <PriorityCard
             title="Revisions"
-            value={counts.revisions}
+            value={queue.summary.revisions}
             text="Owner changes waiting for another decision."
-            href="/admin/events?queue=revision"
+            href="/admin/events?status=revision_submitted"
             tone="purple"
           />
 
           <PriorityCard
-            title="Removal / Refund"
-            value={counts.removals}
-            text="Removal or refund-related event requests."
-            href="/admin/events?queue=removal"
+            title="Removals"
+            value={queue.summary.removalRequests}
+            text="Owner removal requests needing action."
+            href="/admin/events?status=removal_requested"
             tone="red"
           />
 
           <PriorityCard
-            title="Unpaid"
-            value={counts.unpaid}
-            text="Events without payment or an override."
+            title="Refunds"
+            value={queue.summary.refundRequests}
+            text="Refund-related requests requiring review."
+            href="/admin/events?status=refund_requested"
+            tone="red"
+          />
+
+          <PriorityCard
+            title="Payment Issues"
+            value={queue.summary.paymentExceptions}
+            text="Payment and approval states needing attention."
             href="/admin/events?payment=unpaid"
             tone="orange"
           />
 
           <PriorityCard
-            title="Public"
-            value={counts.public}
-            text="Scheduled, active, or live event listings."
-            href="/admin/events?queue=public"
+            title="Public Pipeline"
+            value={queue.summary.publicPipeline}
+            text="Scheduled, active, and live listings."
+            href="/admin/events?status=scheduled,active,live"
             tone="green"
           />
         </div>
       </section>
 
       <section>
-        <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-accent">
-            Pipeline
-          </p>
-
-          <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">
-            Event lifecycle
-          </h2>
-        </div>
+        <SectionTitle
+          eyebrow="Pipeline"
+          title="Event lifecycle"
+          text="Open any status to isolate that part of the event workflow."
+        />
 
         <div className="-mx-1 mt-6 flex gap-3 overflow-x-auto px-1 pb-3">
           {PIPELINE_STATUSES.map((status) => (
             <PipelineCard
               key={status}
               status={status}
-              count={counts.byStatus[status] || 0}
+              active={filters.status === status}
             />
           ))}
         </div>
@@ -972,23 +898,26 @@ export default async function AdminEventsPage({ searchParams }: Props) {
           ) : null}
         </div>
 
-        <form className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_200px_180px_220px_auto]">
+        <form className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <input
             name="q"
             defaultValue={query.q || ''}
-            placeholder="Event, owner, venue, city, coupon..."
+            placeholder="Event, venue, city, slug, or event ID..."
             className={fieldClass}
           />
 
           <select
             name="status"
-            defaultValue={statusFilter}
+            defaultValue={filters.status}
             className={fieldClass}
           >
             <option value="">All Statuses</option>
 
             {PIPELINE_STATUSES.map((status) => (
-              <option key={status} value={status}>
+              <option
+                key={status}
+                value={status}
+              >
                 {formatStatus(status)}
               </option>
             ))}
@@ -996,32 +925,71 @@ export default async function AdminEventsPage({ searchParams }: Props) {
 
           <select
             name="payment"
-            defaultValue={paymentFilter}
+            defaultValue={filters.payment}
             className={fieldClass}
           >
-            <option value="">All Payments</option>
+            <option value="all">All Payments</option>
             <option value="paid">Paid</option>
             <option value="unpaid">Unpaid</option>
             <option value="override">Admin Override</option>
+            <option value="zero_balance">Zero Balance</option>
           </select>
 
           <select
-            name="city"
-            defaultValue={query.city || ''}
+            name="approval"
+            defaultValue={filters.approval}
             className={fieldClass}
           >
-            <option value="">All Cities</option>
-
-            {cityOptions.map((city) => (
-              <option key={city} value={city}>
-                {city}
-              </option>
-            ))}
+            <option value="all">All Approval States</option>
+            <option value="approved">Approved</option>
+            <option value="unapproved">Unapproved</option>
           </select>
 
-          <button className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90">
-            Apply
-          </button>
+          <select
+            name="urgency"
+            defaultValue={filters.urgency}
+            className={fieldClass}
+          >
+            <option value="all">All Urgency Levels</option>
+            <option value="critical">Critical</option>
+            <option value="attention">Needs Attention</option>
+            <option value="normal">Normal</option>
+          </select>
+
+          <input
+            name="city"
+            defaultValue={query.city || ''}
+            placeholder="City"
+            className={fieldClass}
+          />
+
+          <input
+            name="state"
+            defaultValue={query.state || ''}
+            maxLength={2}
+            placeholder="State"
+            className={fieldClass}
+          />
+
+          <select
+            name="sort"
+            defaultValue={filters.sort}
+            className={fieldClass}
+          >
+            <option value="newest">Newest Created</option>
+            <option value="oldest">Oldest Created</option>
+            <option value="event_soonest">Event Soonest</option>
+            <option value="event_latest">Event Latest</option>
+            <option value="recent_transition">
+              Latest Transition
+            </option>
+          </select>
+
+          <div className="md:col-span-2 xl:col-span-4">
+            <button className="w-full rounded-2xl bg-accent px-6 py-3 font-semibold text-black hover:opacity-90 sm:w-auto">
+              Apply Filters
+            </button>
+          </div>
         </form>
       </section>
 
@@ -1033,61 +1001,66 @@ export default async function AdminEventsPage({ searchParams }: Props) {
             </p>
 
             <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">
-              {filteredEvents.length} event
-              {filteredEvents.length === 1 ? '' : 's'}
+              {queue.total} event
+              {queue.total === 1 ? '' : 's'}
             </h2>
 
             <p className="mt-2 text-sm text-white/60">
-              Priority items appear first, followed by the remaining events.
+              Page {queue.page} of {queue.pageCount}. Urgent
+              indicators are calculated from workflow age,
+              payment readiness, refund requests, and event timing.
             </p>
           </div>
         </div>
 
-        {filteredEvents.length ? (
+        {queue.items.length ? (
           <>
             <div className="mt-6 hidden overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 lg:block">
-              <div className="grid grid-cols-[72px_1.5fr_1fr_150px_130px_150px_110px] gap-4 border-b border-white/10 bg-black/30 px-5 py-4 text-xs font-semibold uppercase tracking-[0.15em] text-white/45">
+              <div className="grid grid-cols-[72px_1.35fr_1fr_150px_130px_160px_110px] gap-4 border-b border-white/10 bg-black/30 px-5 py-4 text-xs font-semibold uppercase tracking-[0.15em] text-white/45">
                 <span>Flyer</span>
                 <span>Event</span>
                 <span>Owner / Location</span>
                 <span>Status</span>
                 <span>Payment</span>
-                <span>Timing</span>
+                <span>Timing / Urgency</span>
                 <span>Action</span>
               </div>
 
               <div className="divide-y divide-white/10">
-                {filteredEvents.map((event) => (
+                {queue.items.map((event) => (
                   <EventTableRow
                     key={event.id}
                     event={event}
-                    owner={
-                      event.owner_id
-                        ? ownerMap.get(event.owner_id)
-                        : undefined
-                    }
                   />
                 ))}
               </div>
             </div>
 
             <div className="mt-6 space-y-4 lg:hidden">
-              {filteredEvents.map((event) => (
+              {queue.items.map((event) => (
                 <MobileEventCard
                   key={event.id}
                   event={event}
-                  owner={
-                    event.owner_id
-                      ? ownerMap.get(event.owner_id)
-                      : undefined
-                  }
                 />
               ))}
             </div>
+
+            <Pagination
+              page={queue.page}
+              pageCount={queue.pageCount}
+              query={query}
+            />
           </>
         ) : (
-          <div className="mt-6 rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/60">
-            No events match the selected filters.
+          <div className="mt-6 rounded-[2rem] border border-white/10 bg-white/5 p-8">
+            <p className="font-semibold text-white">
+              No events match the selected filters.
+            </p>
+
+            <p className="mt-2 text-sm text-white/50">
+              Clear the filters or search a broader event, city,
+              venue, or workflow state.
+            </p>
           </div>
         )}
       </section>
@@ -1097,23 +1070,21 @@ export default async function AdminEventsPage({ searchParams }: Props) {
 
 function EventTableRow({
   event,
-  owner,
 }: {
-  event: AdminEvent;
-  owner?: OwnerSummary;
+  event: EventQueueItem;
 }) {
   const canViewPublic =
     Boolean(event.slug) &&
-    event.is_public === true &&
-    PUBLIC_STATUSES.includes(event.status || '');
+    event.is_public &&
+    PUBLIC_STATUSES.includes(event.status);
 
   return (
-    <article className="grid grid-cols-[72px_1.5fr_1fr_150px_130px_150px_110px] gap-4 px-5 py-5 transition hover:bg-white/[0.03]">
+    <article className="grid grid-cols-[72px_1.35fr_1fr_150px_130px_160px_110px] gap-4 px-5 py-5 transition hover:bg-white/[0.03]">
       <div className="h-16 w-16 overflow-hidden rounded-xl border border-white/10 bg-black/30">
         {event.flyer_url ? (
           <img
             src={event.flyer_url}
-            alt={event.name || 'Event flyer'}
+            alt={event.name}
             className="h-full w-full object-cover"
           />
         ) : (
@@ -1125,7 +1096,7 @@ function EventTableRow({
 
       <div className="min-w-0">
         <h3 className="truncate text-lg font-black text-white">
-          {event.name || 'Untitled Event'}
+          {event.name}
         </h3>
 
         <p className="mt-1 truncate text-sm text-white/55">
@@ -1133,36 +1104,46 @@ function EventTableRow({
         </p>
 
         <div className="mt-2 flex flex-wrap gap-2">
-          {event.coupon_code ? (
-            <MiniChip label={`Coupon: ${event.coupon_code}`} />
-          ) : null}
+          <UrgencyBadge urgency={event.urgency} />
 
           {event.payment_override ? (
-            <MiniChip label="Override" />
+            <MiniChip label="Payment Override" />
+          ) : null}
+
+          {event.refund_requested ||
+          event.refund_status === 'requested' ? (
+            <MiniChip label="Refund Requested" />
           ) : null}
         </div>
       </div>
 
       <div className="min-w-0 text-sm">
         <p className="truncate font-semibold text-white/75">
-          {getOwnerLabel(owner, event.owner_id)}
+          {getOwnerLabel(event)}
         </p>
 
         <p className="mt-1 truncate text-white/50">
-          {[event.city, event.state].filter(Boolean).join(', ') ||
-            'Location TBA'}
+          {[event.city, event.state]
+            .filter(Boolean)
+            .join(', ') || 'Location TBA'}
+        </p>
+
+        <p className="mt-1 text-xs text-white/35">
+          {event.owner_role
+            ? formatStatus(event.owner_role)
+            : 'Unknown role'}
         </p>
       </div>
 
       <div>
-        <StatusBadge status={event.status || 'unknown'} />
+        <StatusBadge status={event.status} />
       </div>
 
       <div>
         <PaymentBadge event={event} />
 
         <p className="mt-2 text-xs text-white/45">
-          ${Number(event.total_price || 0).toFixed(2)}
+          ${event.total_price.toFixed(2)}
         </p>
       </div>
 
@@ -1170,8 +1151,20 @@ function EventTableRow({
         <p>{formatCompactDate(event.event_start_at)}</p>
 
         <p className="mt-1 text-xs text-white/40">
-          Created {formatRelativeTime(event.created_at)}
+          {event.status_changed_at
+            ? `Changed ${formatRelativeTime(
+                event.status_changed_at
+              )}`
+            : `Created ${formatRelativeTime(
+                event.created_at
+              )}`}
         </p>
+
+        {event.urgencyReasons.length ? (
+          <p className="mt-2 line-clamp-2 text-xs text-red-200/70">
+            {event.urgencyReasons.join(' · ')}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -1197,58 +1190,75 @@ function EventTableRow({
 
 function MobileEventCard({
   event,
-  owner,
 }: {
-  event: AdminEvent;
-  owner?: OwnerSummary;
+  event: EventQueueItem;
 }) {
-  const needsApproval = REVIEW_STATUSES.includes(event.status || '');
-  const needsRevision = event.status === 'revision_submitted';
+  const needsApproval =
+    REVIEW_STATUSES.includes(event.status);
+
+  const needsRevision =
+    event.status === 'revision_submitted';
 
   const canViewPublic =
     Boolean(event.slug) &&
-    event.is_public === true &&
-    PUBLIC_STATUSES.includes(event.status || '');
+    event.is_public &&
+    PUBLIC_STATUSES.includes(event.status);
 
   return (
     <article className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5">
       {event.flyer_url ? (
         <img
           src={event.flyer_url}
-          alt={event.name || 'Event flyer'}
+          alt={event.name}
           className="h-52 w-full object-cover"
         />
       ) : null}
 
       <div className="p-5">
         <div className="flex flex-wrap gap-2">
-          <StatusBadge status={event.status || 'unknown'} />
+          <StatusBadge status={event.status} />
           <PaymentBadge event={event} />
+          <UrgencyBadge urgency={event.urgency} />
         </div>
 
         <h3 className="mt-4 text-2xl font-black text-white">
-          {event.name || 'Untitled Event'}
+          {event.name}
         </h3>
 
         <p className="mt-2 text-sm text-white/60">
           {event.venue_name || 'Venue not listed'} ·{' '}
-          {[event.city, event.state].filter(Boolean).join(', ') ||
-            'Location TBA'}
+          {[event.city, event.state]
+            .filter(Boolean)
+            .join(', ') || 'Location TBA'}
         </p>
 
         <p className="mt-2 text-sm text-white/45">
-          Owner: {getOwnerLabel(owner, event.owner_id)}
+          Owner: {getOwnerLabel(event)}
         </p>
+
+        {event.urgencyReasons.length ? (
+          <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-red-200">
+              Attention
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-red-100/70">
+              {event.urgencyReasons.join(' · ')}
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-5 grid grid-cols-2 gap-3">
           <CompactInfo
             label="Starts"
-            value={formatCompactDate(event.event_start_at)}
+            value={formatCompactDate(
+              event.event_start_at
+            )}
           />
 
           <CompactInfo
             label="Total"
-            value={`$${Number(event.total_price || 0).toFixed(2)}`}
+            value={`$${event.total_price.toFixed(2)}`}
           />
         </div>
 
@@ -1302,19 +1312,34 @@ function MobileEventCard({
   );
 }
 
-function ApprovalControls({ event }: { event: AdminEvent }) {
+function ApprovalControls({
+  event,
+}: {
+  event: EventQueueItem;
+}) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <form action={approveEvent}>
-        <input type="hidden" name="event_id" value={event.id} />
+        <input
+          type="hidden"
+          name="event_id"
+          value={event.id}
+        />
 
         <button className="w-full rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 font-semibold text-green-200 hover:border-green-500/40">
           Approve Event
         </button>
       </form>
 
-      <form action={rejectEvent} className="space-y-3 lg:col-span-2">
-        <input type="hidden" name="event_id" value={event.id} />
+      <form
+        action={rejectEvent}
+        className="space-y-3 lg:col-span-2"
+      >
+        <input
+          type="hidden"
+          name="event_id"
+          value={event.id}
+        />
 
         <textarea
           name="rejection_reason"
@@ -1329,12 +1354,16 @@ function ApprovalControls({ event }: { event: AdminEvent }) {
         </button>
       </form>
 
-      {!isEventPaid(event) ? (
+      {!event.isFinanciallyEligible ? (
         <form
           action={applyPaymentOverride}
           className="space-y-3 lg:col-span-3"
         >
-          <input type="hidden" name="event_id" value={event.id} />
+          <input
+            type="hidden"
+            name="event_id"
+            value={event.id}
+          />
 
           <input
             name="reason"
@@ -1352,11 +1381,22 @@ function ApprovalControls({ event }: { event: AdminEvent }) {
   );
 }
 
-function RevisionControls({ event }: { event: AdminEvent }) {
+function RevisionControls({
+  event,
+}: {
+  event: EventQueueItem;
+}) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <form action={approveEventRevision} className="space-y-3">
-        <input type="hidden" name="event_id" value={event.id} />
+      <form
+        action={approveEventRevision}
+        className="space-y-3"
+      >
+        <input
+          type="hidden"
+          name="event_id"
+          value={event.id}
+        />
 
         <textarea
           name="admin_note"
@@ -1370,8 +1410,15 @@ function RevisionControls({ event }: { event: AdminEvent }) {
         </button>
       </form>
 
-      <form action={rejectEventRevision} className="space-y-3">
-        <input type="hidden" name="event_id" value={event.id} />
+      <form
+        action={rejectEventRevision}
+        className="space-y-3"
+      >
+        <input
+          type="hidden"
+          name="event_id"
+          value={event.id}
+        />
 
         <textarea
           name="admin_note"
@@ -1389,22 +1436,74 @@ function RevisionControls({ event }: { event: AdminEvent }) {
   );
 }
 
+function Pagination({
+  page,
+  pageCount,
+  query,
+}: {
+  page: number;
+  pageCount: number;
+  query: Record<string, string | undefined>;
+}) {
+  if (pageCount <= 1) {
+    return null;
+  }
+
+  return (
+    <nav className="mt-8 flex flex-wrap items-center justify-between gap-4">
+      {page > 1 ? (
+        <Link
+          href={buildPageHref(query, page - 1)}
+          className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold text-white hover:border-accent/40"
+        >
+          ← Previous
+        </Link>
+      ) : (
+        <span />
+      )}
+
+      <p className="text-sm text-white/50">
+        Page {page} of {pageCount}
+      </p>
+
+      {page < pageCount ? (
+        <Link
+          href={buildPageHref(query, page + 1)}
+          className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold text-white hover:border-accent/40"
+        >
+          Next →
+        </Link>
+      ) : (
+        <span />
+      )}
+    </nav>
+  );
+}
+
 function PipelineCard({
   status,
-  count,
+  active,
 }: {
   status: string;
-  count: number;
+  active: boolean;
 }) {
   return (
     <Link
-      href={`/admin/events?status=${encodeURIComponent(status)}`}
-      className="w-44 shrink-0 rounded-[1.5rem] border border-white/10 bg-white/5 p-4 transition hover:border-accent/40"
+      href={`/admin/events?status=${encodeURIComponent(
+        status
+      )}`}
+      className={`w-44 shrink-0 rounded-[1.5rem] border p-4 transition ${
+        active
+          ? 'border-accent/40 bg-accent/10'
+          : 'border-white/10 bg-white/5 hover:border-accent/40'
+      }`}
     >
-      <p className="text-3xl font-black text-white">{count}</p>
-
-      <p className="mt-2 text-xs font-semibold uppercase tracking-[0.15em] text-white/50">
+      <p className="text-sm font-black text-white">
         {formatStatus(status)}
+      </p>
+
+      <p className="mt-2 text-xs text-white/45">
+        Open status queue →
       </p>
     </Link>
   );
@@ -1421,14 +1520,24 @@ function PriorityCard({
   value: number;
   text: string;
   href: string;
-  tone: 'yellow' | 'purple' | 'red' | 'orange' | 'green';
+  tone:
+    | 'yellow'
+    | 'purple'
+    | 'red'
+    | 'orange'
+    | 'green';
 }) {
   const classes = {
-    yellow: 'border-yellow-500/20 bg-yellow-500/10',
-    purple: 'border-purple-500/20 bg-purple-500/10',
-    red: 'border-red-500/20 bg-red-500/10',
-    orange: 'border-orange-500/20 bg-orange-500/10',
-    green: 'border-green-500/20 bg-green-500/10',
+    yellow:
+      'border-yellow-500/20 bg-yellow-500/10',
+    purple:
+      'border-purple-500/20 bg-purple-500/10',
+    red:
+      'border-red-500/20 bg-red-500/10',
+    orange:
+      'border-orange-500/20 bg-orange-500/10',
+    green:
+      'border-green-500/20 bg-green-500/10',
   };
 
   return (
@@ -1440,21 +1549,59 @@ function PriorityCard({
         {title}
       </p>
 
-      <p className="mt-3 text-4xl font-black text-white">{value}</p>
+      <p className="mt-3 text-4xl font-black text-white">
+        {value}
+      </p>
 
-      <p className="mt-3 text-sm leading-6 text-white/60">{text}</p>
+      <p className="mt-3 text-sm leading-6 text-white/60">
+        {text}
+      </p>
 
-      <p className="mt-5 text-sm font-semibold text-accent">Open →</p>
+      <p className="mt-5 text-sm font-semibold text-accent">
+        Open →
+      </p>
     </Link>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function SectionTitle({
+  eyebrow,
+  title,
+  text,
+}: {
+  eyebrow: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.28em] text-accent">
+        {eyebrow}
+      </p>
+
+      <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">
+        {title}
+      </h2>
+
+      <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60 sm:text-base">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function StatusBadge({
+  status,
+}: {
+  status: string;
+}) {
   const styles: Record<string, string> = {
-    draft: 'border-white/10 bg-white/5 text-white/65',
+    draft:
+      'border-white/10 bg-white/5 text-white/65',
     building:
       'border-yellow-500/20 bg-yellow-500/10 text-yellow-200',
-    submitted: 'border-blue-500/20 bg-blue-500/10 text-blue-200',
+    submitted:
+      'border-blue-500/20 bg-blue-500/10 text-blue-200',
     approved_unpaid:
       'border-orange-500/20 bg-orange-500/10 text-orange-200',
     approved_awaiting_payment:
@@ -1467,26 +1614,42 @@ function StatusBadge({ status }: { status: string }) {
       'border-purple-500/20 bg-purple-500/10 text-purple-200',
     scheduled:
       'border-indigo-500/20 bg-indigo-500/10 text-indigo-200',
-    active: 'border-green-500/20 bg-green-500/10 text-green-200',
-    live: 'border-green-500/20 bg-green-500/10 text-green-200',
-    rejected: 'border-red-500/20 bg-red-500/10 text-red-200',
+    active:
+      'border-green-500/20 bg-green-500/10 text-green-200',
+    live:
+      'border-green-500/20 bg-green-500/10 text-green-200',
+    rejected:
+      'border-red-500/20 bg-red-500/10 text-red-200',
     removal_requested:
       'border-red-500/20 bg-red-500/10 text-red-200',
-    removed: 'border-white/10 bg-white/5 text-white/50',
-    ended: 'border-white/10 bg-white/5 text-white/50',
-    archived: 'border-white/10 bg-white/5 text-white/50',
+    refund_requested:
+      'border-red-500/20 bg-red-500/10 text-red-200',
+    cancelled:
+      'border-red-500/20 bg-red-500/10 text-red-200',
+    removed:
+      'border-white/10 bg-white/5 text-white/50',
+    ended:
+      'border-white/10 bg-white/5 text-white/50',
+    archived:
+      'border-white/10 bg-white/5 text-white/50',
   };
 
   return (
     <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${styles[status] || styles.draft}`}
+      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+        styles[status] || styles.draft
+      }`}
     >
       {formatStatus(status)}
     </span>
   );
 }
 
-function PaymentBadge({ event }: { event: AdminEvent }) {
+function PaymentBadge({
+  event,
+}: {
+  event: EventQueueItem;
+}) {
   if (event.payment_override) {
     return (
       <span className="inline-flex rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
@@ -1495,10 +1658,10 @@ function PaymentBadge({ event }: { event: AdminEvent }) {
     );
   }
 
-  if (isEventPaid(event)) {
+  if (event.isFinanciallyEligible) {
     return (
       <span className="inline-flex rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-200">
-        Paid
+        Paid / Eligible
       </span>
     );
   }
@@ -1510,12 +1673,44 @@ function PaymentBadge({ event }: { event: AdminEvent }) {
   );
 }
 
+function UrgencyBadge({
+  urgency,
+}: {
+  urgency: EventQueueUrgency;
+}) {
+  const styles = {
+    critical:
+      'border-red-500/20 bg-red-500/10 text-red-200',
+    attention:
+      'border-yellow-500/20 bg-yellow-500/10 text-yellow-200',
+    normal:
+      'border-white/10 bg-white/5 text-white/55',
+    all:
+      'border-white/10 bg-white/5 text-white/55',
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${styles[urgency]}`}
+    >
+      {urgency === 'attention'
+        ? 'Needs Attention'
+        : formatStatus(urgency)}
+    </span>
+  );
+}
+
 function StatusChip({
   label,
   tone,
 }: {
   label: string;
-  tone: 'green' | 'yellow' | 'purple' | 'red' | 'neutral';
+  tone:
+    | 'green'
+    | 'yellow'
+    | 'purple'
+    | 'red'
+    | 'neutral';
 }) {
   const styles = {
     green:
@@ -1524,8 +1719,10 @@ function StatusChip({
       'border-yellow-500/20 bg-yellow-500/10 text-yellow-100',
     purple:
       'border-purple-500/20 bg-purple-500/10 text-purple-200',
-    red: 'border-red-500/20 bg-red-500/10 text-red-200',
-    neutral: 'border-white/10 bg-white/5 text-white/60',
+    red:
+      'border-red-500/20 bg-red-500/10 text-red-200',
+    neutral:
+      'border-white/10 bg-white/5 text-white/60',
   };
 
   return (
@@ -1550,12 +1747,18 @@ function CompactInfo({
         {label}
       </p>
 
-      <p className="mt-2 break-words font-semibold text-white">{value}</p>
+      <p className="mt-2 break-words font-semibold text-white">
+        {value}
+      </p>
     </div>
   );
 }
 
-function MiniChip({ label }: { label: string }) {
+function MiniChip({
+  label,
+}: {
+  label: string;
+}) {
   return (
     <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-semibold text-white/55">
       {label}
@@ -1563,159 +1766,245 @@ function MiniChip({ label }: { label: string }) {
   );
 }
 
-function buildCounts(events: AdminEvent[]) {
-  const byStatus: Record<string, number> = {};
+function getOldestQueueItem(
+  events: EventQueueItem[]
+) {
+  const candidates = events.filter((event) =>
+    [
+      ...REVIEW_STATUSES,
+      'revision_submitted',
+    ].includes(event.status)
+  );
 
-  for (const event of events) {
-    const status = event.status || 'unknown';
-    byStatus[status] = (byStatus[status] || 0) + 1;
+  if (!candidates.length) {
+    return null;
   }
 
-  return {
-    byStatus,
+  return candidates.reduce((oldest, event) => {
+    const oldestTime = dateTime(
+      oldest.submitted_at ||
+        oldest.status_changed_at ||
+        oldest.created_at
+    );
 
-    review: events.filter((event) =>
-      REVIEW_STATUSES.includes(event.status || '')
-    ).length,
-
-    revisions: events.filter(
-      (event) => event.status === 'revision_submitted'
-    ).length,
-
-    removals: events.filter((event) =>
-      ['removal_requested', 'refund_requested'].includes(
-        event.status || ''
-      )
-    ).length,
-
-    unpaid: events.filter((event) => !isEventPaid(event)).length,
-
-    public: events.filter(
-      (event) =>
-        event.is_public === true &&
-        PUBLIC_STATUSES.includes(event.status || '')
-    ).length,
-  };
-}
-
-function isEventPaid(event: AdminEvent) {
-  return (
-    event.is_paid === true ||
-    event.payment_override === true ||
-    event.payment_status === 'paid' ||
-    Number(event.total_price || 0) <= 0
-  );
-}
-
-function sortPriorityFirst(a: AdminEvent, b: AdminEvent) {
-  const priority = (event: AdminEvent) => {
-    if (event.status === 'submitted') return 1;
-    if (event.status === 'paid_awaiting_approval') return 2;
-    if (event.status === 'revision_submitted') return 3;
-    if (event.status === 'removal_requested') return 4;
-    if (event.status === 'rejected') return 5;
-    return 10;
-  };
-
-  const priorityDifference = priority(a) - priority(b);
-
-  if (priorityDifference !== 0) return priorityDifference;
-
-  return (
-    new Date(b.created_at || 0).getTime() -
-    new Date(a.created_at || 0).getTime()
-  );
-}
-
-function getOldestQueueAge(events: AdminEvent[]) {
-  const queueEvents = events.filter((event) =>
-    [...REVIEW_STATUSES, 'revision_submitted'].includes(
-      event.status || ''
-    )
-  );
-
-  if (!queueEvents.length) return 'Queue clear';
-
-  const oldest = queueEvents.reduce((current, event) => {
-    const currentTime = new Date(
-      current.submitted_at ||
-        current.updated_at ||
-        current.created_at ||
-        0
-    ).getTime();
-
-    const eventTime = new Date(
+    const eventTime = dateTime(
       event.submitted_at ||
-        event.updated_at ||
-        event.created_at ||
-        0
-    ).getTime();
+        event.status_changed_at ||
+        event.created_at
+    );
 
-    return eventTime < currentTime ? event : current;
+    return eventTime < oldestTime
+      ? event
+      : oldest;
   });
-
-  return formatRelativeTime(
-    oldest.submitted_at ||
-      oldest.updated_at ||
-      oldest.created_at
-  );
 }
 
 function getOwnerLabel(
-  owner?: OwnerSummary,
-  ownerId?: string | null
+  event: EventQueueItem
 ) {
   return (
-    owner?.display_name ||
-    owner?.username ||
-    ownerId?.slice(0, 8) ||
+    event.owner_name ||
+    event.owner_username ||
+    event.owner_id?.slice(0, 8) ||
     'Unknown owner'
   );
+}
+
+function buildPageHref(
+  query: Record<
+    string,
+    string | undefined
+  >,
+  page: number
+) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(
+    query
+  )) {
+    if (
+      value &&
+      key !== 'page'
+    ) {
+      params.set(key, value);
+    }
+  }
+
+  params.set('page', String(page));
+
+  return `/admin/events?${params.toString()}`;
+}
+
+function asPaymentFilter(
+  value?: string
+): EventQueuePaymentFilter {
+  if (
+    [
+      'paid',
+      'unpaid',
+      'override',
+      'zero_balance',
+    ].includes(value || '')
+  ) {
+    return value as EventQueuePaymentFilter;
+  }
+
+  return 'all';
+}
+
+function asApprovalFilter(
+  value?: string
+): EventQueueApprovalFilter {
+  if (
+    ['approved', 'unapproved'].includes(
+      value || ''
+    )
+  ) {
+    return value as EventQueueApprovalFilter;
+  }
+
+  return 'all';
+}
+
+function asUrgencyFilter(
+  value?: string
+): EventQueueUrgency {
+  if (
+    [
+      'critical',
+      'attention',
+      'normal',
+    ].includes(value || '')
+  ) {
+    return value as EventQueueUrgency;
+  }
+
+  return 'all';
+}
+
+function asSort(
+  value?: string
+): EventQueueSort {
+  if (
+    [
+      'oldest',
+      'event_soonest',
+      'event_latest',
+      'recent_transition',
+    ].includes(value || '')
+  ) {
+    return value as EventQueueSort;
+  }
+
+  return 'newest';
+}
+
+function positiveInteger(
+  value: unknown,
+  fallback: number
+) {
+  const number = Number(value);
+
+  if (
+    !Number.isFinite(number) ||
+    number < 1
+  ) {
+    return fallback;
+  }
+
+  return Math.floor(number);
 }
 
 function formatStatus(value: string) {
   return value
     .replaceAll('_', ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
 }
 
-function formatCompactDate(value?: string | null) {
-  if (!value) return 'Not scheduled';
+function formatCompactDate(
+  value?: string | null
+) {
+  if (!value) {
+    return 'Not scheduled';
+  }
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return 'Invalid date';
+  if (Number.isNaN(date.getTime())) {
+    return 'Invalid date';
+  }
 
-  return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }
+  ).format(date);
 }
 
-function formatRelativeTime(value?: string | null) {
-  if (!value) return 'Unknown';
+function formatRelativeTime(
+  value?: string | null
+) {
+  if (!value) {
+    return 'Unknown';
+  }
 
-  const date = new Date(value);
-  const timestamp = date.getTime();
+  const timestamp = new Date(value).getTime();
 
-  if (Number.isNaN(timestamp)) return 'Unknown';
+  if (Number.isNaN(timestamp)) {
+    return 'Unknown';
+  }
 
-  const difference = Date.now() - timestamp;
-  const minutes = Math.floor(difference / 60000);
+  const difference =
+    Date.now() - timestamp;
 
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
+  const minutes = Math.floor(
+    difference / 60_000
+  );
 
-  const hours = Math.floor(minutes / 60);
+  if (minutes < 1) {
+    return 'Just now';
+  }
 
-  if (hours < 24) return `${hours}h ago`;
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
 
-  const days = Math.floor(hours / 24);
+  const hours = Math.floor(
+    minutes / 60
+  );
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(
+    hours / 24
+  );
 
   return `${days}d ago`;
+}
+
+function dateTime(
+  value?: string | null
+) {
+  if (!value) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const timestamp = new Date(
+    value
+  ).getTime();
+
+  return Number.isNaN(timestamp)
+    ? Number.POSITIVE_INFINITY
+    : timestamp;
 }
 
 function clean(value: unknown) {
