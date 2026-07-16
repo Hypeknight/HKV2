@@ -1,78 +1,110 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import {
+  getOperationsSummary,
+  type OperationsActivity,
+} from '@/lib/admin/operations';
 
 export default async function AdminPage() {
   const supabase = await createClient();
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) redirect('/auth/login');
+  if (authError) {
+    throw new Error(authError.message);
+  }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('app_role, display_name')
-    .eq('id', user.id)
-    .single();
+  if (!user) {
+    redirect('/auth/login');
+  }
+
+  const { data: profile, error: profileError } =
+    await supabase
+      .from('profiles')
+      .select('app_role, display_name')
+      .eq('id', user.id)
+      .single();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
 
   if (profile?.app_role !== 'admin') {
     redirect('/dashboard');
   }
 
   const [
-    { count: userCount },
-    { count: eventCount },
-    { count: venueCount },
-    { count: externalCount },
-    { count: couponCount },
-    { count: submittedCount },
-    { count: paidAwaitingApprovalCount },
-    { count: scheduledCount },
-    { count: activeCount },
-    { count: revisionCount },
-    { count: removalCount },
-    { count: rejectedCount },
-    { count: lookupValueCount },
+    operations,
+    { count: couponCount, error: couponError },
+    { count: lookupValueCount, error: lookupError },
+    { count: rejectedCount, error: rejectedError },
   ] = await Promise.all([
-    countRows(supabase, 'profiles'),
-    countRows(supabase, 'events'),
-    countRows(supabase, 'venues'),
-    countRows(supabase, 'external_events'),
-    countRows(supabase, 'event_coupons'),
+    getOperationsSummary(),
 
-    countEventsByStatuses(supabase, ['submitted']),
-    countEventsByStatuses(supabase, [
-      'paid_awaiting_approval',
-      'approved_awaiting_payment',
-    ]),
-    countEventsByStatuses(supabase, ['scheduled']),
-    countEventsByStatuses(supabase, ['active', 'live']),
-    countEventsByStatuses(supabase, [
-      'revision_draft',
-      'revision_submitted',
-    ]),
-    countEventsByStatuses(supabase, [
-      'removal_requested',
-      'refund_requested',
-    ]),
-    countEventsByStatuses(supabase, ['rejected']),
-    countRows(supabase, 'lookup_values'),
+    supabase
+      .from('event_coupons')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      }),
+
+    supabase
+      .from('lookup_values')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .is('archived_at', null),
+
+    supabase
+      .from('events')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('status', 'rejected'),
   ]);
 
+  const supplementalErrors = [
+    couponError,
+    lookupError,
+    rejectedError,
+  ].filter(Boolean);
+
+  if (supplementalErrors.length) {
+    throw new Error(
+      supplementalErrors
+        .map((error) => error?.message)
+        .filter(Boolean)
+        .join(' | ')
+    );
+  }
+
   const reviewQueue =
-    Number(submittedCount || 0) +
-    Number(paidAwaitingApprovalCount || 0) +
-    Number(revisionCount || 0);
+    operations.pendingModeration +
+    operations.pendingRevisions;
+
+  const requestQueue =
+    operations.removalRequests +
+    operations.refundRequests;
 
   const attentionQueue =
     reviewQueue +
-    Number(removalCount || 0) +
-    Number(rejectedCount || 0);
+    requestQueue +
+    operations.paymentExceptions +
+    Number(rejectedCount ?? 0);
+
+  const publicPipelineCount =
+    operations.scheduledEvents +
+    operations.activeEvents +
+    operations.liveEvents;
 
   const displayName =
-    profile?.display_name ||
+    profile.display_name ||
     user.email?.split('@')[0] ||
     'Administrator';
 
@@ -92,9 +124,9 @@ export default async function AdminPage() {
             </h1>
 
             <p className="mt-5 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Welcome back, {displayName}. Review event activity, handle
-              priority queues, manage platform configuration, and keep
-              HypeKnight discovery moving.
+              Welcome back, {displayName}. Review event activity,
+              handle priority queues, manage platform configuration,
+              and keep HypeKnight discovery moving.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-2">
@@ -104,13 +136,22 @@ export default async function AdminPage() {
               />
 
               <StatusChip
-                label={`${removalCount || 0} removal requests`}
-                tone={removalCount ? 'red' : 'neutral'}
+                label={`${requestQueue} removal or refund requests`}
+                tone={requestQueue ? 'red' : 'neutral'}
               />
 
               <StatusChip
-                label={`${activeCount || 0} active events`}
+                label={`${publicPipelineCount} public-pipeline events`}
                 tone="green"
+              />
+
+              <StatusChip
+                label={`${operations.paymentExceptions} payment exceptions`}
+                tone={
+                  operations.paymentExceptions
+                    ? 'red'
+                    : 'neutral'
+                }
               />
             </div>
           </div>
@@ -125,8 +166,9 @@ export default async function AdminPage() {
             </p>
 
             <p className="mt-3 text-sm leading-6 text-white/60">
-              Events currently waiting for review, revision, rejection
-              follow-up, removal, or refund handling.
+              Events waiting for moderation, revision review,
+              payment handling, owner follow-up, removal, or refund
+              decisions.
             </p>
 
             <Link
@@ -139,28 +181,74 @@ export default async function AdminPage() {
         </div>
       </section>
 
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <PriorityMetric
+          label="Pending Moderation"
+          value={operations.pendingModeration}
+          text="New events awaiting an administrator decision."
+          href="/admin/events?status=submitted"
+          tone={
+            operations.pendingModeration
+              ? 'yellow'
+              : 'neutral'
+          }
+        />
+
+        <PriorityMetric
+          label="Pending Revisions"
+          value={operations.pendingRevisions}
+          text="Owner revisions waiting for review."
+          href="/admin/events?status=revision_submitted"
+          tone={
+            operations.pendingRevisions
+              ? 'yellow'
+              : 'neutral'
+          }
+        />
+
+        <PriorityMetric
+          label="Removal / Refund"
+          value={requestQueue}
+          text="Requests needing customer-service action."
+          href="/admin/events?status=removal_requested"
+          tone={requestQueue ? 'red' : 'neutral'}
+        />
+
+        <PriorityMetric
+          label="Payment Exceptions"
+          value={operations.paymentExceptions}
+          text="Payment and approval states needing attention."
+          href="/admin/payments"
+          tone={
+            operations.paymentExceptions
+              ? 'red'
+              : 'neutral'
+          }
+        />
+      </section>
+
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Metric
           label="Users"
-          value={userCount ?? 0}
+          value={operations.users}
           href="/admin/users"
         />
 
         <Metric
           label="Events"
-          value={eventCount ?? 0}
+          value={operations.events}
           href="/admin/events"
         />
 
         <Metric
           label="Venues"
-          value={venueCount ?? 0}
+          value={operations.venues}
           href="/admin/venues"
         />
 
         <Metric
           label="External"
-          value={externalCount ?? 0}
+          value={operations.externalEvents}
           href="/admin/external-events"
         />
 
@@ -180,72 +268,106 @@ export default async function AdminPage() {
 
       <section>
         <SectionTitle
+          eyebrow="Live Operations"
+          title="Public event pipeline"
+          text="Monitor approved events as they move from scheduling into active promotion and live event operation."
+        />
+
+        <div className="mt-6 grid gap-5 md:grid-cols-3">
+          <OperationalCard
+            title="Scheduled"
+            value={operations.scheduledEvents}
+            description="Approved events waiting for their promotion or event window."
+            href="/admin/events?status=scheduled"
+            tone="blue"
+          />
+
+          <OperationalCard
+            title="Active"
+            value={operations.activeEvents}
+            description="Events currently visible in active HypeKnight discovery."
+            href="/admin/events?status=active"
+            tone="green"
+          />
+
+          <OperationalCard
+            title="Live"
+            value={operations.liveEvents}
+            description="Events currently taking place or marked live."
+            href="/admin/events?status=live"
+            tone="purple"
+          />
+        </div>
+      </section>
+
+      <section>
+        <SectionTitle
           eyebrow="Event Operations"
           title="Event lifecycle queues"
-          text="Monitor the event pipeline and move listings through review, payment, revision, scheduling, and public discovery."
+          text="Move listings through review, payment, revision, scheduling, public discovery, and customer-service workflows."
         />
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <QueueCard
-            title="Submitted"
-            value={submittedCount ?? 0}
-            description="New events waiting for moderation."
+            title="Moderation Queue"
+            value={operations.pendingModeration}
+            description="Submitted, paid, or approved-unpaid events awaiting the next decision."
             href="/admin/events?status=submitted"
             tone="blue"
           />
 
           <QueueCard
-            title="Payment / Approval"
-            value={paidAwaitingApprovalCount ?? 0}
-            description="Events waiting on payment or final approval."
-            href="/admin/events?status=paid_awaiting_approval"
-            tone="yellow"
-          />
-
-          <QueueCard
             title="Revisions"
-            value={revisionCount ?? 0}
-            description="Owner changes waiting for another review."
+            value={operations.pendingRevisions}
+            description="Owner changes waiting for administrator review."
             href="/admin/events?status=revision_submitted"
             tone="purple"
           />
 
           <QueueCard
             title="Removal Requests"
-            value={removalCount ?? 0}
-            description="Events requesting removal or refund review."
+            value={operations.removalRequests}
+            description="Owners requesting that an event be removed."
             href="/admin/events?status=removal_requested"
             tone="red"
           />
 
           <QueueCard
-            title="Scheduled"
-            value={scheduledCount ?? 0}
-            description="Approved events waiting for their live window."
-            href="/admin/events?status=scheduled"
-            tone="purple"
+            title="Refund Requests"
+            value={operations.refundRequests}
+            description="Refund requests requiring a financial decision."
+            href="/admin/payments?status=refund_requested"
+            tone="red"
           />
 
           <QueueCard
-            title="Active / Live"
-            value={activeCount ?? 0}
-            description="Events currently eligible for discovery."
-            href="/admin/events?status=active"
-            tone="green"
+            title="Payment Exceptions"
+            value={operations.paymentExceptions}
+            description="Paid events awaiting review or approved events awaiting payment."
+            href="/admin/payments"
+            tone="yellow"
           />
 
           <QueueCard
             title="Rejected"
             value={rejectedCount ?? 0}
-            description="Listings requiring owner correction."
+            description="Listings requiring owner correction or follow-up."
             href="/admin/events?status=rejected"
             tone="red"
           />
 
           <QueueCard
+            title="Public Pipeline"
+            value={publicPipelineCount}
+            description="Scheduled, active, and live first-party events."
+            href="/admin/events?status=scheduled"
+            tone="green"
+          />
+
+          <QueueCard
             title="All Events"
-            value={eventCount ?? 0}
-            description="Open the complete event inventory."
+            value={operations.events}
+            description="Open the complete HypeKnight event inventory."
             href="/admin/events"
             tone="neutral"
           />
@@ -254,9 +376,50 @@ export default async function AdminPage() {
 
       <section>
         <SectionTitle
+          eyebrow="Platform Activity"
+          title="Recent lifecycle changes"
+          text="The newest event submissions, approvals, revisions, cancellations, removals, and automated transitions."
+        />
+
+        <div className="mt-6 rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-8">
+          {operations.recentTransitions.length ? (
+            <div className="space-y-3">
+              {operations.recentTransitions.map(
+                (activity) => (
+                  <ActivityItem
+                    key={activity.id}
+                    activity={activity}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+              <p className="font-semibold text-white">
+                No lifecycle activity recorded yet.
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-white/50">
+                New transitions will appear here after events move
+                through the centralized lifecycle engine.
+              </p>
+            </div>
+          )}
+
+          <Link
+            href="/admin/events"
+            className="mt-5 inline-flex text-sm font-semibold text-accent hover:underline"
+          >
+            Open full event inventory →
+          </Link>
+        </div>
+      </section>
+
+      <section>
+        <SectionTitle
           eyebrow="Daily Operations"
           title="Manage HypeKnight"
-          text="Core tools for events, users, venues, ambassadors, and moderation."
+          text="Core tools for events, users, venues, ambassadors, moderation, and platform reporting."
         />
 
         <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -265,7 +428,11 @@ export default async function AdminPage() {
             title="Event Management"
             description="Approve, reject, revise, schedule, remove, and monitor HypeKnight events."
             href="/admin/events"
-            badge={reviewQueue ? `${reviewQueue} waiting` : undefined}
+            badge={
+              reviewQueue
+                ? `${reviewQueue} waiting`
+                : undefined
+            }
             accent
           />
 
@@ -310,7 +477,7 @@ export default async function AdminPage() {
         <SectionTitle
           eyebrow="Revenue"
           title="Payments and promotions"
-          text="Control event purchases, coupon campaigns, refunds, and financial operations."
+          text="Control event purchases, coupon campaigns, payment overrides, refunds, and financial operations."
         />
 
         <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -319,6 +486,11 @@ export default async function AdminPage() {
             title="Payments"
             description="Review Stripe payments, balances, overrides, refunds, and removal requests."
             href="/admin/payments"
+            badge={
+              operations.paymentExceptions
+                ? `${operations.paymentExceptions} exceptions`
+                : undefined
+            }
           />
 
           <AdminCard
@@ -403,26 +575,154 @@ export default async function AdminPage() {
   );
 }
 
-async function countRows(supabase: any, table: string) {
-  return supabase
-    .from(table)
-    .select('*', {
-      count: 'exact',
-      head: true,
-    });
+function ActivityItem({
+  activity,
+}: {
+  activity: OperationsActivity;
+}) {
+  return (
+    <Link
+      href={`/admin/events/${activity.event_id}`}
+      className="group block rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-accent/30 hover:bg-white/[0.04]"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate font-semibold text-white group-hover:text-accent">
+              {activity.event_name}
+            </p>
+
+            <StatusBadge
+              status={activity.to_status}
+            />
+          </div>
+
+          <p className="mt-2 text-sm text-white/55">
+            {activity.from_status
+              ? formatStatus(
+                  activity.from_status
+                )
+              : 'Created'}
+            {' → '}
+            {formatStatus(activity.to_status)}
+          </p>
+
+          {activity.reason ? (
+            <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/40">
+              {activity.reason}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="shrink-0 text-left sm:text-right">
+          <p className="text-xs uppercase tracking-[0.18em] text-accent">
+            {formatActor(
+              activity.changed_by_role
+            )}
+          </p>
+
+          <p className="mt-1 text-xs text-white/35">
+            {formatDate(activity.created_at)}
+          </p>
+
+          <p className="mt-1 text-xs text-white/30">
+            {formatStatus(activity.source)}
+          </p>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
-async function countEventsByStatuses(
-  supabase: any,
-  statuses: string[]
-) {
-  return supabase
-    .from('events')
-    .select('*', {
-      count: 'exact',
-      head: true,
-    })
-    .in('status', statuses);
+function PriorityMetric({
+  label,
+  value,
+  text,
+  href,
+  tone,
+}: {
+  label: string;
+  value: number;
+  text: string;
+  href: string;
+  tone: 'neutral' | 'yellow' | 'red';
+}) {
+  const classes = {
+    neutral: 'border-white/10 bg-white/5',
+    yellow:
+      'border-yellow-500/20 bg-yellow-500/10',
+    red:
+      'border-red-500/20 bg-red-500/10',
+  };
+
+  return (
+    <Link
+      href={href}
+      className={`rounded-[1.75rem] border p-5 transition hover:border-accent/40 ${classes[tone]}`}
+    >
+      <p className="text-xs uppercase tracking-[0.22em] text-white/45">
+        {label}
+      </p>
+
+      <p className="mt-3 text-4xl font-black text-white">
+        {value}
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-white/55">
+        {text}
+      </p>
+
+      <p className="mt-4 text-sm font-semibold text-accent">
+        Review →
+      </p>
+    </Link>
+  );
+}
+
+function OperationalCard({
+  title,
+  value,
+  description,
+  href,
+  tone,
+}: {
+  title: string;
+  value: number;
+  description: string;
+  href: string;
+  tone: 'blue' | 'green' | 'purple';
+}) {
+  const classes = {
+    blue:
+      'border-blue-500/20 bg-blue-500/10',
+    green:
+      'border-green-500/20 bg-green-500/10',
+    purple:
+      'border-purple-500/20 bg-purple-500/10',
+  };
+
+  return (
+    <Link
+      href={href}
+      className={`rounded-[2rem] border p-6 transition hover:scale-[1.01] hover:border-accent/40 ${classes[tone]}`}
+    >
+      <p className="text-xs uppercase tracking-[0.22em] text-white/45">
+        {title}
+      </p>
+
+      <p className="mt-3 text-5xl font-black text-white">
+        {value}
+      </p>
+
+      <p className="mt-3 text-sm leading-6 text-white/55">
+        {description}
+      </p>
+
+      <p className="mt-5 text-sm font-semibold text-accent">
+        Open queue →
+      </p>
+    </Link>
+  );
 }
 
 function SectionTitle({
@@ -519,13 +819,19 @@ function QueueCard({
     | 'red'
     | 'neutral';
 }) {
-  const classes: Record<string, string> = {
-    blue: 'border-blue-500/20 bg-blue-500/10',
-    yellow: 'border-yellow-500/20 bg-yellow-500/10',
-    purple: 'border-purple-500/20 bg-purple-500/10',
-    green: 'border-green-500/20 bg-green-500/10',
-    red: 'border-red-500/20 bg-red-500/10',
-    neutral: 'border-white/10 bg-white/5',
+  const classes = {
+    blue:
+      'border-blue-500/20 bg-blue-500/10',
+    yellow:
+      'border-yellow-500/20 bg-yellow-500/10',
+    purple:
+      'border-purple-500/20 bg-purple-500/10',
+    green:
+      'border-green-500/20 bg-green-500/10',
+    red:
+      'border-red-500/20 bg-red-500/10',
+    neutral:
+      'border-white/10 bg-white/5',
   };
 
   return (
@@ -588,9 +894,13 @@ function StatusChip({
   tone,
 }: {
   label: string;
-  tone: 'green' | 'yellow' | 'red' | 'neutral';
+  tone:
+    | 'green'
+    | 'yellow'
+    | 'red'
+    | 'neutral';
 }) {
-  const classes: Record<string, string> = {
+  const classes = {
     green:
       'border-green-500/20 bg-green-500/10 text-green-200',
     yellow:
@@ -608,4 +918,100 @@ function StatusChip({
       {label}
     </span>
   );
+}
+
+function StatusBadge({
+  status,
+}: {
+  status: string;
+}) {
+  const classes: Record<string, string> = {
+    submitted:
+      'border-blue-500/20 bg-blue-500/10 text-blue-200',
+    paid_awaiting_approval:
+      'border-yellow-500/20 bg-yellow-500/10 text-yellow-200',
+    approved_unpaid:
+      'border-orange-500/20 bg-orange-500/10 text-orange-200',
+    approved_awaiting_payment:
+      'border-orange-500/20 bg-orange-500/10 text-orange-200',
+    revision_submitted:
+      'border-purple-500/20 bg-purple-500/10 text-purple-200',
+    scheduled:
+      'border-indigo-500/20 bg-indigo-500/10 text-indigo-200',
+    active:
+      'border-green-500/20 bg-green-500/10 text-green-200',
+    live:
+      'border-green-500/20 bg-green-500/10 text-green-200',
+    rejected:
+      'border-red-500/20 bg-red-500/10 text-red-200',
+    removal_requested:
+      'border-orange-500/20 bg-orange-500/10 text-orange-200',
+    refund_requested:
+      'border-orange-500/20 bg-orange-500/10 text-orange-200',
+    cancelled:
+      'border-red-500/20 bg-red-500/10 text-red-200',
+    removed:
+      'border-white/10 bg-white/5 text-white/50',
+    archived:
+      'border-purple-500/20 bg-purple-500/10 text-purple-200',
+  };
+
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+        classes[status] ||
+        'border-white/10 bg-white/5 text-white/65'
+      }`}
+    >
+      {formatStatus(status)}
+    </span>
+  );
+}
+
+function formatStatus(value: string) {
+  return value
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
+}
+
+function formatActor(
+  role: string | null
+) {
+  switch (role) {
+    case 'admin':
+      return 'Administrator';
+
+    case 'owner':
+      return 'Event Owner';
+
+    case 'payment':
+      return 'Payment';
+
+    case 'automation':
+      return 'Automation';
+
+    case 'system':
+      return 'System';
+
+    default:
+      return 'Unknown';
+  }
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Unknown time';
+  }
+
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }
+  ).format(date);
 }
