@@ -555,6 +555,7 @@ import {
   type EventStatus,
 } from '@/lib/events/workflow';
 import { transitionEventStatus } from '@/lib/events/transition';
+import { logAdminActivity } from '@/lib/admin/activity-log';
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = [
   'draft',
@@ -579,6 +580,7 @@ const VALID_EVENT_STATUSES: readonly EventStatus[] = [
 
 type EventWorkflowRecord = {
   id: string;
+  name: string | null;
   status: EventStatus;
   is_approved: boolean | null;
   is_paid: boolean | null;
@@ -630,6 +632,7 @@ async function getEventWorkflowRecord(
     .from('events')
     .select(`
       id,
+      name,
       status,
       is_approved,
       is_paid,
@@ -747,10 +750,51 @@ function calculatePublicState(
 function refreshEventPaths(eventId: string) {
   revalidatePath('/admin');
   revalidatePath('/admin/events');
+  revalidatePath('/admin/activity');
   revalidatePath(`/admin/events/${eventId}`);
   revalidatePath('/events');
   revalidatePath('/dashboard/events');
   revalidatePath(`/dashboard/events/${eventId}/review`);
+}
+
+
+async function recordEventAdminActivity({
+  supabase,
+  userId,
+  event,
+  action,
+  previousState,
+  newState,
+  reason,
+  note,
+  metadata,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  event: EventWorkflowRecord;
+  action: string;
+  previousState?: unknown;
+  newState?: unknown;
+  reason?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  await logAdminActivity({
+    supabase,
+    actorId: userId,
+    actorRole: 'admin',
+    category: 'event',
+    action,
+    entityType: 'event',
+    entityId: event.id,
+    entityName: event.name || 'Untitled Event',
+    previousState,
+    newState,
+    reason: reason || null,
+    note: note || null,
+    source: 'admin_event_action',
+    metadata: metadata || {},
+  });
 }
 
 export async function reviewEvent(
@@ -838,6 +882,29 @@ export async function approveEvent(formData: FormData) {
     },
   });
 
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'approve_event',
+    previousState: {
+      status: event.status,
+      is_approved: event.is_approved,
+      is_paid: event.is_paid,
+      payment_status: event.payment_status,
+      payment_override: event.payment_override,
+    },
+    newState: {
+      status: nextStatus,
+      is_approved: true,
+      financially_eligible: paid,
+    },
+    reason: paid
+      ? 'Event approved and cleared for scheduling.'
+      : 'Event approved and awaiting payment.',
+    note: textValue(formData, 'admin_note') || null,
+  });
+
   refreshEventPaths(eventId);
 
   redirect(
@@ -865,6 +932,11 @@ export async function rejectEvent(formData: FormData) {
     );
   }
 
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
+
   await transitionEventStatus({
     supabase,
     eventId,
@@ -886,6 +958,24 @@ export async function rejectEvent(formData: FormData) {
       approvedAt: null,
       approvedBy: null,
     },
+  });
+
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'reject_event',
+    previousState: {
+      status: event.status,
+      is_approved: event.is_approved,
+    },
+    newState: {
+      status: 'rejected',
+      is_approved: false,
+      is_public: false,
+    },
+    reason: rejectionReason,
+    note: textValue(formData, 'admin_note') || null,
   });
 
   refreshEventPaths(eventId);
@@ -1004,6 +1094,29 @@ export async function applyPaymentOverride(
     throw new Error(overrideUpdateError.message);
   }
 
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'apply_payment_override',
+    previousState: {
+      status: event.status,
+      payment_status: event.payment_status,
+      payment_override: previouslyOverridden,
+      is_approved: event.is_approved,
+    },
+    newState: {
+      status: nextStatus,
+      payment_status: 'overridden',
+      payment_override: true,
+      is_approved: event.is_approved === true,
+    },
+    reason,
+    note:
+      adminNote ||
+      'Administrative payment override applied.',
+  });
+
   refreshEventPaths(eventId);
 
   redirect(
@@ -1100,6 +1213,25 @@ export async function approveEventRevision(
     throw new Error(revisionUpdateError.message);
   }
 
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'approve_event_revision',
+    previousState: {
+      status: event.status,
+      original_status_before_revision:
+        originalStatus || null,
+    },
+    newState: {
+      status: restoredStatus,
+      is_approved: true,
+      original_status_before_revision: null,
+    },
+    reason: 'Event revision approved.',
+    note: adminNote || null,
+  });
+
   refreshEventPaths(eventId);
 
   redirect(
@@ -1175,6 +1307,25 @@ export async function rejectEventRevision(
     throw new Error(revisionUpdateError.message);
   }
 
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'reject_event_revision',
+    previousState: {
+      status: event.status,
+      original_status_before_revision:
+        event.original_status_before_revision || null,
+    },
+    newState: {
+      status: 'revision_draft',
+      is_approved: false,
+      is_public: false,
+    },
+    reason: adminNote,
+    note: adminNote,
+  });
+
   refreshEventPaths(eventId);
 
   redirect(
@@ -1190,6 +1341,11 @@ export async function updateAdminEventDetails(
   const eventId = textValue(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
 
   const name = textValue(formData, 'name');
 
@@ -1279,6 +1435,32 @@ export async function updateAdminEventDetails(
     .eq('id', eventId);
 
   if (error) throw new Error(error.message);
+
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'update_event_details',
+    previousState: {
+      name: event.name,
+    },
+    newState: {
+      name,
+      slug: nullableText(formData, 'slug'),
+      venue_name: nullableText(formData, 'venue_name'),
+      city: nullableText(formData, 'city'),
+      state: state || null,
+      event_start_at: nullableDateTime(
+        formData,
+        'event_start_at'
+      ),
+      event_end_at: nullableDateTime(
+        formData,
+        'event_end_at'
+      ),
+    },
+    reason: 'Administrative event details update.',
+  });
 
   refreshEventPaths(eventId);
   redirect(`/admin/events/${eventId}?details=updated`);
@@ -1388,6 +1570,53 @@ export async function updateAdminEventFinancials(
 
   if (error) throw new Error(error.message);
 
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'update_event_financials',
+    previousState: {
+      promotion_start_at: event.promotion_start_at,
+      promotion_end_at: event.promotion_end_at,
+      is_public: calculatePublicState(event),
+    },
+    newState: {
+      base_price: numberOrNull(
+        formData.get('base_price')
+      ),
+      included_promo_days: numberOrNull(
+        formData.get('included_promo_days')
+      ),
+      extra_promo_days: numberOrNull(
+        formData.get('extra_promo_days')
+      ),
+      extra_promo_price: numberOrNull(
+        formData.get('extra_promo_price')
+      ),
+      coupon_code: nullableText(
+        formData,
+        'coupon_code'
+      ),
+      discount_amount: numberOrNull(
+        formData.get('discount_amount')
+      ),
+      total_price: numberOrNull(
+        formData.get('total_price')
+      ),
+      payment_amount: numberOrNull(
+        formData.get('payment_amount')
+      ),
+      promotion_start_at: promotionStartAt,
+      promotion_end_at: promotionEndAt,
+      is_public: isPublic,
+    },
+    reason: 'Administrative promotion or financial update.',
+    note: nullableText(
+      formData,
+      'package_upgrade_note'
+    ),
+  });
+
   refreshEventPaths(eventId);
   redirect(`/admin/events/${eventId}?financials=updated`);
 }
@@ -1400,6 +1629,11 @@ export async function updateAdminEventNotes(
   const eventId = textValue(formData, 'event_id');
 
   if (!eventId) throw new Error('Missing event id.');
+
+  const event = await getEventWorkflowRecord(
+    supabase,
+    eventId
+  );
 
   const nowIso = new Date().toISOString();
 
@@ -1423,6 +1657,22 @@ export async function updateAdminEventNotes(
     .eq('id', eventId);
 
   if (error) throw new Error(error.message);
+
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'update_event_admin_notes',
+    previousState: null,
+    newState: {
+      admin_notes_updated: true,
+      admin_refund_note_updated: true,
+    },
+    reason: 'Internal administrative notes updated.',
+    note:
+      nullableText(formData, 'admin_notes') ||
+      nullableText(formData, 'admin_refund_note'),
+  });
 
   refreshEventPaths(eventId);
   redirect(`/admin/events/${eventId}?notes=updated`);
@@ -1513,6 +1763,28 @@ export async function updateAdminEventStatus(
     throw new Error(adminUpdateError.message);
   }
 
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: 'manual_event_status_change',
+    previousState: {
+      status: event.status,
+      is_approved: event.is_approved,
+      is_paid: event.is_paid,
+      payment_status: event.payment_status,
+      payment_override: event.payment_override,
+      hidden_by_admin: event.hidden_by_admin,
+      removed_at: event.removed_at,
+    },
+    newState: {
+      status: nextStatus,
+      ...transitionUpdates,
+    },
+    reason,
+    note: adminNote || null,
+  });
+
   refreshEventPaths(eventId);
 
   redirect(
@@ -1601,6 +1873,27 @@ export async function updateAdminEventVisibility(
     if (error) {
       throw new Error(error.message);
     }
+
+    await recordEventAdminActivity({
+      supabase,
+      userId: user.id,
+      event,
+      action: `event_${action}`,
+      previousState: {
+        is_public: calculatePublicState(event),
+        hidden_by_admin: event.hidden_by_admin,
+      },
+      newState: payload,
+      reason:
+        action === 'hide'
+          ? 'Event hidden by administrator.'
+          : action === 'unhide'
+            ? 'Event restored to public visibility.'
+            : action === 'feature'
+              ? 'Event featured by administrator.'
+              : 'Event removed from featured placement.',
+      note: adminNote || null,
+    });
 
     refreshEventPaths(eventId);
 
@@ -1735,6 +2028,38 @@ export async function updateAdminEventVisibility(
   if (auditError) {
     throw new Error(auditError.message);
   }
+
+  await recordEventAdminActivity({
+    supabase,
+    userId: user.id,
+    event,
+    action: `event_${action}`,
+    previousState: {
+      status: event.status,
+      hidden_by_admin: event.hidden_by_admin,
+      removed_at: event.removed_at,
+    },
+    newState: {
+      status:
+        action === 'reactivate'
+          ? 'scheduled'
+          : action === 'cancel'
+            ? 'cancelled'
+            : 'removed',
+      hidden_by_admin:
+        action === 'reactivate'
+          ? false
+          : true,
+      removed_at:
+        action === 'remove'
+          ? nowIso
+          : action === 'reactivate'
+            ? null
+            : event.removed_at,
+    },
+    reason,
+    note: adminNote || null,
+  });
 
   refreshEventPaths(eventId);
 
