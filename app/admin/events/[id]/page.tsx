@@ -1,7 +1,8 @@
-import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getLookupMap, type LookupValue } from "@/lib/config/lookups";
 import {
   approveEvent,
   rejectEvent,
@@ -13,37 +14,91 @@ import {
   updateAdminEventVisibility,
   updateAdminEventFinancials,
   updateAdminEventNotes,
-} from '../new/actions';
+} from "../new/actions";
 import EventLifecycleTimeline, {
   type EventStatusHistoryItem,
-} from '@/components/admin/EventLifecycleTimeline';
+} from "@/components/admin/EventLifecycleTimeline";
 
 type Props = {
   params: Promise<{ id: string }>;
 };
 
-const PUBLIC_STATUSES = ['scheduled', 'active', 'live'];
+const PUBLIC_STATUSES = ["scheduled", "active", "live"];
 
 const EVENT_STATUSES = [
-  'draft',
-  'building',
-  'revision_draft',
-  'submitted',
-  'approved_unpaid',
-  'approved_awaiting_payment',
-  'paid_awaiting_approval',
-  'revision_submitted',
-  'scheduled',
-  'active',
-  'live',
-  'rejected',
-  'removal_requested',
-  'cancelled',
-  'removed',
-  'ended',
-  'archived',
-  'refund_requested'
-];
+  "draft",
+  "building",
+  "revision_draft",
+  "submitted",
+  "approved_unpaid",
+  "approved_awaiting_payment",
+  "paid_awaiting_approval",
+  "revision_submitted",
+  "scheduled",
+  "active",
+  "live",
+  "rejected",
+  "removal_requested",
+  "cancelled",
+  "removed",
+  "ended",
+  "archived",
+  "refund_requested",
+] as const;
+
+const US_STATES = [
+  ["AL", "Alabama"],
+  ["AK", "Alaska"],
+  ["AZ", "Arizona"],
+  ["AR", "Arkansas"],
+  ["CA", "California"],
+  ["CO", "Colorado"],
+  ["CT", "Connecticut"],
+  ["DE", "Delaware"],
+  ["FL", "Florida"],
+  ["GA", "Georgia"],
+  ["HI", "Hawaii"],
+  ["ID", "Idaho"],
+  ["IL", "Illinois"],
+  ["IN", "Indiana"],
+  ["IA", "Iowa"],
+  ["KS", "Kansas"],
+  ["KY", "Kentucky"],
+  ["LA", "Louisiana"],
+  ["ME", "Maine"],
+  ["MD", "Maryland"],
+  ["MA", "Massachusetts"],
+  ["MI", "Michigan"],
+  ["MN", "Minnesota"],
+  ["MS", "Mississippi"],
+  ["MO", "Missouri"],
+  ["MT", "Montana"],
+  ["NE", "Nebraska"],
+  ["NV", "Nevada"],
+  ["NH", "New Hampshire"],
+  ["NJ", "New Jersey"],
+  ["NM", "New Mexico"],
+  ["NY", "New York"],
+  ["NC", "North Carolina"],
+  ["ND", "North Dakota"],
+  ["OH", "Ohio"],
+  ["OK", "Oklahoma"],
+  ["OR", "Oregon"],
+  ["PA", "Pennsylvania"],
+  ["RI", "Rhode Island"],
+  ["SC", "South Carolina"],
+  ["SD", "South Dakota"],
+  ["TN", "Tennessee"],
+  ["TX", "Texas"],
+  ["UT", "Utah"],
+  ["VT", "Vermont"],
+  ["VA", "Virginia"],
+  ["WA", "Washington"],
+  ["WV", "West Virginia"],
+  ["WI", "Wisconsin"],
+  ["WY", "Wyoming"],
+  ["DC", "District of Columbia"],
+] as const;
 
 export default async function AdminEventDetailPage({ params }: Props) {
   const { id } = await params;
@@ -53,30 +108,27 @@ export default async function AdminEventDetailPage({ params }: Props) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect('/auth/login');
+  if (!user) redirect("/auth/login");
 
   const { data: adminProfile } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
+    .from("profiles")
+    .select("app_role")
+    .eq("id", user.id)
     .single();
 
-  if (adminProfile?.app_role !== 'admin') redirect('/dashboard');
+  if (adminProfile?.app_role !== "admin") redirect("/dashboard");
 
   const [
-  { data: event, error: eventError },
-  { data: statusHistory, error: historyError },
-  lookups,
-] = await Promise.all([
-  supabase
-    .from('events')
-    .select('*')
-    .eq('id', id)
-    .single(),
+    { data: event, error: eventError },
+    { data: statusHistory, error: historyError },
+    lookups,
+  ] = await Promise.all([
+    supabase.from("events").select("*").eq("id", id).single(),
 
-  supabase
-    .from('event_status_history')
-    .select(`
+    supabase
+      .from("event_status_history")
+      .select(
+        `
       id,
       event_id,
       from_status,
@@ -88,29 +140,30 @@ export default async function AdminEventDetailPage({ params }: Props) {
       source,
       metadata,
       created_at
-    `)
-    .eq('event_id', id)
-    .order('created_at', { ascending: false }),
+    `,
+      )
+      .eq("event_id", id)
+      .order("created_at", { ascending: false }),
 
-  getLookupMap([
-    'event_types',
-    'music_genres',
-    'vibe_tags',
-    'event_amenities',
-    'dress_codes',
-    'age_requirements',
-    'smoking_policies',
-    'parking_options',
-  ]),
-]);
+    getLookupMap([
+      "event_types",
+      "music_genres",
+      "vibe_tags",
+      "event_amenities",
+      "dress_codes",
+      "age_requirements",
+      "smoking_policies",
+      "parking_options",
+    ]),
+  ]);
 
-if (eventError || !event) {
-  notFound();
-}
+  if (eventError || !event) {
+    notFound();
+  }
 
-if (historyError) {
-  throw new Error(historyError.message);
-}
+  if (historyError) {
+    throw new Error(historyError.message);
+  }
 
   const [
     { data: owner },
@@ -120,8 +173,9 @@ if (historyError) {
   ] = await Promise.all([
     event.owner_id
       ? supabase
-          .from('profiles')
-          .select(`
+          .from("profiles")
+          .select(
+            `
             id,
             display_name,
             username,
@@ -129,81 +183,76 @@ if (historyError) {
             city,
             state,
             created_at
-          `)
-          .eq('id', event.owner_id)
+          `,
+          )
+          .eq("id", event.owner_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
 
     event.owner_id
       ? supabase
-          .from('events')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', event.owner_id)
+          .from("events")
+          .select("*", { count: "exact", head: true })
+          .eq("owner_id", event.owner_id)
       : Promise.resolve({ count: 0 }),
 
     event.owner_id
       ? supabase
-          .from('events')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', event.owner_id)
-          .in('status', ['scheduled', 'active', 'live', 'ended'])
+          .from("events")
+          .select("*", { count: "exact", head: true })
+          .eq("owner_id", event.owner_id)
+          .in("status", ["scheduled", "active", "live", "ended"])
       : Promise.resolve({ count: 0 }),
 
     event.owner_id
       ? supabase
-          .from('events')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', event.owner_id)
-          .eq('status', 'rejected')
+          .from("events")
+          .select("*", { count: "exact", head: true })
+          .eq("owner_id", event.owner_id)
+          .eq("status", "rejected")
       : Promise.resolve({ count: 0 }),
   ]);
 
-  const lifecycleHistory: EventStatusHistoryItem[] = (
-      statusHistory ?? []
-    ).map((item) => ({
+  const lifecycleHistory: EventStatusHistoryItem[] = (statusHistory ?? []).map(
+    (item) => ({
       id: String(item.id),
       event_id: String(item.event_id),
-      from_status:
-        item.from_status === null
-          ? null
-          : String(item.from_status),
+      from_status: item.from_status === null ? null : String(item.from_status),
       to_status: String(item.to_status),
-      changed_by:
-        item.changed_by === null
-          ? null
-          : String(item.changed_by),
+      changed_by: item.changed_by === null ? null : String(item.changed_by),
       changed_by_role:
-        item.changed_by_role === null
-          ? null
-          : String(item.changed_by_role),
-      reason:
-        item.reason === null
-          ? null
-          : String(item.reason),
-      note:
-        item.note === null
-          ? null
-          : String(item.note),
-      source: String(item.source || 'system'),
+        item.changed_by_role === null ? null : String(item.changed_by_role),
+      reason: item.reason === null ? null : String(item.reason),
+      note: item.note === null ? null : String(item.note),
+      source: String(item.source || "system"),
       metadata:
         item.metadata &&
-        typeof item.metadata === 'object' &&
+        typeof item.metadata === "object" &&
         !Array.isArray(item.metadata)
           ? (item.metadata as Record<string, unknown>)
           : null,
       created_at: String(item.created_at),
-    }));
+    }),
+  );
 
   const imageUrl = event.flyer_url || null;
 
   const canApprove = [
-    'submitted',
-    'paid_awaiting_approval',
-    'approved_unpaid',
-    'approved_awaiting_payment',
+    "submitted",
+    "paid_awaiting_approval",
+    "approved_unpaid",
+    "approved_awaiting_payment",
   ].includes(event.status);
 
-  const canReviewRevision = event.status === 'revision_submitted';
+  const canReviewRevision = event.status === "revision_submitted";
+
+  const canReject = [
+    "submitted",
+    "paid_awaiting_approval",
+    "approved_unpaid",
+    "approved_awaiting_payment",
+    "revision_submitted",
+  ].includes(event.status);
 
   const canViewPublic =
     Boolean(event.slug) &&
@@ -212,47 +261,45 @@ if (historyError) {
 
   const eventTypes = resolveLookupItems(
     lookups.event_types,
-    splitValue(event.event_type)
+    splitValue(event.event_type),
   );
 
   const musicItems = resolveLookupItems(
     lookups.music_genres,
-    arrayValue(event.music_selection)
+    arrayValue(event.music_selection),
   );
 
   const vibeItems = resolveLookupItems(
     lookups.vibe_tags,
-    arrayValue(event.vibe_tags)
+    arrayValue(event.vibe_tags),
   );
 
   const amenityItems = resolveLookupItems(
     lookups.event_amenities,
-    arrayValue(event.amenities)
+    arrayValue(event.amenities),
   );
 
-  const dressCode = resolveSingleLookup(
-    lookups.dress_codes,
-    event.dress_code
-  );
+  const dressCode = resolveSingleLookup(lookups.dress_codes, event.dress_code);
 
   const ageRequirement = resolveSingleLookup(
     lookups.age_requirements,
-    event.age_requirement
+    event.age_requirement,
   );
 
   const smokingPolicy = resolveSingleLookup(
     lookups.smoking_policies,
-    event.smoking_policy
+    event.smoking_policy,
   );
 
   const parkingOption = resolveSingleLookup(
     lookups.parking_options,
-    event.parking_notes
+    event.parking_notes,
   );
 
   const qualityChecks = buildQualityChecks(event);
   const qualityScore = calculateQualityScore(qualityChecks);
-  
+  const nextAction = getNextAdminAction(event, qualityScore);
+  const publicReadiness = getPublicReadiness(event, qualityScore);
 
   return (
     <section className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -295,7 +342,7 @@ if (historyError) {
             {imageUrl ? (
               <img
                 src={imageUrl}
-                alt={event.name || 'Event flyer'}
+                alt={event.name || "Event flyer"}
                 className="h-full min-h-[360px] w-full object-cover"
               />
             ) : (
@@ -311,7 +358,7 @@ if (historyError) {
             </p>
 
             <h1 className="mt-3 text-4xl font-black leading-tight text-white sm:text-6xl">
-              {event.name || 'Untitled Event'}
+              {event.name || "Untitled Event"}
             </h1>
 
             <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
@@ -321,35 +368,26 @@ if (historyError) {
             </p>
 
             <div className="mt-6 flex flex-wrap gap-2">
-              <StatusBadge status={event.status || 'unknown'} />
-              <Chip label={event.is_public ? 'Public' : 'Hidden'} />
+              <StatusBadge status={event.status || "unknown"} />
+              <Chip label={event.is_public ? "Public" : "Hidden"} />
               <PaymentBadge event={event} />
 
-              {event.admin_featured ? (
-                <Chip label="Featured" />
-              ) : null}
+              {event.admin_featured ? <Chip label="Featured" /> : null}
 
-              {event.hidden_by_admin ? (
-                <Chip label="Admin Hidden" />
-              ) : null}
+              {event.hidden_by_admin ? <Chip label="Admin Hidden" /> : null}
             </div>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Info
                 label="Owner"
-                value={
-                  owner?.display_name ||
-                  owner?.username ||
-                  event.owner_id
-                }
+                value={owner?.display_name || owner?.username || event.owner_id}
               />
 
               <Info
                 label="Location"
                 value={
-                  [event.city, event.state]
-                    .filter(Boolean)
-                    .join(', ') || 'Location TBA'
+                  [event.city, event.state].filter(Boolean).join(", ") ||
+                  "Location TBA"
                 }
               />
 
@@ -363,41 +401,35 @@ if (historyError) {
                 value={formatDate(event.promotion_end_at)}
               />
 
-              <Info
-                label="Total Price"
-                value={money(event.total_price)}
-              />
+              <Info label="Total Price" value={money(event.total_price)} />
 
               <Info
                 label="Payment Status"
-                value={event.payment_status || 'Pending'}
+                value={event.payment_status || "Pending"}
               />
 
-              <Info
-                label="Coupon"
-                value={event.coupon_code || 'None'}
-              />
+              <Info label="Coupon" value={event.coupon_code || "None"} />
 
-              <Info
-                label="Linkd’N"
-                value={event.linkdn_mode || 'None'}
-              />
+              <Info label="Linkd’N" value={event.linkdn_mode || "None"} />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard
+          label="Next Admin Action"
+          value={nextAction.label}
+          text={nextAction.detail}
+          tone={nextAction.tone}
+        />
+
         <MetricCard
           label="Quality Score"
           value={`${qualityScore}%`}
           text="Listing completeness"
           tone={
-            qualityScore >= 80
-              ? 'green'
-              : qualityScore >= 55
-                ? 'yellow'
-                : 'red'
+            qualityScore >= 80 ? "green" : qualityScore >= 55 ? "yellow" : "red"
           }
         />
 
@@ -419,61 +451,41 @@ if (historyError) {
           label="Owner Rejected"
           value={String(ownerRejectedCount || 0)}
           text="Listings sent back"
-          tone={ownerRejectedCount ? 'red' : 'neutral'}
+          tone={ownerRejectedCount ? "red" : "neutral"}
         />
       </section>
 
       <section className="grid gap-8 xl:grid-cols-[1fr_420px]">
         <main className="space-y-8">
-          <Panel
-            title="Public Event Overview"
-            eyebrow="Moderator Preview"
-          >
+          <Panel title="Public Event Overview" eyebrow="Moderator Preview">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Info
-                label="Venue"
-                value={event.venue_name || 'Venue TBA'}
-              />
+              <Info label="Venue" value={event.venue_name || "Venue TBA"} />
 
-              <Info
-                label="Address"
-                value={event.address || 'Not listed'}
-              />
+              <Info label="Address" value={event.address || "Not listed"} />
 
               <Info
                 label="Entry"
-                value={
-                  event.entry_price ||
-                  event.cover_charge ||
-                  'Not listed'
-                }
+                value={event.entry_price || event.cover_charge || "Not listed"}
               />
 
               <Info
                 label="Dress Code"
-                value={dressCode.label || 'Not listed'}
+                value={dressCode.label || "Not listed"}
               />
 
-              <Info
-                label="Age"
-                value={ageRequirement.label || 'Not listed'}
-              />
+              <Info label="Age" value={ageRequirement.label || "Not listed"} />
 
               <Info
                 label="Parking"
                 value={
-                  parkingOption.label ||
-                  event.parking_notes ||
-                  'Not listed'
+                  parkingOption.label || event.parking_notes || "Not listed"
                 }
               />
 
               <Info
                 label="Smoking"
                 value={
-                  smokingPolicy.label ||
-                  event.smoking_policy ||
-                  'Not listed'
+                  smokingPolicy.label || event.smoking_policy || "Not listed"
                 }
               />
 
@@ -481,10 +493,8 @@ if (historyError) {
                 label="Event Types"
                 value={
                   eventTypes.length
-                    ? eventTypes
-                        .map((item) => item.display_name)
-                        .join(', ')
-                    : 'Not listed'
+                    ? eventTypes.map((item) => item.display_name).join(", ")
+                    : "Not listed"
                 }
               />
             </div>
@@ -502,27 +512,28 @@ if (historyError) {
             ) : null}
 
             <div className="mt-8 space-y-7">
-              <LookupTagSection
-                title="Music"
-                items={musicItems}
-              />
+              <LookupTagSection title="Music" items={musicItems} />
 
-              <LookupTagSection
-                title="Vibes"
-                items={vibeItems}
-              />
+              <LookupTagSection title="Vibes" items={vibeItems} />
 
-              <LookupTagSection
-                title="Amenities"
-                items={amenityItems}
-              />
+              <LookupTagSection title="Amenities" items={amenityItems} />
             </div>
           </Panel>
 
-          <Panel
-            title="Listing Quality Checks"
-            eyebrow="Moderation Assistance"
-          >
+          <Panel title="Public Readiness" eyebrow="Release Decision">
+            <div
+              className={`rounded-2xl border p-5 ${publicReadiness.className}`}
+            >
+              <p className="text-lg font-black text-white">
+                {publicReadiness.title}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-white/65">
+                {publicReadiness.detail}
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Listing Quality Checks" eyebrow="Moderation Assistance">
             <div className="grid gap-3 md:grid-cols-2">
               {qualityChecks.map((check) => (
                 <QualityCheck
@@ -535,24 +546,11 @@ if (historyError) {
             </div>
           </Panel>
 
-          <EventLifecycleTimeline
-            history={lifecycleHistory}
-          />
+          <EventLifecycleTimeline history={lifecycleHistory} />
 
-
-          <Panel
-            title="Customer Service Edit"
-            eyebrow="Public Information"
-          >
-            <form
-              action={updateAdminEventDetails}
-              className="space-y-6"
-            >
-              <input
-                type="hidden"
-                name="event_id"
-                value={event.id}
-              />
+          <Panel title="Customer Service Edit" eyebrow="Public Information">
+            <form action={updateAdminEventDetails} className="space-y-6">
+              <input type="hidden" name="event_id" value={event.id} />
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Input
@@ -561,11 +559,7 @@ if (historyError) {
                   defaultValue={event.name}
                 />
 
-                <Input
-                  name="slug"
-                  label="Slug"
-                  defaultValue={event.slug}
-                />
+                <Input name="slug" label="Slug" defaultValue={event.slug} />
 
                 <Input
                   name="venue_name"
@@ -579,34 +573,31 @@ if (historyError) {
                   defaultValue={event.address}
                 />
 
-                <Input
-                  name="city"
-                  label="City"
-                  defaultValue={event.city}
-                />
+                <Input name="city" label="City" defaultValue={event.city} />
 
-                <Input
+                <Select
                   name="state"
                   label="State"
                   defaultValue={event.state}
+                  options={US_STATES.map(([value, label]) => ({
+                    value,
+                    label: `${label} (${value})`,
+                  }))}
+                  placeholder="Select a state"
                 />
 
                 <Input
                   name="event_start_at"
                   label="Event Start"
                   type="datetime-local"
-                  defaultValue={toDateTimeLocal(
-                    event.event_start_at
-                  )}
+                  defaultValue={toDateTimeLocal(event.event_start_at)}
                 />
 
                 <Input
                   name="event_end_at"
                   label="Event End"
                   type="datetime-local"
-                  defaultValue={toDateTimeLocal(
-                    event.event_end_at
-                  )}
+                  defaultValue={toDateTimeLocal(event.event_end_at)}
                 />
 
                 <Input
@@ -675,15 +666,8 @@ if (historyError) {
             title="Promotion, Package and Financials"
             eyebrow="Commercial Controls"
           >
-            <form
-              action={updateAdminEventFinancials}
-              className="space-y-6"
-            >
-              <input
-                type="hidden"
-                name="event_id"
-                value={event.id}
-              />
+            <form action={updateAdminEventFinancials} className="space-y-6">
+              <input type="hidden" name="event_id" value={event.id} />
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Input
@@ -698,9 +682,7 @@ if (historyError) {
                   name="included_promo_days"
                   label="Included Promo Days"
                   type="number"
-                  defaultValue={
-                    event.included_promo_days ?? 14
-                  }
+                  defaultValue={event.included_promo_days ?? 14}
                 />
 
                 <Input
@@ -766,18 +748,14 @@ if (historyError) {
                   name="promotion_start_at"
                   label="Promotion Start"
                   type="datetime-local"
-                  defaultValue={toDateTimeLocal(
-                    event.promotion_start_at
-                  )}
+                  defaultValue={toDateTimeLocal(event.promotion_start_at)}
                 />
 
                 <Input
                   name="promotion_end_at"
                   label="Promotion End"
                   type="datetime-local"
-                  defaultValue={toDateTimeLocal(
-                    event.promotion_end_at
-                  )}
+                  defaultValue={toDateTimeLocal(event.promotion_end_at)}
                 />
               </div>
 
@@ -797,15 +775,8 @@ if (historyError) {
             title="Internal Admin Notes"
             eyebrow="Not Visible to Event Owner"
           >
-            <form
-              action={updateAdminEventNotes}
-              className="space-y-5"
-            >
-              <input
-                type="hidden"
-                name="event_id"
-                value={event.id}
-              />
+            <form action={updateAdminEventNotes} className="space-y-5">
+              <input type="hidden" name="event_id" value={event.id} />
 
               <TextArea
                 name="admin_notes"
@@ -829,56 +800,31 @@ if (historyError) {
         </main>
 
         <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
-          <Panel
-            title="Moderation Decision"
-            eyebrow="Priority Actions"
-          >
+          <Panel title="Moderation Decision" eyebrow="Priority Actions">
             <div className="space-y-4">
               {canApprove ? (
                 <form action={approveEvent}>
-                  <input
-                    type="hidden"
-                    name="event_id"
-                    value={event.id}
-                  />
+                  <input type="hidden" name="event_id" value={event.id} />
 
-                  <ActionButton tone="green">
-                    Approve Event
-                  </ActionButton>
+                  <ActionButton tone="green">Approve Event</ActionButton>
                 </form>
               ) : null}
 
               {canReviewRevision ? (
                 <>
-                  <form
-                    action={approveEventRevision}
-                    className="space-y-3"
-                  >
-                    <input
-                      type="hidden"
-                      name="event_id"
-                      value={event.id}
-                    />
+                  <form action={approveEventRevision} className="space-y-3">
+                    <input type="hidden" name="event_id" value={event.id} />
 
                     <TextArea
                       name="admin_note"
                       label="Revision Approval Note"
                     />
 
-                    <ActionButton tone="green">
-                      Approve Revision
-                    </ActionButton>
+                    <ActionButton tone="green">Approve Revision</ActionButton>
                   </form>
 
-                  <form
-                    action={rejectEventRevision}
-                    className="space-y-3"
-                  >
-                    <input
-                      type="hidden"
-                      name="event_id"
-                      value={event.id}
-                    />
+                  <form action={rejectEventRevision} className="space-y-3">
+                    <input type="hidden" name="event_id" value={event.id} />
 
                     <TextArea
                       name="admin_note"
@@ -886,44 +832,28 @@ if (historyError) {
                       required
                     />
 
-                    <ActionButton tone="red">
-                      Reject Revision
-                    </ActionButton>
+                    <ActionButton tone="red">Reject Revision</ActionButton>
                   </form>
                 </>
               ) : null}
 
-              <form
-                action={rejectEvent}
-                className="space-y-3"
-              >
-                <input
-                  type="hidden"
-                  name="event_id"
-                  value={event.id}
-                />
+              {canReject ? (
+                <form action={rejectEvent} className="space-y-3">
+                  <input type="hidden" name="event_id" value={event.id} />
 
-                <TextArea
-                  name="rejection_reason"
-                  label="Reject / Send Back Reason"
-                  required
-                />
+                  <TextArea
+                    name="rejection_reason"
+                    label="Reject / Send Back Reason"
+                    required
+                  />
 
-                <ActionButton tone="red">
-                  Reject / Send Back
-                </ActionButton>
-              </form>
+                  <ActionButton tone="red">Reject / Send Back</ActionButton>
+                </form>
+              ) : null}
 
               {!isEventPaid(event) ? (
-                <form
-                  action={applyPaymentOverride}
-                  className="space-y-3"
-                >
-                  <input
-                    type="hidden"
-                    name="event_id"
-                    value={event.id}
-                  />
+                <form action={applyPaymentOverride} className="space-y-3">
+                  <input type="hidden" name="event_id" value={event.id} />
 
                   <TextArea
                     name="reason"
@@ -939,10 +869,7 @@ if (historyError) {
             </div>
           </Panel>
 
-          <Panel
-            title="Visibility Controls"
-            eyebrow="Public Discovery"
-          >
+          <Panel title="Visibility Controls" eyebrow="Public Discovery">
             <div className="grid gap-3">
               {!event.hidden_by_admin ? (
                 <StatusForm
@@ -999,19 +926,9 @@ if (historyError) {
             </div>
           </Panel>
 
-          <Panel
-            title="Manual Status Control"
-            eyebrow="Advanced"
-          >
-            <form
-              action={updateAdminEventStatus}
-              className="space-y-4"
-            >
-              <input
-                type="hidden"
-                name="event_id"
-                value={event.id}
-              />
+          <Panel title="Manual Status Control" eyebrow="Advanced">
+            <form action={updateAdminEventStatus} className="space-y-4">
+              <input type="hidden" name="event_id" value={event.id} />
 
               <label className="block">
                 <span className="text-sm font-semibold text-white/70">
@@ -1020,69 +937,43 @@ if (historyError) {
 
                 <select
                   name="status"
-                  defaultValue={event.status || 'draft'}
+                  defaultValue={event.status || "draft"}
                   className={fieldClass}
                 >
                   {EVENT_STATUSES.map((status) => (
-                    <option
-                      key={status}
-                      value={status}
-                    >
+                    <option key={status} value={status}>
                       {formatStatus(status)}
                     </option>
                   ))}
                 </select>
               </label>
 
-              <TextArea
-                name="reason"
-                label="Reason / Internal Note"
-                required
-              />
+              <TextArea name="reason" label="Reason / Internal Note" required />
 
-              <ActionButton tone="yellow">
-                Update Status
-              </ActionButton>
+              <ActionButton tone="yellow">Update Status</ActionButton>
             </form>
           </Panel>
 
-          <Panel
-            title="Owner History"
-            eyebrow="Account Context"
-          >
+          <Panel title="Owner History" eyebrow="Account Context">
             <div className="space-y-3">
               <Info
                 label="Owner"
-                value={
-                  owner?.display_name ||
-                  owner?.username ||
-                  event.owner_id
-                }
+                value={owner?.display_name || owner?.username || event.owner_id}
               />
 
-              <Info
-                label="Account Role"
-                value={owner?.app_role || 'user'}
-              />
+              <Info label="Account Role" value={owner?.app_role || "user"} />
 
               <Info
                 label="Location"
                 value={
-                  [owner?.city, owner?.state]
-                    .filter(Boolean)
-                    .join(', ') || 'Not listed'
+                  [owner?.city, owner?.state].filter(Boolean).join(", ") ||
+                  "Not listed"
                 }
               />
 
-              <Info
-                label="Joined"
-                value={formatDate(owner?.created_at)}
-              />
+              <Info label="Joined" value={formatDate(owner?.created_at)} />
 
-              <Info
-                label="Total Events"
-                value={String(ownerEventCount || 0)}
-              />
+              <Info label="Total Events" value={String(ownerEventCount || 0)} />
 
               <Info
                 label="Approved History"
@@ -1100,30 +991,12 @@ if (historyError) {
             <div className="space-y-3">
               <Info label="Event ID" value={event.id} />
               <Info label="Owner ID" value={event.owner_id} />
-              <Info
-                label="Created"
-                value={formatDate(event.created_at)}
-              />
-              <Info
-                label="Updated"
-                value={formatDate(event.updated_at)}
-              />
-              <Info
-                label="Approved"
-                value={formatDate(event.approved_at)}
-              />
-              <Info
-                label="Rejected"
-                value={formatDate(event.rejected_at)}
-              />
-              <Info
-                label="Removed"
-                value={formatDate(event.removed_at)}
-              />
-              <Info
-                label="Locked"
-                value={formatDate(event.locked_at)}
-              />
+              <Info label="Created" value={formatDate(event.created_at)} />
+              <Info label="Updated" value={formatDate(event.updated_at)} />
+              <Info label="Approved" value={formatDate(event.approved_at)} />
+              <Info label="Rejected" value={formatDate(event.rejected_at)} />
+              <Info label="Removed" value={formatDate(event.removed_at)} />
+              <Info label="Locked" value={formatDate(event.locked_at)} />
             </div>
           </Panel>
         </aside>
@@ -1141,30 +1014,17 @@ function StatusForm({
   eventId: string;
   actionName: string;
   label: string;
-  tone: 'green' | 'yellow' | 'red';
+  tone: "green" | "yellow" | "red";
 }) {
-  const requiresReason = [
-    'reactivate',
-    'cancel',
-    'remove',
-  ].includes(actionName);
+  const requiresReason = ["reactivate", "cancel", "remove"].includes(
+    actionName,
+  );
 
   return (
-    <form
-      action={updateAdminEventVisibility}
-      className="space-y-3"
-    >
-      <input
-        type="hidden"
-        name="event_id"
-        value={eventId}
-      />
+    <form action={updateAdminEventVisibility} className="space-y-3">
+      <input type="hidden" name="event_id" value={eventId} />
 
-      <input
-        type="hidden"
-        name="action"
-        value={actionName}
-      />
+      <input type="hidden" name="action" value={actionName} />
 
       {requiresReason ? (
         <label className="block">
@@ -1197,9 +1057,7 @@ function StatusForm({
         </label>
       ) : null}
 
-      <ActionButton tone={tone}>
-        {label}
-      </ActionButton>
+      <ActionButton tone={tone}>{label}</ActionButton>
     </form>
   );
 }
@@ -1211,7 +1069,7 @@ function Panel({
 }: {
   title: string;
   eyebrow?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-8">
@@ -1221,9 +1079,7 @@ function Panel({
         </p>
       ) : null}
 
-      <h2 className="mt-2 text-2xl font-black text-white">
-        {title}
-      </h2>
+      <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
 
       <div className="mt-6">{children}</div>
     </section>
@@ -1233,7 +1089,7 @@ function Panel({
 function Input({
   name,
   label,
-  type = 'text',
+  type = "text",
   step,
   defaultValue,
 }: {
@@ -1245,17 +1101,49 @@ function Input({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-white/70">
-        {label}
-      </span>
+      <span className="text-sm font-semibold text-white/70">{label}</span>
 
       <input
         name={name}
         type={type}
         step={step}
-        defaultValue={defaultValue ?? ''}
+        defaultValue={defaultValue ?? ""}
         className={fieldClass}
       />
+    </label>
+  );
+}
+
+function Select({
+  name,
+  label,
+  defaultValue,
+  options,
+  placeholder,
+}: {
+  name: string;
+  label: string;
+  defaultValue?: string | null;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-semibold text-white/70">{label}</span>
+
+      <select
+        name={name}
+        defaultValue={defaultValue ?? ""}
+        className={fieldClass}
+      >
+        {placeholder ? <option value="">{placeholder}</option> : null}
+
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
@@ -1275,15 +1163,13 @@ function TextArea({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-white/70">
-        {label}
-      </span>
+      <span className="text-sm font-semibold text-white/70">{label}</span>
 
       <textarea
         name={name}
         rows={rows}
         required={required}
-        defaultValue={defaultValue ?? ''}
+        defaultValue={defaultValue ?? ""}
         className={fieldClass}
       />
     </label>
@@ -1294,43 +1180,35 @@ function ActionButton({
   children,
   tone,
 }: {
-  children: React.ReactNode;
-  tone: 'green' | 'yellow' | 'red';
+  children: ReactNode;
+  tone: "green" | "yellow" | "red";
 }) {
   const classes = {
     green:
-      'border-green-500/20 bg-green-500/10 text-green-200 hover:border-green-500/40',
+      "border-green-500/20 bg-green-500/10 text-green-200 hover:border-green-500/40",
     yellow:
-      'border-yellow-500/20 bg-yellow-500/10 text-yellow-200 hover:border-yellow-500/40',
-    red:
-      'border-red-500/20 bg-red-500/10 text-red-200 hover:border-red-500/40',
+      "border-yellow-500/20 bg-yellow-500/10 text-yellow-200 hover:border-yellow-500/40",
+    red: "border-red-500/20 bg-red-500/10 text-red-200 hover:border-red-500/40",
   };
 
   return (
     <button
-      className={`w-full rounded-2xl border px-5 py-3 font-semibold ${classes[tone]}`}
+      type="submit"
+      className={`w-full rounded-2xl border px-5 py-3 font-semibold transition ${classes[tone]}`}
     >
       {children}
     </button>
   );
 }
 
-function Info({
-  label,
-  value,
-}: {
-  label: string;
-  value?: React.ReactNode;
-}) {
+function Info({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.22em] text-white/45">
         {label}
       </p>
 
-      <div className="mt-2 break-words text-white">
-        {value || '—'}
-      </div>
+      <div className="mt-2 break-words text-white">{value || "—"}</div>
     </div>
   );
 }
@@ -1345,31 +1223,22 @@ function Chip({ label }: { label: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const classes: Record<string, string> = {
-    submitted:
-      'border-blue-500/20 bg-blue-500/10 text-blue-200',
+    submitted: "border-blue-500/20 bg-blue-500/10 text-blue-200",
     paid_awaiting_approval:
-      'border-yellow-500/20 bg-yellow-500/10 text-yellow-200',
-    approved_unpaid:
-      'border-orange-500/20 bg-orange-500/10 text-orange-200',
-    revision_submitted:
-      'border-purple-500/20 bg-purple-500/10 text-purple-200',
-    scheduled:
-      'border-indigo-500/20 bg-indigo-500/10 text-indigo-200',
-    active:
-      'border-green-500/20 bg-green-500/10 text-green-200',
-    live:
-      'border-green-500/20 bg-green-500/10 text-green-200',
-    rejected:
-      'border-red-500/20 bg-red-500/10 text-red-200',
-    removed:
-      'border-white/10 bg-white/5 text-white/50',
+      "border-yellow-500/20 bg-yellow-500/10 text-yellow-200",
+    approved_unpaid: "border-orange-500/20 bg-orange-500/10 text-orange-200",
+    revision_submitted: "border-purple-500/20 bg-purple-500/10 text-purple-200",
+    scheduled: "border-indigo-500/20 bg-indigo-500/10 text-indigo-200",
+    active: "border-green-500/20 bg-green-500/10 text-green-200",
+    live: "border-green-500/20 bg-green-500/10 text-green-200",
+    rejected: "border-red-500/20 bg-red-500/10 text-red-200",
+    removed: "border-white/10 bg-white/5 text-white/50",
   };
 
   return (
     <span
       className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-        classes[status] ||
-        'border-white/10 bg-white/5 text-white/65'
+        classes[status] || "border-white/10 bg-white/5 text-white/65"
       }`}
     >
       {formatStatus(status)}
@@ -1410,17 +1279,13 @@ function MetricCard({
   label: string;
   value: string;
   text: string;
-  tone: 'green' | 'yellow' | 'red' | 'neutral';
+  tone: "green" | "yellow" | "red" | "neutral";
 }) {
   const classes = {
-    green:
-      'border-green-500/20 bg-green-500/10',
-    yellow:
-      'border-yellow-500/20 bg-yellow-500/10',
-    red:
-      'border-red-500/20 bg-red-500/10',
-    neutral:
-      'border-white/10 bg-white/5',
+    green: "border-green-500/20 bg-green-500/10",
+    yellow: "border-yellow-500/20 bg-yellow-500/10",
+    red: "border-red-500/20 bg-red-500/10",
+    neutral: "border-white/10 bg-white/5",
   };
 
   return (
@@ -1429,13 +1294,11 @@ function MetricCard({
         {label}
       </p>
 
-      <p className="mt-3 text-4xl font-black text-white">
+      <p className="mt-3 break-words text-2xl font-black text-white sm:text-3xl">
         {value}
       </p>
 
-      <p className="mt-2 text-sm text-white/55">
-        {text}
-      </p>
+      <p className="mt-2 text-sm text-white/55">{text}</p>
     </div>
   );
 }
@@ -1451,9 +1314,7 @@ function LookupTagSection({
     return (
       <div>
         <h3 className="text-lg font-black text-white">{title}</h3>
-        <p className="mt-2 text-sm text-white/40">
-          No values selected.
-        </p>
+        <p className="mt-2 text-sm text-white/40">No values selected.</p>
       </div>
     );
   }
@@ -1468,7 +1329,7 @@ function LookupTagSection({
             key={item.id}
             className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-white/70"
           >
-            {item.icon ? `${item.icon} ` : ''}
+            {item.icon ? `${item.icon} ` : ""}
             {item.display_name}
           </span>
         ))}
@@ -1490,75 +1351,164 @@ function QualityCheck({
     <div
       className={`rounded-2xl border p-4 ${
         passed
-          ? 'border-green-500/20 bg-green-500/10'
-          : 'border-red-500/20 bg-red-500/10'
+          ? "border-green-500/20 bg-green-500/10"
+          : "border-red-500/20 bg-red-500/10"
       }`}
     >
       <div className="flex items-start gap-3">
-        <span className="text-lg">{passed ? '✓' : '!'}</span>
+        <span className="text-lg">{passed ? "✓" : "!"}</span>
 
         <div>
           <p className="font-semibold text-white">{label}</p>
-          <p className="mt-1 text-sm leading-5 text-white/55">
-            {text}
-          </p>
+          <p className="mt-1 text-sm leading-5 text-white/55">{text}</p>
         </div>
       </div>
     </div>
   );
 }
 
+function getNextAdminAction(event: any, qualityScore: number) {
+  if (event.status === "revision_submitted") {
+    return {
+      label: "Review Revision",
+      detail: "Compare the owner's changes with the requested corrections.",
+      tone: "yellow" as const,
+    };
+  }
 
+  if (!isEventPaid(event)) {
+    return {
+      label: "Resolve Payment",
+      detail: "Confirm payment or document a valid administrative override.",
+      tone: "yellow" as const,
+    };
+  }
+
+  if (qualityScore < 75) {
+    return {
+      label: "Correct Listing",
+      detail: "Resolve missing public details before approval.",
+      tone: "red" as const,
+    };
+  }
+
+  if (["submitted", "paid_awaiting_approval"].includes(event.status)) {
+    return {
+      label: "Approve Event",
+      detail: "The listing appears ready for a moderation decision.",
+      tone: "green" as const,
+    };
+  }
+
+  if (event.hidden_by_admin) {
+    return {
+      label: "Review Hidden Status",
+      detail:
+        "Confirm whether the administrative visibility hold is still needed.",
+      tone: "yellow" as const,
+    };
+  }
+
+  return {
+    label: "Monitor Event",
+    detail: "No urgent moderation action is currently required.",
+    tone: "neutral" as const,
+  };
+}
+
+function getPublicReadiness(event: any, qualityScore: number) {
+  const paid = isEventPaid(event);
+  const hasWindow = Boolean(event.promotion_start_at && event.promotion_end_at);
+  const publishableStatus = PUBLIC_STATUSES.includes(event.status);
+  const visible = event.is_public === true && !event.hidden_by_admin;
+
+  if (qualityScore < 75) {
+    return {
+      title: "Not ready for public release",
+      detail:
+        "The listing is missing important content. Review the failed quality checks before approving or publishing it.",
+      className: "border-red-500/20 bg-red-500/10",
+    };
+  }
+
+  if (!paid) {
+    return {
+      title: "Waiting on payment",
+      detail:
+        "The listing content is usable, but payment or an approved override must be completed before public promotion.",
+      className: "border-yellow-500/20 bg-yellow-500/10",
+    };
+  }
+
+  if (!hasWindow) {
+    return {
+      title: "Promotion window required",
+      detail:
+        "Set both promotion start and promotion end dates before making the event discoverable.",
+      className: "border-yellow-500/20 bg-yellow-500/10",
+    };
+  }
+
+  if (publishableStatus && visible) {
+    return {
+      title: "Public and discoverable",
+      detail:
+        "The event is in a public lifecycle status and is not currently hidden by an administrator.",
+      className: "border-green-500/20 bg-green-500/10",
+    };
+  }
+
+  return {
+    title: "Ready for final moderation",
+    detail:
+      "Content, payment, and promotion dates are ready. Approve or schedule the listing when the event should enter public discovery.",
+    className: "border-green-500/20 bg-green-500/10",
+  };
+}
 
 function buildQualityChecks(event: any) {
   return [
     {
-      label: 'Event name',
+      label: "Event name",
       passed: Boolean(event.name?.trim()),
       text: event.name
-        ? 'A public event name is present.'
-        : 'Event name is missing.',
+        ? "A public event name is present."
+        : "Event name is missing.",
     },
     {
-      label: 'Flyer',
+      label: "Flyer",
       passed: Boolean(event.flyer_url),
       text: event.flyer_url
-        ? 'An event flyer has been supplied.'
-        : 'No event flyer is available.',
+        ? "An event flyer has been supplied."
+        : "No event flyer is available.",
     },
     {
-      label: 'Description',
-      passed: String(event.description || '').trim().length >= 60,
+      label: "Description",
+      passed: String(event.description || "").trim().length >= 60,
       text:
-        String(event.description || '').trim().length >= 60
-          ? 'Description contains enough detail.'
-          : 'Description may be too short.',
+        String(event.description || "").trim().length >= 60
+          ? "Description contains enough detail."
+          : "Description may be too short.",
     },
     {
-      label: 'Location',
+      label: "Location",
       passed: Boolean(
-        event.venue_name &&
-        event.address &&
-        event.city &&
-        event.state
+        event.venue_name && event.address && event.city && event.state,
       ),
       text:
-        event.venue_name &&
-        event.address &&
-        event.city &&
-        event.state
-          ? 'Venue and location details are present.'
-          : 'Venue or location details are incomplete.',
+        event.venue_name && event.address && event.city && event.state
+          ? "Venue and location details are present."
+          : "Venue or location details are incomplete.",
     },
     {
-      label: 'Event timing',
+      label: "Event timing",
       passed: Boolean(event.event_start_at),
       text: event.event_start_at
-        ? 'A start date and time are present.'
-        : 'Event start time is missing.',
+        ? "A start date and time are present."
+        : "Event start time is missing.",
     },
     {
-      label: 'Discovery tags',
+      label: "Discovery tags",
       passed:
         arrayValue(event.music_selection).length > 0 ||
         splitValue(event.event_type).length > 0 ||
@@ -1567,34 +1517,28 @@ function buildQualityChecks(event: any) {
         arrayValue(event.music_selection).length > 0 ||
         splitValue(event.event_type).length > 0 ||
         arrayValue(event.vibe_tags).length > 0
-          ? 'The listing contains searchable categories.'
-          : 'The listing needs music, type, or vibe tags.',
+          ? "The listing contains searchable categories."
+          : "The listing needs music, type, or vibe tags.",
     },
     {
-      label: 'Promotion window',
-      passed: Boolean(
-        event.promotion_start_at &&
-        event.promotion_end_at
-      ),
+      label: "Promotion window",
+      passed: Boolean(event.promotion_start_at && event.promotion_end_at),
       text:
-        event.promotion_start_at &&
-        event.promotion_end_at
-          ? 'Promotion dates are configured.'
-          : 'Promotion dates are incomplete.',
+        event.promotion_start_at && event.promotion_end_at
+          ? "Promotion dates are configured."
+          : "Promotion dates are incomplete.",
     },
     {
-      label: 'Payment readiness',
+      label: "Payment readiness",
       passed: isEventPaid(event),
       text: isEventPaid(event)
-        ? 'Payment, zero balance, or override is complete.'
-        : 'The event still has an unpaid balance.',
+        ? "Payment, zero balance, or override is complete."
+        : "The event still has an unpaid balance.",
     },
   ];
 }
 
-function calculateQualityScore(
-  checks: Array<{ passed: boolean }>
-) {
+function calculateQualityScore(checks: Array<{ passed: boolean }>) {
   if (!checks.length) return 0;
 
   const passed = checks.filter((check) => check.passed).length;
@@ -1602,36 +1546,29 @@ function calculateQualityScore(
   return Math.round((passed / checks.length) * 100);
 }
 
-
-
 function resolveLookupItems(
   options: LookupValue[] = [],
-  selectedValues: string[] = []
+  selectedValues: string[] = [],
 ): LookupValue[] {
-  const selected = new Set(
-    selectedValues.map(normalizeLookupValue)
-  );
+  const selected = new Set(selectedValues.map(normalizeLookupValue));
 
   const resolved = options.filter((option) =>
-    selected.has(normalizeLookupValue(option.value))
+    selected.has(normalizeLookupValue(option.value)),
   );
 
   const resolvedValues = new Set(
-    resolved.map((item) =>
-      normalizeLookupValue(item.value)
-    )
+    resolved.map((item) => normalizeLookupValue(item.value)),
   );
 
   const missing = selectedValues.filter(
-    (value) =>
-      !resolvedValues.has(normalizeLookupValue(value))
+    (value) => !resolvedValues.has(normalizeLookupValue(value)),
   );
 
   return [
     ...resolved,
     ...missing.map((value, index) => ({
       id: `legacy-${normalizeLookupValue(value)}-${index}`,
-      category_key: 'legacy',
+      category_key: "legacy",
       value,
       display_name: value,
       description: null,
@@ -1646,7 +1583,7 @@ function resolveLookupItems(
 
 function resolveSingleLookup(
   options: LookupValue[] = [],
-  selectedValue?: string | null
+  selectedValue?: string | null,
 ) {
   if (!selectedValue) {
     return {
@@ -1658,7 +1595,7 @@ function resolveSingleLookup(
   const match = options.find(
     (option) =>
       normalizeLookupValue(option.value) ===
-      normalizeLookupValue(selectedValue)
+      normalizeLookupValue(selectedValue),
   );
 
   return {
@@ -1682,66 +1619,60 @@ function splitValue(value: unknown): string[] {
   if (Array.isArray(value)) return arrayValue(value);
 
   return String(value)
-    .split(',')
+    .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function normalizeLookupValue(value: unknown) {
-  return String(value || '')
+  return String(value || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, ' ');
+    .replace(/\s+/g, " ");
 }
 
 function isEventPaid(event: any) {
   return (
     event.is_paid === true ||
     event.payment_override === true ||
-    event.payment_status === 'paid' ||
+    event.payment_status === "paid" ||
     Number(event.total_price || 0) <= 0
   );
 }
 
 function formatStatus(value: string) {
   return value
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase()
-    );
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '—';
+  if (!value) return "—";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return "—";
 
   return date.toLocaleString();
 }
 
-function money(
-  value: number | string | null | undefined
-) {
+function money(value: number | string | null | undefined) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
 
 function toDateTimeLocal(value?: string | null) {
-  if (!value) return '';
+  if (!value) return "";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
 
   const offset = date.getTimezoneOffset();
 
-  const local = new Date(
-    date.getTime() - offset * 60 * 1000
-  );
+  const local = new Date(date.getTime() - offset * 60 * 1000);
 
   return local.toISOString().slice(0, 16);
 }
 
 const fieldClass =
-  'mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50';
+  "mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50";
