@@ -792,12 +792,14 @@ function Chip({
     </span>
   );
 }*/
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import TrackView from '@/components/analytics/TrackView';
 import ShareEventButton from '@/components/events/ShareEventButton';
+import { getEventShareMetadata } from '@/lib/metadata/event-metadata';
 import {
   recordRecentEventView,
   reportEvent,
@@ -816,6 +818,13 @@ import {
 type Props = {
   params: Promise<{ slug: string }>;
 };
+
+export async function generateMetadata({
+  params,
+}: Props): Promise<Metadata> {
+  const { slug } = await params;
+  return getEventShareMetadata(slug);
+}
 
 type LookupMap = Record<string, LookupValue[]>;
 
