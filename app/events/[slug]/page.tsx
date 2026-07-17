@@ -797,6 +797,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import TrackView from '@/components/analytics/TrackView';
+import ShareEventButton from '@/components/events/ShareEventButton';
 import {
   recordRecentEventView,
   reportEvent,
@@ -1237,6 +1238,16 @@ export default async function EventDetailPage({ params }: Props) {
                   Add to Google Calendar
                 </a>
               ) : null}
+
+              <ShareEventButton
+                eventId={event.id}
+                eventName={
+                  event.name || 'HypeKnight Event'
+                }
+                eventPath={`/events/${event.slug}`}
+                locationText={locationText}
+                startsAt={event.event_start_at}
+              />
 
               <Link
                 href={`/events/${event.slug}#report-event`}
