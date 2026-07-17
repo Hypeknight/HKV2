@@ -1563,7 +1563,7 @@ export async function duplicateEvent(
         is_approved: false,
         is_paid: false,
         payment_override: false,
-        payment_status: 'unpaid',
+        //payment_status: 'unpaid',
 
         included_promo_days: includedPromoDays,
         extra_promo_days: extraPromoDays,
