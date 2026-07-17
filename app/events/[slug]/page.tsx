@@ -798,6 +798,12 @@ import { createClient } from '@/lib/supabase/server';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import TrackView from '@/components/analytics/TrackView';
 import {
+  recordRecentEventView,
+  reportEvent,
+  toggleEventSave,
+  updateEventRsvp,
+} from '@/app/events/actions';
+import {
   ButtonLink,
   Chip,
   EventStatusBadge,
@@ -854,6 +860,78 @@ export default async function EventDetailPage({ params }: Props) {
     .single();
 
   if (error || !event) notFound();
+
+  await recordRecentEventView(event.id);
+
+  const [
+    { count: saveCount, error: saveCountError },
+    { count: goingCount, error: goingCountError },
+    { count: interestedCount, error: interestedCountError },
+    { data: viewerSave, error: viewerSaveError },
+    { data: viewerRsvp, error: viewerRsvpError },
+  ] = await Promise.all([
+    supabase
+      .from('event_saves')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', event.id),
+
+    supabase
+      .from('event_rsvps')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', event.id)
+      .eq('status', 'going'),
+
+    supabase
+      .from('event_rsvps')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', event.id)
+      .eq('status', 'interested'),
+
+    user
+      ? supabase
+          .from('event_saves')
+          .select('id')
+          .eq('event_id', event.id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+      : Promise.resolve({
+          data: null,
+          error: null,
+        }),
+
+    user
+      ? supabase
+          .from('event_rsvps')
+          .select('status')
+          .eq('event_id', event.id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+      : Promise.resolve({
+          data: null,
+          error: null,
+        }),
+  ]);
+
+  const engagementErrors = [
+    saveCountError,
+    goingCountError,
+    interestedCountError,
+    viewerSaveError,
+    viewerRsvpError,
+  ].filter(Boolean);
+
+  if (engagementErrors.length) {
+    throw new Error(
+      engagementErrors
+        .map((item) => item?.message)
+        .filter(Boolean)
+        .join(' | ')
+    );
+  }
+
+  const isSaved = Boolean(viewerSave);
+  const viewerRsvpStatus =
+    viewerRsvp?.status || null;
 
   const { data: profile } = user
     ? await supabase
@@ -933,6 +1011,20 @@ export default async function EventDetailPage({ params }: Props) {
     event.parking_notes
   );
 
+  const directionsHref = fullAddress
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        fullAddress
+      )}`
+    : null;
+
+  const calendarHref = buildGoogleCalendarHref({
+    name: event.name || 'HypeKnight Event',
+    description: event.description || '',
+    location: fullAddress || locationText,
+    startAt: event.event_start_at,
+    endAt: event.event_end_at,
+  });
+
   return (
     <>
       <TrackView
@@ -1002,6 +1094,165 @@ export default async function EventDetailPage({ params }: Props) {
               </div>
             </div>
           )}
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
+          <Panel
+            title="Join the night"
+            eyebrow="Event Engagement"
+          >
+            <div className="grid gap-4 sm:grid-cols-3">
+              <EngagementMetric
+                label="Saved"
+                value={saveCount || 0}
+                text="People keeping this event on their radar."
+              />
+
+              <EngagementMetric
+                label="Going"
+                value={goingCount || 0}
+                text="Guests planning to attend."
+              />
+
+              <EngagementMetric
+                label="Interested"
+                value={interestedCount || 0}
+                text="Guests considering this event."
+              />
+            </div>
+
+            {user ? (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <form
+                  action={toggleEventSave}
+                  className="rounded-2xl border border-white/10 bg-black/20 p-5"
+                >
+                  <input
+                    type="hidden"
+                    name="event_id"
+                    value={event.id}
+                  />
+
+                  <input
+                    type="hidden"
+                    name="slug"
+                    value={event.slug}
+                  />
+
+                  <h3 className="text-xl font-black text-white">
+                    {isSaved ? 'Event Saved' : 'Save Event'}
+                  </h3>
+
+                  <p className="mt-2 text-sm leading-6 text-white/60">
+                    {isSaved
+                      ? 'Remove this event from your saved list.'
+                      : 'Keep this event easy to find later.'}
+                  </p>
+
+                  <button className="mt-5 w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
+                    {isSaved ? 'Remove Save' : 'Save Event'}
+                  </button>
+                </form>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                  <h3 className="text-xl font-black text-white">
+                    RSVP
+                  </h3>
+
+                  <p className="mt-2 text-sm leading-6 text-white/60">
+                    Tell HypeKnight whether you are interested or going.
+                  </p>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <RsvpForm
+                      eventId={event.id}
+                      slug={event.slug}
+                      status="interested"
+                      label={
+                        viewerRsvpStatus === 'interested'
+                          ? 'Interested ✓'
+                          : 'Interested'
+                      }
+                    />
+
+                    <RsvpForm
+                      eventId={event.id}
+                      slug={event.slug}
+                      status="going"
+                      label={
+                        viewerRsvpStatus === 'going'
+                          ? 'Going ✓'
+                          : "I'm Going"
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-6 rounded-2xl border border-accent/20 bg-accent/10 p-5">
+                <h3 className="text-xl font-black text-white">
+                  Sign in to connect with this event.
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-white/65">
+                  Save the event, RSVP, follow updates, and later
+                  participate in Patron Pulse and Linkd&apos;N experiences.
+                </p>
+
+                <ButtonLink
+                  href={`/auth/login?redirect=${encodeURIComponent(
+                    `/events/${event.slug}`
+                  )}`}
+                  variant="primary"
+                >
+                  Sign In
+                </ButtonLink>
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title="Plan your move"
+            eyebrow="Quick Actions"
+          >
+            <div className="space-y-3">
+              {directionsHref ? (
+                <a
+                  href={directionsHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={actionClass}
+                >
+                  Open Directions
+                </a>
+              ) : null}
+
+              {calendarHref ? (
+                <a
+                  href={calendarHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={actionClass}
+                >
+                  Add to Google Calendar
+                </a>
+              ) : null}
+
+              <Link
+                href={`/events/${event.slug}#report-event`}
+                className={actionClass}
+              >
+                Report Event Information
+              </Link>
+
+              <Link
+                href="/events"
+                className={actionClass}
+              >
+                Browse More Events
+              </Link>
+            </div>
+          </Panel>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1206,6 +1457,133 @@ export default async function EventDetailPage({ params }: Props) {
           </Panel>
         </section>
 
+        <section className="grid gap-6 lg:grid-cols-2">
+          <Panel
+            title="Patron Pulse"
+            eyebrow="Live Venue Energy"
+          >
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <p className="text-sm leading-7 text-white/65">
+                Patron Pulse will let verified guests check in,
+                respond to live prompts, and help HypeKnight understand
+                the current energy at this event.
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Chip>Guest Check-In</Chip>
+                <Chip>Live Polls</Chip>
+                <Chip>Energy Score</Chip>
+                <Chip>Connection Readiness</Chip>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel
+            title="Linkd’N"
+            eyebrow="Connected Nightlife"
+          >
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <p className="text-sm leading-7 text-white/65">
+                Linkd&apos;N will connect participating venues and events
+                through live rooms, cross-city experiences, challenges,
+                voting, and venue-to-venue interaction.
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Chip>Venue Connections</Chip>
+                <Chip>Live Rooms</Chip>
+                <Chip>Challenges</Chip>
+                <Chip>Audience Voting</Chip>
+              </div>
+            </div>
+          </Panel>
+        </section>
+
+        <Panel
+          title="Report this event"
+          eyebrow="Community Safety"
+        >
+          <form
+            id="report-event"
+            action={reportEvent}
+            className="grid gap-4"
+          >
+            <input
+              type="hidden"
+              name="event_id"
+              value={event.id}
+            />
+
+            <input
+              type="hidden"
+              name="slug"
+              value={event.slug}
+            />
+
+            <label>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+                Report Category
+              </span>
+
+              <select
+                name="category"
+                required
+                className={fieldClass}
+              >
+                <option value="">
+                  Choose a reason
+                </option>
+                <option value="incorrect_information">
+                  Incorrect information
+                </option>
+                <option value="cancelled_event">
+                  Event appears cancelled
+                </option>
+                <option value="unsafe_content">
+                  Unsafe or inappropriate content
+                </option>
+                <option value="spam">
+                  Spam or misleading listing
+                </option>
+                <option value="duplicate">
+                  Duplicate event
+                </option>
+                <option value="other">
+                  Other
+                </option>
+              </select>
+            </label>
+
+            <label>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+                Details
+              </span>
+
+              <textarea
+                name="details"
+                rows={5}
+                placeholder="Tell HypeKnight what appears incorrect or unsafe."
+                className={fieldClass}
+              />
+            </label>
+
+            {user ? (
+              <button className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 font-semibold text-red-100 hover:border-red-500/50">
+                Submit Report
+              </button>
+            ) : (
+              <ButtonLink
+                href={`/auth/login?redirect=${encodeURIComponent(
+                  `/events/${event.slug}#report-event`
+                )}`}
+                variant="secondary"
+              >
+                Sign In to Report
+              </ButtonLink>
+            )}
+          </form>
+        </Panel>
+
         {canManage ? (
           <Panel
             title={
@@ -1368,6 +1746,132 @@ function TagSection({
     </section>
   );
 }
+
+
+function EngagementMetric({
+  label,
+  value,
+  text,
+}: {
+  label: string;
+  value: number;
+  text: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+      <p className="text-xs uppercase tracking-[0.2em] text-white/45">
+        {label}
+      </p>
+
+      <p className="mt-3 text-4xl font-black text-white">
+        {value}
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-white/50">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function RsvpForm({
+  eventId,
+  slug,
+  status,
+  label,
+}: {
+  eventId: string;
+  slug: string;
+  status: 'interested' | 'going';
+  label: string;
+}) {
+  return (
+    <form action={updateEventRsvp}>
+      <input
+        type="hidden"
+        name="event_id"
+        value={eventId}
+      />
+
+      <input
+        type="hidden"
+        name="slug"
+        value={slug}
+      />
+
+      <input
+        type="hidden"
+        name="status"
+        value={status}
+      />
+
+      <button className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white hover:border-accent/40">
+        {label}
+      </button>
+    </form>
+  );
+}
+
+function buildGoogleCalendarHref({
+  name,
+  description,
+  location,
+  startAt,
+  endAt,
+}: {
+  name: string;
+  description: string;
+  location: string;
+  startAt?: string | null;
+  endAt?: string | null;
+}) {
+  const start = parseCalendarDate(startAt);
+
+  if (!start) {
+    return null;
+  }
+
+  const end =
+    parseCalendarDate(endAt) ||
+    new Date(start.getTime() + 4 * 60 * 60 * 1000);
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: name,
+    details: description,
+    location,
+    dates: `${formatCalendarDate(start)}/${formatCalendarDate(
+      end
+    )}`,
+  });
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function parseCalendarDate(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date;
+}
+
+function formatCalendarDate(date: Date) {
+  return date
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
+}
+
+const actionClass =
+  'block rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center font-semibold text-white hover:border-accent/40';
+
+const fieldClass =
+  'w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50';
 
 function resolveLookupItems(
   options: LookupValue[] = [],
