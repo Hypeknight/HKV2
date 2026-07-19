@@ -3,10 +3,12 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import {
+  clearEventPatronPulseSettings,
   revokePatronPulseAccess,
   updateAdminAnnouncementStatus,
   updateAdminPulseSessionStatus,
   updateAdminPulseStatus,
+  updateEventPatronPulseSettings,
 } from '../actions';
 
 type Props = {
@@ -58,6 +60,7 @@ export default async function AdminPatronPulseEventPage({
     { data: activation, error: activationError },
     { data: session, error: sessionError },
     { data: tiers, error: tierError },
+    { data: overrides, error: overridesError },
   ] = await Promise.all([
     supabase
       .from('events')
@@ -101,6 +104,12 @@ export default async function AdminPatronPulseEventPage({
       .select('id, name, slug, rank')
       .eq('system_id', system.id)
       .order('rank', { ascending: true }),
+
+    supabase
+      .from('event_patron_pulse_settings')
+      .select('*')
+      .eq('event_id', eventId)
+      .maybeSingle(),
   ]);
 
   if (eventError || !event) {
@@ -117,6 +126,10 @@ export default async function AdminPatronPulseEventPage({
 
   if (tierError) {
     throw new Error(tierError.message);
+  }
+
+  if (overridesError) {
+    throw new Error(overridesError.message);
   }
 
   let pulses: any[] = [];
@@ -265,6 +278,251 @@ export default async function AdminPatronPulseEventPage({
             value={String(responseCount)}
           />
         </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-accent/20 bg-accent/10 p-6 sm:p-8">
+        <p className="text-xs uppercase tracking-[0.25em] text-accent">
+          Event Overrides
+        </p>
+
+        <h2 className="mt-2 text-3xl font-black text-white">
+          Control this event’s Pulse behavior
+        </h2>
+
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-white/60">
+          Leave a setting on Inherit to use the global Patron Pulse
+          default. Event overrides take priority over global settings.
+        </p>
+
+        <form
+          action={updateEventPatronPulseSettings}
+          className="mt-6 space-y-6"
+        >
+          <input
+            type="hidden"
+            name="event_id"
+            value={event.id}
+          />
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <OverrideSelect
+              name="enabled"
+              label="Event Pulse access"
+              value={
+                overrides?.enabled === false
+                  ? 'false'
+                  : 'true'
+              }
+              includeInherit={false}
+            />
+
+            <OverrideSelect
+              name="require_checkin"
+              label="Require check-in"
+              value={booleanOverride(
+                overrides?.require_checkin
+              )}
+            />
+
+            <OverrideSelect
+              name="allow_anonymous_view"
+              label="Anonymous viewing"
+              value={booleanOverride(
+                overrides?.allow_anonymous_view
+              )}
+            />
+
+            <OverrideSelect
+              name="allow_guest_results"
+              label="Guest result viewing"
+              value={booleanOverride(
+                overrides?.allow_guest_results
+              )}
+            />
+
+            <OverrideSelect
+              name="announcements_enabled"
+              label="Announcements"
+              value={booleanOverride(
+                overrides?.announcements_enabled
+              )}
+            />
+
+            <OverrideSelect
+              name="dj_requests_enabled"
+              label="DJ requests"
+              value={booleanOverride(
+                overrides?.dj_requests_enabled
+              )}
+            />
+
+            <OverrideSelect
+              name="challenges_enabled"
+              label="Challenges"
+              value={booleanOverride(
+                overrides?.challenges_enabled
+              )}
+            />
+
+            <OverrideSelect
+              name="rewards_enabled"
+              label="Rewards"
+              value={booleanOverride(
+                overrides?.rewards_enabled
+              )}
+            />
+
+            <OverrideSelect
+              name="owner_can_open_session"
+              label="Owner opens session"
+              value={booleanOverride(
+                overrides?.owner_can_open_session
+              )}
+            />
+
+            <OverrideSelect
+              name="owner_can_create_pulses"
+              label="Owner creates pulses"
+              value={booleanOverride(
+                overrides?.owner_can_create_pulses
+              )}
+            />
+
+            <OverrideSelect
+              name="owner_can_publish_announcements"
+              label="Owner publishes announcements"
+              value={booleanOverride(
+                overrides?.owner_can_publish_announcements
+              )}
+            />
+
+            <OverrideSelect
+              name="admin_approval_required"
+              label="Admin approval required"
+              value={booleanOverride(
+                overrides?.admin_approval_required
+              )}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <OptionalNumber
+              name="max_open_pulses"
+              label="Maximum open pulses"
+              value={overrides?.max_open_pulses}
+            />
+
+            <OptionalNumber
+              name="default_duration_minutes"
+              label="Default duration"
+              value={
+                overrides?.default_duration_minutes
+              }
+            />
+
+            <OptionalNumber
+              name="max_response_length"
+              label="Maximum response length"
+              value={overrides?.max_response_length}
+            />
+
+            <label>
+              <span className={labelClass}>
+                Results visibility
+              </span>
+
+              <select
+                name="default_results_visibility"
+                defaultValue={
+                  overrides?.default_results_visibility ||
+                  ''
+                }
+                className={fieldClass}
+              >
+                <option value="">Inherit</option>
+                <option value="hidden">Hidden</option>
+                <option value="live">Live</option>
+                <option value="after_response">
+                  After Response
+                </option>
+                <option value="after_close">
+                  After Close
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label>
+              <span className={labelClass}>
+                Public label
+              </span>
+
+              <input
+                name="public_label"
+                defaultValue={
+                  overrides?.public_label || ''
+                }
+                placeholder="Inherit global label"
+                className={fieldClass}
+              />
+            </label>
+
+            <label>
+              <span className={labelClass}>
+                Public description
+              </span>
+
+              <input
+                name="public_description"
+                defaultValue={
+                  overrides?.public_description || ''
+                }
+                placeholder="Inherit global description"
+                className={fieldClass}
+              />
+            </label>
+
+            <label className="md:col-span-2">
+              <span className={labelClass}>
+                Administrative note
+              </span>
+
+              <textarea
+                name="admin_note"
+                rows={4}
+                defaultValue={
+                  overrides?.admin_note || ''
+                }
+                className={fieldClass}
+                placeholder="Internal reason for these overrides."
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black">
+              Save Event Overrides
+            </button>
+          </div>
+        </form>
+
+        {overrides ? (
+          <form
+            action={clearEventPatronPulseSettings}
+            className="mt-4"
+          >
+            <input
+              type="hidden"
+              name="event_id"
+              value={event.id}
+            />
+
+            <button className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-white">
+              Clear Overrides and Inherit Global Settings
+            </button>
+          </form>
+        ) : null}
       </section>
 
       {activation ? (
@@ -727,6 +985,68 @@ function Empty({ text }: { text: string }) {
   );
 }
 
+
+function OverrideSelect({
+  name,
+  label,
+  value,
+  includeInherit = true,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  includeInherit?: boolean;
+}) {
+  return (
+    <label>
+      <span className={labelClass}>{label}</span>
+      <select
+        name={name}
+        defaultValue={value}
+        className={fieldClass}
+      >
+        {includeInherit ? (
+          <option value="inherit">Inherit</option>
+        ) : null}
+        <option value="true">Enabled</option>
+        <option value="false">Disabled</option>
+      </select>
+    </label>
+  );
+}
+
+function OptionalNumber({
+  name,
+  label,
+  value,
+}: {
+  name: string;
+  label: string;
+  value?: number | null;
+}) {
+  return (
+    <label>
+      <span className={labelClass}>{label}</span>
+      <input
+        type="number"
+        min={1}
+        name={name}
+        defaultValue={value ?? ''}
+        placeholder="Inherit"
+        className={fieldClass}
+      />
+    </label>
+  );
+}
+
+function booleanOverride(
+  value?: boolean | null
+) {
+  if (value === true) return 'true';
+  if (value === false) return 'false';
+  return 'inherit';
+}
+
 function formatLabel(value: string) {
   return value
     .replaceAll('_', ' ')
@@ -749,6 +1069,12 @@ function formatDate(value?: string | null) {
     timeStyle: 'short',
   }).format(date);
 }
+
+const fieldClass =
+  'w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-accent/50';
+
+const labelClass =
+  'mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45';
 
 const primaryButtonClass =
   'w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90';

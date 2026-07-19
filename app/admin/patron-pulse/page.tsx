@@ -1,5 +1,9 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { grantPatronPulseAccess } from './actions';
+import {
+  grantPatronPulseAccess,
+  updateGlobalPatronPulseSettings,
+} from './actions';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
@@ -58,6 +62,7 @@ export default async function AdminPatronPulsePage({
     { data: sessions, error: sessionError },
     { data: tiers, error: tierError },
     { data: candidateEvents, error: eventError },
+    { data: settings, error: settingsError },
   ] = await Promise.all([
     supabase
       .from('event_system_activations')
@@ -148,6 +153,36 @@ export default async function AdminPatronPulsePage({
         nullsFirst: false,
       })
       .limit(300),
+
+    supabase
+      .from('platform_settings')
+      .select(`
+        patron_pulse_enabled,
+        patron_pulse_sales_enabled,
+        patron_pulse_beta_enabled,
+        patron_pulse_default_tier,
+        patron_pulse_checkin_enabled,
+        patron_pulse_require_checkin,
+        patron_pulse_allow_anonymous_view,
+        patron_pulse_allow_guest_results,
+        patron_pulse_announcements_enabled,
+        patron_pulse_dj_requests_enabled,
+        patron_pulse_challenges_enabled,
+        patron_pulse_rewards_enabled,
+        patron_pulse_max_open_pulses,
+        patron_pulse_default_duration_minutes,
+        patron_pulse_max_response_length,
+        patron_pulse_default_results_visibility,
+        patron_pulse_owner_can_open_session,
+        patron_pulse_owner_can_create_pulses,
+        patron_pulse_owner_can_publish_announcements,
+        patron_pulse_admin_approval_required,
+        patron_pulse_public_label,
+        patron_pulse_public_description,
+        patron_pulse_beta_notice
+      `)
+      .eq('id', 'global')
+      .single(),
   ]);
 
   if (activationError) {
@@ -164,6 +199,13 @@ export default async function AdminPatronPulsePage({
 
   if (eventError) {
     throw new Error(eventError.message);
+  }
+
+  if (settingsError || !settings) {
+    throw new Error(
+      settingsError?.message ||
+        'Patron Pulse settings are missing.'
+    );
   }
 
   const activatedEventIds = new Set(
@@ -284,6 +326,207 @@ export default async function AdminPatronPulsePage({
             value={pausedCount}
           />
         </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
+        <p className="text-xs uppercase tracking-[0.25em] text-accent">
+          Global Controls
+        </p>
+
+        <h2 className="mt-2 text-3xl font-black text-white">
+          Patron Pulse platform settings
+        </h2>
+
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-white/60">
+          These defaults affect every Patron Pulse event unless an
+          administrator creates an event-specific override.
+        </p>
+
+        <form
+          action={updateGlobalPatronPulseSettings}
+          className="mt-6 space-y-8"
+        >
+          <SettingsGroup title="Availability">
+            <Toggle
+              name="patron_pulse_enabled"
+              label="Patron Pulse enabled"
+              description="Master switch for the entire system."
+              defaultChecked={settings.patron_pulse_enabled}
+            />
+            <Toggle
+              name="patron_pulse_beta_enabled"
+              label="Beta access enabled"
+              description="Allow selected beta events and users to operate Pulse."
+              defaultChecked={settings.patron_pulse_beta_enabled}
+            />
+            <Toggle
+              name="patron_pulse_sales_enabled"
+              label="Public sales enabled"
+              description="Allow new paid Patron Pulse purchases."
+              defaultChecked={settings.patron_pulse_sales_enabled}
+            />
+            <Toggle
+              name="patron_pulse_admin_approval_required"
+              label="Admin approval required"
+              description="Require approval before an event can operate Pulse."
+              defaultChecked={settings.patron_pulse_admin_approval_required}
+            />
+          </SettingsGroup>
+
+          <SettingsGroup title="Guest Experience">
+            <Toggle
+              name="patron_pulse_checkin_enabled"
+              label="Check-in available"
+              description="Allow guest check-in at participating events."
+              defaultChecked={settings.patron_pulse_checkin_enabled}
+            />
+            <Toggle
+              name="patron_pulse_require_checkin"
+              label="Require check-in to respond"
+              description="Guests must check in before answering a pulse."
+              defaultChecked={settings.patron_pulse_require_checkin}
+            />
+            <Toggle
+              name="patron_pulse_allow_anonymous_view"
+              label="Allow signed-out viewing"
+              description="Guests may see public Pulse information before signing in."
+              defaultChecked={settings.patron_pulse_allow_anonymous_view}
+            />
+            <Toggle
+              name="patron_pulse_allow_guest_results"
+              label="Allow guest result viewing"
+              description="Permit guest-facing results when pulse visibility allows it."
+              defaultChecked={settings.patron_pulse_allow_guest_results}
+            />
+          </SettingsGroup>
+
+          <SettingsGroup title="Feature Controls">
+            <Toggle
+              name="patron_pulse_announcements_enabled"
+              label="Announcements enabled"
+              defaultChecked={settings.patron_pulse_announcements_enabled}
+            />
+            <Toggle
+              name="patron_pulse_dj_requests_enabled"
+              label="DJ requests enabled"
+              defaultChecked={settings.patron_pulse_dj_requests_enabled}
+            />
+            <Toggle
+              name="patron_pulse_challenges_enabled"
+              label="Challenges enabled"
+              defaultChecked={settings.patron_pulse_challenges_enabled}
+            />
+            <Toggle
+              name="patron_pulse_rewards_enabled"
+              label="Rewards enabled"
+              defaultChecked={settings.patron_pulse_rewards_enabled}
+            />
+          </SettingsGroup>
+
+          <SettingsGroup title="Owner Permissions">
+            <Toggle
+              name="patron_pulse_owner_can_open_session"
+              label="Owners can open sessions"
+              defaultChecked={settings.patron_pulse_owner_can_open_session}
+            />
+            <Toggle
+              name="patron_pulse_owner_can_create_pulses"
+              label="Owners can create pulses"
+              defaultChecked={settings.patron_pulse_owner_can_create_pulses}
+            />
+            <Toggle
+              name="patron_pulse_owner_can_publish_announcements"
+              label="Owners can publish announcements"
+              defaultChecked={settings.patron_pulse_owner_can_publish_announcements}
+            />
+          </SettingsGroup>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <NumberField
+              name="patron_pulse_max_open_pulses"
+              label="Maximum open pulses"
+              defaultValue={settings.patron_pulse_max_open_pulses}
+              min={1}
+            />
+            <NumberField
+              name="patron_pulse_default_duration_minutes"
+              label="Default duration (minutes)"
+              defaultValue={settings.patron_pulse_default_duration_minutes}
+              min={1}
+            />
+            <NumberField
+              name="patron_pulse_max_response_length"
+              label="Maximum response length"
+              defaultValue={settings.patron_pulse_max_response_length}
+              min={1}
+            />
+            <label>
+              <span className={labelClass}>
+                Default results visibility
+              </span>
+              <select
+                name="patron_pulse_default_results_visibility"
+                defaultValue={settings.patron_pulse_default_results_visibility}
+                className={fieldClass}
+              >
+                <option value="hidden">Hidden</option>
+                <option value="live">Live</option>
+                <option value="after_response">After Response</option>
+                <option value="after_close">After Close</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label>
+              <span className={labelClass}>Default tier</span>
+              <select
+                name="patron_pulse_default_tier"
+                defaultValue={settings.patron_pulse_default_tier}
+                className={fieldClass}
+              >
+                {(tiers || []).map((tier) => (
+                  <option key={tier.id} value={tier.slug}>
+                    {tier.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span className={labelClass}>Public label</span>
+              <input
+                name="patron_pulse_public_label"
+                defaultValue={settings.patron_pulse_public_label}
+                className={fieldClass}
+              />
+            </label>
+
+            <label className="md:col-span-2">
+              <span className={labelClass}>Public description</span>
+              <textarea
+                name="patron_pulse_public_description"
+                rows={4}
+                defaultValue={settings.patron_pulse_public_description || ''}
+                className={fieldClass}
+              />
+            </label>
+
+            <label className="md:col-span-2">
+              <span className={labelClass}>Beta notice</span>
+              <textarea
+                name="patron_pulse_beta_notice"
+                rows={3}
+                defaultValue={settings.patron_pulse_beta_notice || ''}
+                className={fieldClass}
+              />
+            </label>
+          </div>
+
+          <button className="rounded-2xl bg-accent px-6 py-3 font-semibold text-black">
+            Save Global Patron Pulse Settings
+          </button>
+        </form>
       </section>
 
       <section className="rounded-[2rem] border border-accent/20 bg-accent/10 p-6 sm:p-8">
@@ -531,6 +774,84 @@ function Chip({ label }: { label: string }) {
   );
 }
 
+
+function SettingsGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <h3 className="text-lg font-black text-white">
+        {title}
+      </h3>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Toggle({
+  name,
+  label,
+  description,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  description?: string;
+  defaultChecked: boolean;
+}) {
+  return (
+    <label className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={defaultChecked}
+        className="mt-1 h-4 w-4"
+      />
+      <span>
+        <span className="block font-semibold text-white">
+          {label}
+        </span>
+        {description ? (
+          <span className="mt-1 block text-xs leading-5 text-white/45">
+            {description}
+          </span>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
+function NumberField({
+  name,
+  label,
+  defaultValue,
+  min,
+}: {
+  name: string;
+  label: string;
+  defaultValue: number;
+  min: number;
+}) {
+  return (
+    <label>
+      <span className={labelClass}>{label}</span>
+      <input
+        type="number"
+        name={name}
+        min={min}
+        defaultValue={defaultValue}
+        className={fieldClass}
+      />
+    </label>
+  );
+}
+
 function formatLabel(value: string) {
   return value
     .replaceAll('_', ' ')
@@ -538,6 +859,9 @@ function formatLabel(value: string) {
       letter.toUpperCase()
     );
 }
+
+const labelClass =
+  'mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45';
 
 const fieldClass =
   'w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-accent/50';

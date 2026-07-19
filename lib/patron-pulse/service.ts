@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveEffectiveSystemTier } from '@/lib/systems/resolve-effective-tier';
+import { resolvePatronPulseSettings } from '@/lib/patron-pulse/resolve-settings';
 
 export async function requirePatronPulseCapability({
   supabase,
@@ -39,6 +40,26 @@ export async function loadPublicPatronPulse({
   eventId: string;
   userId?: string | null;
 }) {
+  const settings =
+    await resolvePatronPulseSettings({
+      supabase,
+      eventId,
+    });
+
+  if (
+    !settings.enabled ||
+    (!userId && !settings.allowAnonymousView)
+  ) {
+    return {
+      settings,
+      session: null,
+      pulses: [],
+      announcements: [],
+      viewerCheckin: null,
+      viewerResponses: [],
+    };
+  }
+
   const { data: session, error: sessionError } =
     await supabase
       .from('patron_pulse_sessions')
@@ -64,6 +85,7 @@ export async function loadPublicPatronPulse({
 
   if (!session) {
     return {
+      settings,
       session: null,
       pulses: [],
       announcements: [],
@@ -164,9 +186,13 @@ export async function loadPublicPatronPulse({
   }
 
   return {
+    settings,
     session,
     pulses: pulses || [],
-    announcements: announcements || [],
+    announcements:
+      settings.announcementsEnabled
+        ? announcements || []
+        : [],
     viewerCheckin: checkinResult.data,
     viewerResponses: responsesResult.data || [],
   };

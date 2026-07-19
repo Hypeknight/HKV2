@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { requirePatronPulseCapability } from '@/lib/patron-pulse/service';
+import { resolvePatronPulseSettings } from '@/lib/patron-pulse/resolve-settings';
 
 async function requireEventOwner(eventId: string) {
   const supabase = await createClient();
@@ -102,6 +103,18 @@ export async function createPatronPulseSession(
   const { supabase, user, event } =
     await requireEventOwner(eventId);
 
+  const settings =
+    await resolvePatronPulseSettings({
+      supabase,
+      eventId,
+    });
+
+  if (!settings.enabled) {
+    throw new Error(
+      'Patron Pulse is disabled for this event.'
+    );
+  }
+
   await requirePatronPulseCapability({
     supabase,
     eventId,
@@ -171,8 +184,30 @@ export async function updatePatronPulseSessionStatus(
     throw new Error('Invalid session status.');
   }
 
-  const { supabase, user, event } =
+  const { supabase, user, event, isAdmin } =
     await requireEventOwner(eventId);
+
+  const settings =
+    await resolvePatronPulseSettings({
+      supabase,
+      eventId,
+    });
+
+  if (!settings.enabled) {
+    throw new Error(
+      'Patron Pulse is disabled for this event.'
+    );
+  }
+
+  if (
+    status === 'open' &&
+    !isAdmin &&
+    !settings.ownerCanOpenSession
+  ) {
+    throw new Error(
+      'Event owners are not permitted to open this Pulse session.'
+    );
+  }
 
   const nowIso = new Date().toISOString();
 
@@ -285,8 +320,47 @@ export async function createPatronPulse(
     throw new Error('Invalid pulse type.');
   }
 
-  const { supabase, user, event } =
+  const { supabase, user, event, isAdmin } =
     await requireEventOwner(eventId);
+
+  const settings =
+    await resolvePatronPulseSettings({
+      supabase,
+      eventId,
+    });
+
+  if (!settings.enabled) {
+    throw new Error(
+      'Patron Pulse is disabled for this event.'
+    );
+  }
+
+  if (
+    !isAdmin &&
+    !settings.ownerCanCreatePulses
+  ) {
+    throw new Error(
+      'Event owners are not permitted to create pulses.'
+    );
+  }
+
+  if (
+    pulseType === 'dj_request' &&
+    !settings.djRequestsEnabled
+  ) {
+    throw new Error(
+      'DJ requests are disabled for this event.'
+    );
+  }
+
+  if (
+    pulseType === 'challenge' &&
+    !settings.challengesEnabled
+  ) {
+    throw new Error(
+      'Challenges are disabled for this event.'
+    );
+  }
 
   await requirePatronPulseCapability({
     supabase,
@@ -327,7 +401,8 @@ export async function createPatronPulse(
           value(
             formData,
             'results_visibility'
-          ) || 'after_close',
+          ) ||
+          settings.defaultResultsVisibility,
         allow_multiple_responses:
           formData.get(
             'allow_multiple_responses'
@@ -400,6 +475,48 @@ export async function updatePatronPulseStatus(
   const { supabase, user, event } =
     await requireEventOwner(eventId);
 
+  const settings =
+    await resolvePatronPulseSettings({
+      supabase,
+      eventId,
+    });
+
+  if (!settings.enabled) {
+    throw new Error(
+      'Patron Pulse is disabled for this event.'
+    );
+  }
+
+  if (status === 'open') {
+    const { count, error: countError } =
+      await supabase
+        .from('patron_pulses')
+        .select('id', {
+          count: 'exact',
+          head: true,
+        })
+        .eq('event_id', eventId)
+        .eq('status', 'open')
+        .neq('id', pulseId);
+
+    if (countError) {
+      throw new Error(countError.message);
+    }
+
+    if (
+      Number(count || 0) >=
+      settings.maxOpenPulses
+    ) {
+      throw new Error(
+        `Only ${settings.maxOpenPulses} pulse${
+          settings.maxOpenPulses === 1
+            ? ''
+            : 's'
+        } may be open at once.`
+      );
+    }
+  }
+
   const nowIso = new Date().toISOString();
 
   const payload: Record<string, unknown> = {
@@ -466,8 +583,35 @@ export async function createPatronPulseAnnouncement(
     );
   }
 
-  const { supabase, user, event } =
+  const { supabase, user, event, isAdmin } =
     await requireEventOwner(eventId);
+
+  const settings =
+    await resolvePatronPulseSettings({
+      supabase,
+      eventId,
+    });
+
+  if (!settings.enabled) {
+    throw new Error(
+      'Patron Pulse is disabled for this event.'
+    );
+  }
+
+  if (!settings.announcementsEnabled) {
+    throw new Error(
+      'Announcements are disabled for this event.'
+    );
+  }
+
+  if (
+    !isAdmin &&
+    !settings.ownerCanPublishAnnouncements
+  ) {
+    throw new Error(
+      'Event owners are not permitted to publish announcements.'
+    );
+  }
 
   await requirePatronPulseCapability({
     supabase,
