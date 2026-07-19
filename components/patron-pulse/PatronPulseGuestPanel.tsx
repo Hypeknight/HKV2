@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import PatronPulseAutoRefresh from '@/components/patron-pulse/PatronPulseAutoRefresh';
 import {
   checkIntoPatronPulse,
   submitPatronPulseResponse,
@@ -152,7 +153,12 @@ export default function PatronPulseGuestPanel({
             </p>
           </div>
 
-          <SessionStatus status={session.status} />
+          <div className="flex flex-col items-start gap-2 lg:items-end">
+            <SessionStatus status={session.status} />
+            <PatronPulseAutoRefresh
+              intervalMs={7000}
+            />
+          </div>
         </div>
 
         {!userId ? (

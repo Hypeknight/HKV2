@@ -777,3 +777,126 @@ export async function clearEventPatronPulseSettings(
 
   refresh(eventId);
 }
+
+
+export async function restorePatronPulseAccess(
+  formData: FormData
+) {
+  const { supabase, user } = await requireAdmin();
+
+  const eventId = text(formData, 'event_id');
+
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
+
+  const { data: system, error: systemError } =
+    await supabase
+      .from('platform_systems')
+      .select('id')
+      .eq('slug', 'patron-pulse')
+      .single();
+
+  if (systemError || !system) {
+    throw new Error(
+      systemError?.message ||
+        'Patron Pulse system not found.'
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: purchase, error: purchaseError } =
+    await supabase
+      .from('event_system_purchases')
+      .update({
+        purchase_status: 'overridden',
+        qualification_status: 'not_required',
+        qualification_reason:
+          'Patron Pulse access restored by administrator.',
+        starts_at: nowIso,
+        ends_at: null,
+        reviewed_by: user.id,
+        reviewed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('event_id', eventId)
+      .eq('system_id', system.id)
+      .select('id, tier_id')
+      .maybeSingle();
+
+  if (purchaseError) {
+    throw new Error(purchaseError.message);
+  }
+
+  if (!purchase) {
+    throw new Error(
+      'No Patron Pulse purchase or administrative grant exists to restore.'
+    );
+  }
+
+  const { error: activationError } =
+    await supabase
+      .from('event_system_activations')
+      .upsert(
+        {
+          event_id: eventId,
+          system_id: system.id,
+          event_purchase_id: purchase.id,
+          effective_tier_id: purchase.tier_id,
+          entitlement_source: 'admin_grant',
+          status: 'active',
+          enabled: true,
+          starts_at: nowIso,
+          ends_at: null,
+          resolved_at: nowIso,
+          updated_at: nowIso,
+        },
+        {
+          onConflict: 'event_id,system_id',
+        }
+      );
+
+  if (activationError) {
+    throw new Error(activationError.message);
+  }
+
+  const { error: overrideError } =
+    await supabase
+      .from('event_patron_pulse_settings')
+      .upsert(
+        {
+          event_id: eventId,
+          enabled: true,
+          updated_by: user.id,
+          updated_at: nowIso,
+        },
+        {
+          onConflict: 'event_id',
+        }
+      );
+
+  if (overrideError) {
+    throw new Error(overrideError.message);
+  }
+
+  const { error: sessionError } =
+    await supabase
+      .from('patron_pulse_sessions')
+      .update({
+        status: 'scheduled',
+        opened_at: null,
+        opened_by: null,
+        closed_at: null,
+        closed_by: null,
+        updated_at: nowIso,
+      })
+      .eq('event_id', eventId)
+      .in('status', ['cancelled', 'closed']);
+
+  if (sessionError) {
+    throw new Error(sessionError.message);
+  }
+
+  refresh(eventId);
+}

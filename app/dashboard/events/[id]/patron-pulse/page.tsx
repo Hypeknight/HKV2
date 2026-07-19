@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { resolveEffectiveSystemTier } from '@/lib/systems/resolve-effective-tier';
+import PatronPulseAutoRefresh from '@/components/patron-pulse/PatronPulseAutoRefresh';
+import PulseResultsPanel, { type PatronPulseResultSummary } from '@/components/patron-pulse/PulseResultsPanel';
+import PatronPulseActivityTimeline, { type PatronPulseActivityItem } from '@/components/patron-pulse/PatronPulseActivityTimeline';
 import {
   createPatronPulse,
   createPatronPulseAnnouncement,
@@ -101,6 +104,8 @@ export default async function PatronPulseOwnerPage({
   let announcements: any[] = [];
   let checkinCount = 0;
   let responseCount = 0;
+  let responseRows: any[] = [];
+  let activityItems: PatronPulseActivityItem[] = [];
 
   if (session) {
     const [
@@ -116,6 +121,14 @@ export default async function PatronPulseOwnerPage({
       {
         count: responses,
         error: responseError,
+      },
+      {
+        data: detailedResponses,
+        error: detailedResponseError,
+      },
+      {
+        data: activityRows,
+        error: activityError,
       },
     ] = await Promise.all([
       supabase
@@ -158,6 +171,36 @@ export default async function PatronPulseOwnerPage({
           head: true,
         })
         .eq('session_id', session.id),
+
+      supabase
+        .from('patron_pulse_responses')
+        .select(`
+          id,
+          pulse_id,
+          option_id,
+          text_response,
+          numeric_response,
+          boolean_response,
+          submitted_at
+        `)
+        .eq('session_id', session.id),
+
+      supabase
+        .from('patron_pulse_activity_log')
+        .select(`
+          id,
+          action,
+          actor_role,
+          from_status,
+          to_status,
+          note,
+          created_at
+        `)
+        .eq('event_id', event.id)
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(100),
     ]);
 
     if (pulseError) {
@@ -178,11 +221,62 @@ export default async function PatronPulseOwnerPage({
       throw new Error(responseError.message);
     }
 
+    if (detailedResponseError) {
+      throw new Error(
+        detailedResponseError.message
+      );
+    }
+
+    if (activityError) {
+      throw new Error(activityError.message);
+    }
+
     pulses = pulseRows || [];
     announcements = announcementRows || [];
     checkinCount = checkins || 0;
     responseCount = responses || 0;
+    responseRows = detailedResponses || [];
+    activityItems =
+      (activityRows || []) as PatronPulseActivityItem[];
   }
+
+  const pulseResults: PatronPulseResultSummary[] =
+    pulses.map((pulse) => {
+      const pulseResponses = responseRows.filter(
+        (response) =>
+          response.pulse_id === pulse.id
+      );
+
+      const totalResponses =
+        pulseResponses.length;
+
+      const options = (pulse.options || []).map(
+        (option: any) => {
+          const count = pulseResponses.filter(
+            (response) =>
+              response.option_id === option.id
+          ).length;
+
+          return {
+            optionId: option.id,
+            label: option.label,
+            count,
+            percentage:
+              totalResponses > 0
+                ? (count / totalResponses) * 100
+                : 0,
+          };
+        }
+      );
+
+      return {
+        pulseId: pulse.id,
+        title: pulse.title,
+        status: pulse.status,
+        totalResponses,
+        options,
+      };
+    });
 
   const canUsePulse =
     entitlement.effectiveTierId !== null;
@@ -190,6 +284,7 @@ export default async function PatronPulseOwnerPage({
   return (
     <section className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
+        <PatronPulseAutoRefresh />
         <Link
           href={`/dashboard/events/${event.id}/review`}
           className="text-sm font-semibold text-white/60 hover:text-accent"
@@ -377,7 +472,13 @@ export default async function PatronPulseOwnerPage({
                     eventId={event.id}
                     sessionId={session.id}
                     status="open"
-                    label="Open Session"
+                    label={
+                      session.status === 'cancelled'
+                        ? 'Restore and Open Session'
+                        : session.status === 'closed'
+                          ? 'Reopen Session'
+                          : 'Open Session'
+                    }
                     primary
                   />
                 ) : (
@@ -650,6 +751,16 @@ export default async function PatronPulseOwnerPage({
                 </button>
               </form>
             </Panel>
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-2">
+            <PulseResultsPanel
+              results={pulseResults}
+            />
+
+            <PatronPulseActivityTimeline
+              items={activityItems}
+            />
           </section>
 
           <Panel

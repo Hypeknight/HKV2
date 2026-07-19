@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import {
   clearEventPatronPulseSettings,
+  restorePatronPulseAccess,
   revokePatronPulseAccess,
   updateAdminAnnouncementStatus,
   updateAdminPulseSessionStatus,
@@ -526,31 +527,66 @@ export default async function AdminPatronPulseEventPage({
       </section>
 
       {activation ? (
-        <section className="rounded-[2rem] border border-red-500/20 bg-red-500/10 p-6">
-          <h2 className="text-2xl font-black text-red-100">
+        <section
+          className={`rounded-[2rem] border p-6 ${
+            activation.enabled &&
+            activation.status !== 'cancelled'
+              ? 'border-red-500/20 bg-red-500/10'
+              : 'border-green-500/20 bg-green-500/10'
+          }`}
+        >
+          <h2 className="text-2xl font-black text-white">
             Administrative access control
           </h2>
 
-          <p className="mt-3 text-sm leading-7 text-red-100/60">
-            Revoking access disables the activation,
-            cancels its purchase record, and cancels the
-            current Pulse session.
-          </p>
+          {activation.enabled &&
+          activation.status !== 'cancelled' ? (
+            <>
+              <p className="mt-3 text-sm leading-7 text-white/60">
+                Revoking access disables the activation,
+                cancels its purchase record, and cancels the
+                current Pulse session.
+              </p>
 
-          <form
-            action={revokePatronPulseAccess}
-            className="mt-5"
-          >
-            <input
-              type="hidden"
-              name="event_id"
-              value={event.id}
-            />
+              <form
+                action={revokePatronPulseAccess}
+                className="mt-5"
+              >
+                <input
+                  type="hidden"
+                  name="event_id"
+                  value={event.id}
+                />
 
-            <button className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 font-semibold text-red-100">
-              Revoke Patron Pulse Access
-            </button>
-          </form>
+                <button className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 font-semibold text-red-100">
+                  Revoke Patron Pulse Access
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="mt-3 text-sm leading-7 text-white/60">
+                Restore the administrative grant, activation,
+                event override, and session to a controllable
+                scheduled state.
+              </p>
+
+              <form
+                action={restorePatronPulseAccess}
+                className="mt-5"
+              >
+                <input
+                  type="hidden"
+                  name="event_id"
+                  value={event.id}
+                />
+
+                <button className="rounded-2xl bg-accent px-5 py-3 font-semibold text-black">
+                  Restore Patron Pulse Access
+                </button>
+              </form>
+            </>
+          )}
         </section>
       ) : (
         <section className="rounded-[2rem] border border-yellow-500/20 bg-yellow-500/10 p-6">
