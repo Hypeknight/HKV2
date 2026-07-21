@@ -44,10 +44,18 @@ function text(formData: FormData, key: string) {
 
 function refresh(eventId: string) {
   revalidatePath(`/admin/events/${eventId}`);
-  revalidatePath(`/admin/events/${eventId}/systems`);
-  revalidatePath(`/dashboard/events/${eventId}/review`);
-  revalidatePath(`/dashboard/events/${eventId}/patron-pulse`);
-  revalidatePath(`/dashboard/events/${eventId}/linkdn`);
+  revalidatePath(
+    `/admin/events/${eventId}/systems`
+  );
+  revalidatePath(
+    `/dashboard/events/${eventId}/review`
+  );
+  revalidatePath(
+    `/dashboard/events/${eventId}/patron-pulse`
+  );
+  revalidatePath(
+    `/dashboard/events/${eventId}/linkdn`
+  );
   revalidatePath('/admin/patron-pulse');
   revalidatePath('/admin/linkdn');
   revalidatePath('/admin/linkdn/opportunities');
@@ -55,31 +63,33 @@ function refresh(eventId: string) {
 
 async function getSystemAndTier({
   supabase,
-  systemSlug,
+  systemId,
   tierId,
 }: {
   supabase: any;
-  systemSlug: string;
+  systemId: string;
   tierId: string;
 }) {
   const { data: system, error: systemError } =
     await supabase
       .from('platform_systems')
       .select('id, slug, name')
-      .eq('slug', systemSlug)
+      .eq('id', systemId)
       .single();
 
   if (systemError || !system) {
     throw new Error(
       systemError?.message ||
-        `System ${systemSlug} was not found.`
+        `System ${systemId} was not found.`
     );
   }
 
   const { data: tier, error: tierError } =
     await supabase
       .from('system_tiers')
-      .select('id, system_id, name, slug, rank')
+      .select(
+        'id, system_id, name, slug, rank'
+      )
       .eq('id', tierId)
       .eq('system_id', system.id)
       .single();
@@ -97,16 +107,14 @@ async function getSystemAndTier({
 export async function grantEventSystemAccess(
   formData: FormData
 ) {
-  const { supabase, user } = await requireAdmin();
+  const { supabase, user } =
+    await requireAdmin();
 
   const eventId = text(formData, 'event_id');
-  const systemSlug = text(formData, 'system_slug');
+  const systemId = text(formData, 'system_id');
   const tierId = text(formData, 'tier_id');
-  const source =
-    text(formData, 'entitlement_source') ||
-    'admin_grant';
 
-  if (!eventId || !systemSlug || !tierId) {
+  if (!eventId || !systemId || !tierId) {
     throw new Error(
       'Event, system, and tier are required.'
     );
@@ -115,38 +123,40 @@ export async function grantEventSystemAccess(
   const { system, tier } =
     await getSystemAndTier({
       supabase,
-      systemSlug,
+      systemId,
       tierId,
     });
 
   const nowIso = new Date().toISOString();
 
-  const { data: purchase, error: purchaseError } =
-    await supabase
-      .from('event_system_purchases')
-      .upsert(
-        {
-          event_id: eventId,
-          system_id: system.id,
-          tier_id: tier.id,
-          purchase_status: 'overridden',
-          qualification_status: 'not_required',
-          qualification_reason:
-            `Administrative ${system.name} grant.`,
-          paid_amount: 0,
-          starts_at: nowIso,
-          ends_at: null,
-          purchased_by: user.id,
-          reviewed_by: user.id,
-          reviewed_at: nowIso,
-          updated_at: nowIso,
-        },
-        {
-          onConflict: 'event_id,system_id',
-        }
-      )
-      .select('id')
-      .single();
+  const {
+    data: purchase,
+    error: purchaseError,
+  } = await supabase
+    .from('event_system_purchases')
+    .upsert(
+      {
+        event_id: eventId,
+        system_id: system.id,
+        tier_id: tier.id,
+        purchase_status: 'overridden',
+        qualification_status: 'not_required',
+        qualification_reason:
+          `Administrative ${system.name} grant.`,
+        paid_amount: 0,
+        starts_at: nowIso,
+        ends_at: null,
+        purchased_by: user.id,
+        reviewed_by: user.id,
+        reviewed_at: nowIso,
+        updated_at: nowIso,
+      },
+      {
+        onConflict: 'event_id,system_id',
+      }
+    )
+    .select('id')
+    .single();
 
   if (purchaseError || !purchase) {
     throw new Error(
@@ -164,11 +174,8 @@ export async function grantEventSystemAccess(
           system_id: system.id,
           event_purchase_id: purchase.id,
           effective_tier_id: tier.id,
-          entitlement_source: source,
-          status:
-            systemSlug === 'linkdn'
-              ? 'pending_readiness'
-              : 'configured',
+          entitlement_source: 'admin_grant',
+          status: 'configured',
           enabled: true,
           starts_at: nowIso,
           ends_at: null,
@@ -181,13 +188,17 @@ export async function grantEventSystemAccess(
       );
 
   if (activationError) {
-    throw new Error(activationError.message);
+    throw new Error(
+      activationError.message
+    );
   }
 
-  if (systemSlug === 'patron-pulse') {
+  if (system.slug === 'patron-pulse') {
     const { error: settingsError } =
       await supabase
-        .from('event_patron_pulse_settings')
+        .from(
+          'event_patron_pulse_settings'
+        )
         .upsert(
           {
             event_id: eventId,
@@ -201,7 +212,9 @@ export async function grantEventSystemAccess(
         );
 
     if (settingsError) {
-      throw new Error(settingsError.message);
+      throw new Error(
+        settingsError.message
+      );
     }
   }
 
@@ -211,13 +224,14 @@ export async function grantEventSystemAccess(
 export async function changeEventSystemTier(
   formData: FormData
 ) {
-  const { supabase, user } = await requireAdmin();
+  const { supabase, user } =
+    await requireAdmin();
 
   const eventId = text(formData, 'event_id');
-  const systemSlug = text(formData, 'system_slug');
+  const systemId = text(formData, 'system_id');
   const tierId = text(formData, 'tier_id');
 
-  if (!eventId || !systemSlug || !tierId) {
+  if (!eventId || !systemId || !tierId) {
     throw new Error(
       'Event, system, and tier are required.'
     );
@@ -226,7 +240,7 @@ export async function changeEventSystemTier(
   const { system, tier } =
     await getSystemAndTier({
       supabase,
-      systemSlug,
+      systemId,
       tierId,
     });
 
@@ -241,7 +255,8 @@ export async function changeEventSystemTier(
       .update({
         tier_id: tier.id,
         purchase_status: 'overridden',
-        qualification_status: 'not_required',
+        qualification_status:
+          'not_required',
         qualification_reason:
           `Administrative tier change to ${tier.name}.`,
         reviewed_by: user.id,
@@ -257,10 +272,7 @@ export async function changeEventSystemTier(
       .update({
         effective_tier_id: tier.id,
         enabled: true,
-        status:
-          systemSlug === 'linkdn'
-            ? 'pending_readiness'
-            : 'configured',
+        status: 'configured',
         ends_at: null,
         resolved_at: nowIso,
         updated_at: nowIso,
@@ -270,11 +282,15 @@ export async function changeEventSystemTier(
   ]);
 
   if (purchaseError) {
-    throw new Error(purchaseError.message);
+    throw new Error(
+      purchaseError.message
+    );
   }
 
   if (activationError) {
-    throw new Error(activationError.message);
+    throw new Error(
+      activationError.message
+    );
   }
 
   refresh(eventId);
@@ -283,13 +299,15 @@ export async function changeEventSystemTier(
 export async function setEventSystemEnabled(
   formData: FormData
 ) {
-  const { supabase, user } = await requireAdmin();
+  const { supabase, user } =
+    await requireAdmin();
 
   const eventId = text(formData, 'event_id');
-  const systemSlug = text(formData, 'system_slug');
-  const enabled = text(formData, 'enabled') === 'true';
+  const systemId = text(formData, 'system_id');
+  const enabled =
+    text(formData, 'enabled') === 'true';
 
-  if (!eventId || !systemSlug) {
+  if (!eventId || !systemId) {
     throw new Error(
       'Event and system are required.'
     );
@@ -298,8 +316,8 @@ export async function setEventSystemEnabled(
   const { data: system, error: systemError } =
     await supabase
       .from('platform_systems')
-      .select('id, name')
-      .eq('slug', systemSlug)
+      .select('id, slug, name')
+      .eq('id', systemId)
       .single();
 
   if (systemError || !system) {
@@ -311,55 +329,75 @@ export async function setEventSystemEnabled(
 
   const nowIso = new Date().toISOString();
 
+  const activationPayload = enabled
+    ? {
+        enabled: true,
+        status: 'configured',
+        starts_at: nowIso,
+        ends_at: null,
+        resolved_at: nowIso,
+        updated_at: nowIso,
+      }
+    : {
+        enabled: false,
+        status: 'cancelled',
+        ends_at: nowIso,
+        resolved_at: nowIso,
+        updated_at: nowIso,
+      };
+
+  const purchasePayload = enabled
+    ? {
+        purchase_status: 'overridden',
+        starts_at: nowIso,
+        ends_at: null,
+        reviewed_by: user.id,
+        reviewed_at: nowIso,
+        updated_at: nowIso,
+      }
+    : {
+        purchase_status: 'cancelled',
+        ends_at: nowIso,
+        reviewed_by: user.id,
+        reviewed_at: nowIso,
+        updated_at: nowIso,
+      };
+
   const [
     { error: activationError },
     { error: purchaseError },
   ] = await Promise.all([
     supabase
       .from('event_system_activations')
-      .update({
-        enabled,
-        status: enabled
-          ? systemSlug === 'linkdn'
-            ? 'pending_readiness'
-            : 'configured'
-          : 'cancelled',
-        starts_at: enabled ? nowIso : undefined,
-        ends_at: enabled ? null : nowIso,
-        resolved_at: nowIso,
-        updated_at: nowIso,
-      })
+      .update(activationPayload)
       .eq('event_id', eventId)
       .eq('system_id', system.id),
 
     supabase
       .from('event_system_purchases')
-      .update({
-        purchase_status: enabled
-          ? 'overridden'
-          : 'cancelled',
-        starts_at: enabled ? nowIso : undefined,
-        ends_at: enabled ? null : nowIso,
-        reviewed_by: user.id,
-        reviewed_at: nowIso,
-        updated_at: nowIso,
-      })
+      .update(purchasePayload)
       .eq('event_id', eventId)
       .eq('system_id', system.id),
   ]);
 
   if (activationError) {
-    throw new Error(activationError.message);
+    throw new Error(
+      activationError.message
+    );
   }
 
   if (purchaseError) {
-    throw new Error(purchaseError.message);
+    throw new Error(
+      purchaseError.message
+    );
   }
 
-  if (systemSlug === 'patron-pulse') {
+  if (system.slug === 'patron-pulse') {
     const { error: settingsError } =
       await supabase
-        .from('event_patron_pulse_settings')
+        .from(
+          'event_patron_pulse_settings'
+        )
         .upsert(
           {
             event_id: eventId,
@@ -373,20 +411,33 @@ export async function setEventSystemEnabled(
         );
 
     if (settingsError) {
-      throw new Error(settingsError.message);
+      throw new Error(
+        settingsError.message
+      );
     }
 
     if (!enabled) {
-      await supabase
-        .from('patron_pulse_sessions')
-        .update({
-          status: 'cancelled',
-          closed_at: nowIso,
-          closed_by: user.id,
-          updated_at: nowIso,
-        })
-        .eq('event_id', eventId)
-        .not('status', 'in', '("closed","cancelled")');
+      const { error: sessionError } =
+        await supabase
+          .from('patron_pulse_sessions')
+          .update({
+            status: 'cancelled',
+            closed_at: nowIso,
+            closed_by: user.id,
+            updated_at: nowIso,
+          })
+          .eq('event_id', eventId)
+          .not(
+            'status',
+            'in',
+            '(closed,cancelled)'
+          );
+
+      if (sessionError) {
+        throw new Error(
+          sessionError.message
+        );
+      }
     }
   }
 
