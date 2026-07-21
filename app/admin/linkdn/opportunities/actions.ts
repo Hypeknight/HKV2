@@ -314,6 +314,67 @@ export async function reserveLinkdNConnection(
     );
   }
 
+  const todayIso = new Date()
+    .toISOString()
+    .slice(0, 10);
+
+  const [
+    { count: consumedCount, error: usageCountError },
+    { count: activeConnectionCount, error: activeCountError },
+  ] = await Promise.all([
+    supabase
+      .from('linkdn_connection_usage')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('event_id', eventId)
+      .eq('usage_date', todayIso)
+      .eq('connect_consumed', true),
+
+    supabase
+      .from('linkdn_connections')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('room_id', roomId)
+      .eq('event_id', eventId)
+      .in('status', [
+        'reserved',
+        'waiting',
+        'testing',
+        'ready',
+        'live',
+        'paused',
+        'reconnecting',
+      ]),
+  ]);
+
+  if (usageCountError) {
+    throw new Error(usageCountError.message);
+  }
+
+  if (activeCountError) {
+    throw new Error(activeCountError.message);
+  }
+
+  if (Number(activeConnectionCount || 0) > 0) {
+    throw new Error(
+      'This event already has an active or reserved connection in this room.'
+    );
+  }
+
+  if (
+    participant.connection_limit !== null &&
+    Number(consumedCount || 0) >=
+      participant.connection_limit
+  ) {
+    throw new Error(
+      'This event has reached its Linkd’N connection allowance for tonight.'
+    );
+  }
+
   const nowIso = new Date().toISOString();
 
   const { data: connection, error: connectionError } =

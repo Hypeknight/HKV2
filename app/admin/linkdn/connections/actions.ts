@@ -148,6 +148,15 @@ export async function transitionLinkdNConnection(
     }
 
     payload.paused_at = null;
+    payload.ended_at = null;
+    payload.failure_reason = null;
+    payload.disconnect_reason = null;
+  }
+
+  if (requestedStatus === 'testing') {
+    payload.ended_at = null;
+    payload.failure_reason = null;
+    payload.disconnect_reason = null;
   }
 
   if (requestedStatus === 'paused') {
@@ -248,7 +257,6 @@ async function syncConnectionRelatedStates({
       break;
     case 'ended':
       participantStatus = 'completed';
-      roomStatus = 'ended';
       break;
     case 'failed':
       participantStatus = 'disconnected';
@@ -315,6 +323,18 @@ async function syncConnectionRelatedStates({
   }
 
   if (
+    ['ended', 'failed', 'cancelled'].includes(
+      requestedStatus
+    )
+  ) {
+    await reconcileLinkdNRoomStatus({
+      supabase,
+      roomId: connection.room_id,
+      nowIso,
+    });
+  }
+
+  if (
     requestedStatus === 'ended' ||
     requestedStatus === 'failed' ||
     requestedStatus === 'cancelled'
@@ -347,6 +367,80 @@ async function syncConnectionRelatedStates({
       'Unable to log Linkd’N connection transition:',
       logError.message
     );
+  }
+}
+
+async function reconcileLinkdNRoomStatus({
+  supabase,
+  roomId,
+  nowIso,
+}: {
+  supabase: any;
+  roomId: string;
+  nowIso: string;
+}) {
+  const { data: roomConnections, error } =
+    await supabase
+      .from('linkdn_connections')
+      .select('status')
+      .eq('room_id', roomId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const statuses = (roomConnections || []).map(
+    (row: { status: string }) => row.status
+  );
+
+  const hasLive = statuses.some((status: string) =>
+    ['live'].includes(status)
+  );
+
+  const hasPaused = statuses.some((status: string) =>
+    ['paused', 'reconnecting'].includes(status)
+  );
+
+  const hasReady = statuses.some((status: string) =>
+    ['ready'].includes(status)
+  );
+
+  const hasPreparing = statuses.some((status: string) =>
+    ['reserved', 'waiting', 'testing'].includes(status)
+  );
+
+  const allTerminal =
+    statuses.length > 0 &&
+    statuses.every((status: string) =>
+      ['ended', 'failed', 'cancelled'].includes(status)
+    );
+
+  const nextRoomStatus = hasLive
+    ? 'live'
+    : hasPaused
+      ? 'paused'
+      : hasReady
+        ? 'ready'
+        : hasPreparing
+          ? 'preparing'
+          : allTerminal
+            ? 'ended'
+            : null;
+
+  if (!nextRoomStatus) {
+    return;
+  }
+
+  const { error: roomError } = await supabase
+    .from('linkdn_rooms')
+    .update({
+      status: nextRoomStatus,
+      updated_at: nowIso,
+    })
+    .eq('id', roomId);
+
+  if (roomError) {
+    throw new Error(roomError.message);
   }
 }
 
