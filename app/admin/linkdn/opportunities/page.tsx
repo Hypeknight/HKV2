@@ -621,9 +621,10 @@ export default async function AdminLinkdNOpportunitiesPage() {
                 : connection.room;
 
               return (
-                <div
+                <Link
                   key={connection.id}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-5"
+                  href={`/admin/linkdn/connections/${connection.id}`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 p-5 transition hover:border-accent/40"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -643,15 +644,21 @@ export default async function AdminLinkdNOpportunitiesPage() {
                       </p>
                     </div>
 
-                    <p className="text-sm text-white/40">
-                      {connection.scheduled_start_at
-                        ? formatDate(
-                            connection.scheduled_start_at
-                          )
-                        : 'Start not scheduled'}
-                    </p>
+                    <div className="text-right">
+                      <p className="text-sm text-white/40">
+                        {connection.scheduled_start_at
+                          ? formatDate(
+                              connection.scheduled_start_at
+                            )
+                          : 'Start not scheduled'}
+                      </p>
+
+                      <p className="mt-3 text-sm font-semibold text-accent">
+                        Open Connection Control →
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </Link>
               );
             })
           ) : (
