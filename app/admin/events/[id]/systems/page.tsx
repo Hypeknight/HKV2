@@ -41,6 +41,7 @@ export default async function AdminEventSystemsPage({
   const [
     { data: event, error: eventError },
     { data: systems, error: systemsError },
+    { data: tiers, error: tiersError },
     { data: purchases, error: purchasesError },
     { data: activations, error: activationsError },
   ] = await Promise.all([
@@ -68,20 +69,27 @@ export default async function AdminEventSystemsPage({
         slug,
         name,
         status,
-        public_enabled,
-        tiers:system_tiers(
-          id,
-          name,
-          slug,
-          rank,
-          status
-        )
+        public_enabled
       `)
       .in('slug', [
         'patron-pulse',
         'linkdn'
       ])
       .order('name'),
+
+    supabase
+      .from('system_tiers')
+      .select(`
+        id,
+        system_id,
+        name,
+        slug,
+        rank,
+        status
+      `)
+      .order('rank', {
+        ascending: true,
+      }),
 
     supabase
       .from('event_system_purchases')
@@ -94,13 +102,7 @@ export default async function AdminEventSystemsPage({
         qualification_status,
         qualification_reason,
         starts_at,
-        ends_at,
-        tier:system_tiers(
-          id,
-          name,
-          slug,
-          rank
-        )
+        ends_at
       `)
       .eq('event_id', id),
 
@@ -115,13 +117,7 @@ export default async function AdminEventSystemsPage({
         status,
         enabled,
         starts_at,
-        ends_at,
-        tier:system_tiers(
-          id,
-          name,
-          slug,
-          rank
-        )
+        ends_at
       `)
       .eq('event_id', id),
   ]);
@@ -134,6 +130,10 @@ export default async function AdminEventSystemsPage({
     throw new Error(systemsError.message);
   }
 
+  if (tiersError) {
+    throw new Error(tiersError.message);
+  }
+
   if (purchasesError) {
     throw new Error(purchasesError.message);
   }
@@ -141,6 +141,23 @@ export default async function AdminEventSystemsPage({
   if (activationsError) {
     throw new Error(activationsError.message);
   }
+
+  const tiersBySystem = new Map<string, any[]>();
+
+  for (const tier of tiers || []) {
+    const current =
+      tiersBySystem.get(tier.system_id) || [];
+
+    current.push(tier);
+    tiersBySystem.set(tier.system_id, current);
+  }
+
+  const tierById = new Map(
+    (tiers || []).map((tier) => [
+      tier.id,
+      tier,
+    ])
+  );
 
   const purchaseBySystem = new Map(
     (purchases || []).map((item) => [
@@ -204,6 +221,7 @@ export default async function AdminEventSystemsPage({
             value={getSystemSummary(
               systems || [],
               activationBySystem,
+              tierById,
               'patron-pulse'
             )}
           />
@@ -212,6 +230,7 @@ export default async function AdminEventSystemsPage({
             value={getSystemSummary(
               systems || [],
               activationBySystem,
+              tierById,
               'linkdn'
             )}
           />
@@ -222,29 +241,18 @@ export default async function AdminEventSystemsPage({
         {(systems || []).map((system: any) => {
           const activation =
             activationBySystem.get(system.id);
+
           const purchase =
             purchaseBySystem.get(system.id);
 
-          const tiers = (
-            Array.isArray(system.tiers)
-              ? system.tiers
-              : []
-          )
-            .filter(
-              (tier: any) =>
-                tier.status === 'active' ||
-                !tier.status
-            )
-            .sort(
-              (a: any, b: any) =>
-                a.rank - b.rank
-            );
+          const systemTiers =
+            tiersBySystem.get(system.id) || [];
 
-          const activeTier = Array.isArray(
-            activation?.tier
-          )
-            ? activation?.tier[0]
-            : activation?.tier;
+          const activeTier = activation
+            ? tierById.get(
+                activation.effective_tier_id
+              )
+            : null;
 
           const isEnabled =
             Boolean(activation?.enabled) &&
@@ -260,6 +268,16 @@ export default async function AdminEventSystemsPage({
                   : 'Grant access'
               }
             >
+              {!systemTiers.length ? (
+                <div className="mb-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm leading-6 text-yellow-100/80">
+                  No tiers were found for this system. Confirm that
+                  <code className="mx-1 rounded bg-black/20 px-1.5 py-0.5">
+                    system_tiers.system_id
+                  </code>
+                  points to this system.
+                </div>
+              ) : null}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <Info
                   label="Activation"
@@ -329,10 +347,11 @@ export default async function AdminEventSystemsPage({
                     name="event_id"
                     value={event.id}
                   />
+
                   <input
                     type="hidden"
-                    name="system_slug"
-                    value={system.slug}
+                    name="system_id"
+                    value={system.id}
                   />
 
                   <label>
@@ -350,7 +369,7 @@ export default async function AdminEventSystemsPage({
                         Select tier
                       </option>
 
-                      {tiers.map((tier: any) => (
+                      {systemTiers.map((tier: any) => (
                         <option
                           key={tier.id}
                           value={tier.id}
@@ -361,29 +380,10 @@ export default async function AdminEventSystemsPage({
                     </select>
                   </label>
 
-                  <label>
-                    <span className={labelClass}>
-                      Access source
-                    </span>
-
-                    <select
-                      name="entitlement_source"
-                      defaultValue="admin_grant"
-                      className={fieldClass}
-                    >
-                      <option value="admin_grant">
-                        Admin Grant
-                      </option>
-                      <option value="event_purchase">
-                        Event Purchase
-                      </option>
-                      <option value="venue_entitlement">
-                        Venue Entitlement
-                      </option>
-                    </select>
-                  </label>
-
-                  <button className={primaryButtonClass}>
+                  <button
+                    disabled={!systemTiers.length}
+                    className={primaryButtonClass}
+                  >
                     Grant {system.name}
                   </button>
                 </form>
@@ -398,10 +398,11 @@ export default async function AdminEventSystemsPage({
                       name="event_id"
                       value={event.id}
                     />
+
                     <input
                       type="hidden"
-                      name="system_slug"
-                      value={system.slug}
+                      name="system_id"
+                      value={system.id}
                     />
 
                     <select
@@ -413,7 +414,7 @@ export default async function AdminEventSystemsPage({
                       }
                       className={fieldClass}
                     >
-                      {tiers.map((tier: any) => (
+                      {systemTiers.map((tier: any) => (
                         <option
                           key={tier.id}
                           value={tier.id}
@@ -436,11 +437,13 @@ export default async function AdminEventSystemsPage({
                       name="event_id"
                       value={event.id}
                     />
+
                     <input
                       type="hidden"
-                      name="system_slug"
-                      value={system.slug}
+                      name="system_id"
+                      value={system.id}
                     />
+
                     <input
                       type="hidden"
                       name="enabled"
@@ -494,6 +497,7 @@ export default async function AdminEventSystemsPage({
 function getSystemSummary(
   systems: any[],
   activationBySystem: Map<string, any>,
+  tierById: Map<string, any>,
   slug: string
 ) {
   const system = systems.find(
@@ -507,9 +511,9 @@ function getSystemSummary(
 
   if (!activation) return 'Not Granted';
 
-  const tier = Array.isArray(activation.tier)
-    ? activation.tier[0]
-    : activation.tier;
+  const tier = tierById.get(
+    activation.effective_tier_id
+  );
 
   if (
     !activation.enabled ||
@@ -535,9 +539,11 @@ function Panel({
       <p className="text-xs uppercase tracking-[0.25em] text-accent">
         {eyebrow}
       </p>
+
       <h2 className="mt-2 text-3xl font-black text-white">
         {title}
       </h2>
+
       <div className="mt-6">{children}</div>
     </section>
   );
@@ -555,6 +561,7 @@ function Metric({
       <p className="text-xs uppercase tracking-[0.2em] text-white/40">
         {label}
       </p>
+
       <p className="mt-3 text-xl font-black text-white">
         {value}
       </p>
@@ -574,6 +581,7 @@ function Info({
       <p className="text-xs uppercase tracking-[0.18em] text-white/35">
         {label}
       </p>
+
       <p className="mt-2 text-sm font-semibold text-white/70">
         {value}
       </p>
@@ -596,7 +604,7 @@ const fieldClass =
   'w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50';
 
 const primaryButtonClass =
-  'w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black';
+  'w-full rounded-2xl bg-accent px-5 py-3 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40';
 
 const secondaryButtonClass =
   'rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-semibold text-white';
