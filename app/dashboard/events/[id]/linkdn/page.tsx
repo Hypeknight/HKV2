@@ -47,6 +47,7 @@ export default async function EventLinkdNPage({
 
   const [
     { data: participation, error: participationError },
+    { data: readinessRows, error: readinessError },
     { data: invitations, error: invitationsError },
     { data: connections, error: connectionsError },
   ] = await Promise.all([
@@ -72,23 +73,31 @@ export default async function EventLinkdNPage({
           name,
           slug,
           rank
-        ),
-        readiness:linkdn_event_readiness(
-          id,
-          commercial_ready,
-          technical_ready,
-          audience_ready,
-          readiness_status,
-          setup_deadline_at,
-          connection_test_scheduled_at,
-          blocker_reason,
-          admin_note
         )
       `)
       .eq('event_id', event.id)
       .order('created_at', {
         ascending: false,
       }),
+
+    supabase
+      .from('linkdn_event_readiness')
+      .select(`
+        id,
+        event_id,
+        room_id,
+        venue_id,
+        commercial_ready,
+        technical_ready,
+        audience_ready,
+        readiness_status,
+        setup_deadline_at,
+        connection_test_scheduled_at,
+        connection_test_passed_at,
+        blocker_reason,
+        admin_note
+      `)
+      .eq('event_id', event.id),
 
     supabase
       .from('linkdn_invitations')
@@ -127,6 +136,10 @@ export default async function EventLinkdNPage({
     throw new Error(participationError.message);
   }
 
+  if (readinessError) {
+    throw new Error(readinessError.message);
+  }
+
   if (invitationsError) {
     throw new Error(invitationsError.message);
   }
@@ -134,6 +147,13 @@ export default async function EventLinkdNPage({
   if (connectionsError) {
     throw new Error(connectionsError.message);
   }
+
+  const readinessByRoom = new Map(
+    (readinessRows || []).map((row) => [
+      row.room_id,
+      row,
+    ])
+  );
 
   const participationRows = await Promise.all(
     (participation || []).map(async (row: any) => {
@@ -145,17 +165,14 @@ export default async function EventLinkdNPage({
         ? row.tier[0]
         : row.tier;
 
-      const readinessRecord = Array.isArray(
-        row.readiness
-      )
-        ? row.readiness[0] || null
-        : row.readiness;
+      const readinessRecord =
+        readinessByRoom.get(row.room_id) || null;
 
       const liveReadiness =
         await calculateLinkdNReadiness({
           supabase,
           eventId: event.id,
-          roomId: room?.id || null,
+          roomId: row.room_id,
         });
 
       return {

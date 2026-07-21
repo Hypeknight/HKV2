@@ -40,11 +40,61 @@ export default async function AdminLinkdNRoomPage({
     redirect('/dashboard');
   }
 
+  const {
+    data: linkdNSystem,
+    error: linkdNSystemError,
+  } = await supabase
+    .from('platform_systems')
+    .select('id')
+    .eq('slug', 'linkdn')
+    .single();
+
+  if (linkdNSystemError || !linkdNSystem) {
+    throw new Error(
+      linkdNSystemError?.message ||
+        "Linkd'N system was not found."
+    );
+  }
+
+  const {
+    data: eligibleActivations,
+    error: eligibleActivationsError,
+  } = await supabase
+    .from('event_system_activations')
+    .select(`
+      event_id,
+      effective_tier_id,
+      entitlement_source,
+      status,
+      enabled
+    `)
+    .eq('system_id', linkdNSystem.id)
+    .eq('enabled', true)
+    .in('status', [
+      'configured',
+      'pending_readiness',
+      'ready',
+      'active',
+    ]);
+
+  if (eligibleActivationsError) {
+    throw new Error(
+      eligibleActivationsError.message
+    );
+  }
+
+  const eligibleEventIds = Array.from(
+    new Set(
+      (eligibleActivations || [])
+        .map((activation) => activation.event_id)
+        .filter(Boolean)
+    )
+  );
+
   const [
     { data: room, error: roomError },
     { data: participants, error: participantError },
     { data: readinessRows, error: readinessError },
-    { data: candidateEvents, error: eventError },
     { data: snapshots, error: snapshotError },
   ] = await Promise.all([
     supabase
@@ -118,34 +168,6 @@ export default async function AdminLinkdNRoomPage({
       }),
 
     supabase
-      .from('events')
-      .select(`
-        id,
-        name,
-        slug,
-        venue_id,
-        venue_name,
-        city,
-        state,
-        event_start_at,
-        status
-      `)
-      .not('venue_id', 'is', null)
-      .in('status', [
-        'approved_unpaid',
-        'approved_awaiting_payment',
-        'paid_awaiting_approval',
-        'scheduled',
-        'active',
-        'live'
-      ])
-      .order('event_start_at', {
-        ascending: true,
-        nullsFirst: false,
-      })
-      .limit(300),
-
-    supabase
       .from('linkdn_readiness_snapshots')
       .select(`
         id,
@@ -181,12 +203,57 @@ export default async function AdminLinkdNRoomPage({
     throw new Error(readinessError.message);
   }
 
-  if (eventError) {
-    throw new Error(eventError.message);
-  }
-
   if (snapshotError) {
     throw new Error(snapshotError.message);
+  }
+
+  let candidateEvents: Array<{
+    id: string;
+    name: string | null;
+    slug: string | null;
+    venue_id: string | null;
+    venue_name: string | null;
+    city: string | null;
+    state: string | null;
+    event_start_at: string | null;
+    status: string | null;
+  }> = [];
+
+  if (eligibleEventIds.length > 0) {
+    const {
+      data: eventRows,
+      error: eventRowsError,
+    } = await supabase
+      .from('events')
+      .select(`
+        id,
+        name,
+        slug,
+        venue_id,
+        venue_name,
+        city,
+        state,
+        event_start_at,
+        status
+      `)
+      .in('id', eligibleEventIds)
+      .not('venue_id', 'is', null)
+      .not(
+        'status',
+        'in',
+        '(cancelled,removed,ended,archived)'
+      )
+      .order('event_start_at', {
+        ascending: true,
+        nullsFirst: false,
+      })
+      .limit(300);
+
+    if (eventRowsError) {
+      throw new Error(eventRowsError.message);
+    }
+
+    candidateEvents = eventRows || [];
   }
 
   const tier = Array.isArray(room.tier)
