@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getLookupMap, type LookupValue } from "@/lib/config/lookups";
 import {
@@ -47,6 +48,162 @@ const EVENT_STATUSES = [
   "archived",
   "refund_requested",
 ] as const;
+
+async function deactivateLinkdNRoom(formData: FormData) {
+  "use server";
+
+  const eventId = String(formData.get("event_id") || "").trim();
+  const roomId = String(formData.get("room_id") || "").trim();
+  const reason = String(formData.get("reason") || "").trim();
+
+  if (!eventId || !roomId || !reason) {
+    throw new Error(
+      "Event, Linkd'N room, and deactivation reason are required.",
+    );
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error(authError.message);
+  }
+
+  if (!user) {
+    redirect("/auth/login");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("app_role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (profile?.app_role !== "admin") {
+    redirect("/dashboard");
+  }
+
+  const { data: room, error: roomError } = await supabase
+    .from("linkdn_rooms")
+    .select("id, name, status")
+    .eq("id", roomId)
+    .single();
+
+  if (roomError || !room) {
+    throw new Error(roomError?.message || "Linkd'N room was not found.");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("linkdn_room_events")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+
+  if (!membership) {
+    throw new Error("This event is not assigned to the selected Linkd'N room.");
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const [
+    { error: roomUpdateError },
+    { error: roomEventError },
+    { error: roomVenueError },
+    { error: connectionError },
+  ] = await Promise.all([
+    supabase
+      .from("linkdn_rooms")
+      .update({
+        status: "cancelled",
+        admin_note: reason,
+        updated_at: nowIso,
+      })
+      .eq("id", roomId),
+
+    supabase
+      .from("linkdn_room_events")
+      .update({
+        status: "removed",
+        left_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("room_id", roomId),
+
+    supabase
+      .from("linkdn_room_venues")
+      .update({
+        participation_status: "removed",
+        disconnected_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("room_id", roomId),
+
+    supabase
+      .from("linkdn_connections")
+      .update({
+        status: "cancelled",
+        ended_at: nowIso,
+        disconnect_reason: reason,
+        updated_at: nowIso,
+      })
+      .eq("room_id", roomId)
+      .not("status", "in", "(ended,failed,cancelled)"),
+  ]);
+
+  const updateError =
+    roomUpdateError ||
+    roomEventError ||
+    roomVenueError ||
+    connectionError;
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { error: activityError } = await supabase
+    .from("linkdn_activity_log")
+    .insert({
+      room_id: roomId,
+      event_id: eventId,
+      actor_id: user.id,
+      actor_role: "admin",
+      action: "room_deactivated",
+      from_status: room.status,
+      to_status: "cancelled",
+      note: reason,
+      metadata: {
+        source: "admin_event_command_center",
+        room_name: room.name,
+      },
+    });
+
+  if (activityError) {
+    console.error(
+      "Unable to record Linkd'N room deactivation:",
+      activityError.message,
+    );
+  }
+
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath(`/admin/linkdn/${roomId}`);
+  revalidatePath("/admin/linkdn");
+  revalidatePath("/admin/linkdn/opportunities");
+  revalidatePath(`/dashboard/events/${eventId}/linkdn`);
+}
+
 
 const US_STATES = [
   ["AL", "Alabama"],
@@ -123,6 +280,7 @@ export default async function AdminEventDetailPage({ params }: Props) {
   const [
     { data: event, error: eventError },
     { data: statusHistory, error: historyError },
+    { data: linkdNRooms, error: linkdNRoomsError },
     activity,
     lookups,
   ] = await Promise.all([
@@ -144,6 +302,34 @@ export default async function AdminEventDetailPage({ params }: Props) {
       metadata,
       created_at
     `,
+      )
+      .eq("event_id", id)
+      .order("created_at", { ascending: false }),
+
+    supabase
+      .from("linkdn_room_events")
+      .select(
+        `
+        id,
+        room_id,
+        event_id,
+        role,
+        status,
+        connection_limit,
+        connection_minutes,
+        whole_night_allowed,
+        room:linkdn_rooms(
+          id,
+          name,
+          slug,
+          status,
+          experience_type,
+          scheduled_start_at,
+          scheduled_end_at,
+          minimum_pulse_score,
+          retention_pulse_score
+        )
+      `,
       )
       .eq("event_id", id)
       .order("created_at", { ascending: false }),
@@ -173,6 +359,10 @@ export default async function AdminEventDetailPage({ params }: Props) {
 
   if (historyError) {
     throw new Error(historyError.message);
+  }
+
+  if (linkdNRoomsError) {
+    throw new Error(linkdNRoomsError.message);
   }
 
   const [
@@ -310,6 +500,13 @@ export default async function AdminEventDetailPage({ params }: Props) {
   const qualityScore = calculateQualityScore(qualityChecks);
   const nextAction = getNextAdminAction(event, qualityScore);
   const publicReadiness = getPublicReadiness(event, qualityScore);
+
+  const normalizedLinkdNRooms = (linkdNRooms || []).map((membership: any) => ({
+    ...membership,
+    room: Array.isArray(membership.room)
+      ? membership.room[0] || null
+      : membership.room,
+  }));
 
   return (
     <section className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
@@ -1027,6 +1224,95 @@ export default async function AdminEventDetailPage({ params }: Props) {
                 label="Rejected History"
                 value={String(ownerRejectedCount || 0)}
               />
+            </div>
+          </Panel>
+
+          <Panel title="Linkd'N Rooms" eyebrow="Connected Experience Control">
+            <div className="space-y-4">
+              {normalizedLinkdNRooms.length ? (
+                normalizedLinkdNRooms.map((membership: any) => {
+                  const room = membership.room;
+                  const isInactive = ["cancelled", "ended", "archived"].includes(
+                    room?.status || "",
+                  );
+
+                  return (
+                    <div
+                      key={membership.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-black text-white">
+                            {room?.name || "Linkd'N Room"}
+                          </p>
+
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/40">
+                            {formatStatus(room?.status || membership.status)}
+                          </p>
+                        </div>
+
+                        {room?.id ? (
+                          <Link
+                            href={`/admin/linkdn/${room.id}`}
+                            className="text-sm font-semibold text-accent hover:opacity-80"
+                          >
+                            Open Room
+                          </Link>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <Info
+                          label="Role"
+                          value={formatStatus(membership.role || "participant")}
+                        />
+                        <Info
+                          label="Participation"
+                          value={formatStatus(membership.status || "unknown")}
+                        />
+                        <Info
+                          label="Experience"
+                          value={formatStatus(room?.experience_type || "connection")}
+                        />
+                        <Info
+                          label="Pulse Threshold"
+                          value={String(room?.minimum_pulse_score ?? "—")}
+                        />
+                      </div>
+
+                      {!isInactive && room?.id ? (
+                        <form
+                          action={deactivateLinkdNRoom}
+                          className="mt-4 space-y-3"
+                        >
+                          <input type="hidden" name="event_id" value={event.id} />
+                          <input type="hidden" name="room_id" value={room.id} />
+
+                          <TextArea
+                            name="reason"
+                            label="Room Deactivation Reason"
+                            required
+                            rows={3}
+                          />
+
+                          <ActionButton tone="red">
+                            Deactivate Linkd&apos;N Room
+                          </ActionButton>
+                        </form>
+                      ) : (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white/45">
+                          This room is already inactive.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/45">
+                  This event is not currently assigned to a Linkd&apos;N room.
+                </div>
+              )}
             </div>
           </Panel>
 
