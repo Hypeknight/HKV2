@@ -321,6 +321,13 @@ export default async function AdminEventDetailPage({ params }: Props) {
           ← Back to Event Moderation
         </Link>
 
+        <Link
+          href={`/admin/events/${event.id}/systems`}
+          className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-semibold text-white hover:border-accent/40"
+        >
+          Systems Access
+        </Link>
+
         <div className="flex flex-wrap gap-3">
           <Link
             href={`/dashboard/events/${event.id}/review`}
