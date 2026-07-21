@@ -253,7 +253,7 @@ export default function AtlantaPage() {
           <div className="mt-7 rounded-xl border border-white/10 bg-black/20 p-5 sm:inline-block">
             <p className="text-sm text-slate-400">Beta coupon code</p>
             <p className="mt-1 text-2xl font-black tracking-wider">
-              HypeKC
+              HypeATL
             </p>
           </div>
 
@@ -266,7 +266,7 @@ export default function AtlantaPage() {
             </Link>
 
             <a
-              href="mailto:partnerships@hypeknight.fun"
+              href="mailto:contact@hypeknight.fun"
               className="rounded-xl border border-white/20 px-6 py-3 font-semibold transition hover:bg-white/10"
             >
               Discuss Atlanta
