@@ -54,3 +54,82 @@ button {
 .input:focus {
   border-color: rgba(255, 255, 255, 0.4);
 }
+/* --------------------------------------------------------------------------
+   HypeKnight V3 Experience System
+   Additive foundation for public, patron, operator, and admin surfaces.
+   Legacy utility classes remain above so existing routes continue to render.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --hk-bg: #080a0f;
+  --hk-surface: #0d1016;
+  --hk-surface-raised: #121620;
+  --hk-border: rgba(255, 255, 255, 0.08);
+  --hk-text-muted: rgba(255, 255, 255, 0.48);
+  --hk-accent: #f4b400;
+}
+
+html {
+  background: var(--hk-bg);
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(circle at 10% -10%, rgba(244, 180, 0, 0.08), transparent 26rem),
+    radial-gradient(circle at 90% 10%, rgba(79, 70, 229, 0.06), transparent 30rem),
+    var(--hk-bg);
+}
+
+::selection {
+  background: rgba(244, 180, 0, 0.28);
+  color: white;
+}
+
+.hk-kicker {
+  font-size: 0.66rem;
+  line-height: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hk-accent);
+}
+
+.hk-glass-panel {
+  border: 1px solid var(--hk-border);
+  border-radius: 2rem;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.015)),
+    rgba(10, 12, 17, .8);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 24px 80px rgba(0,0,0,.18);
+  backdrop-filter: blur(18px);
+}
+
+.hk-hero-orb {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(2px);
+}
+
+.hk-hero-orb-one {
+  width: 38rem;
+  height: 38rem;
+  right: -14rem;
+  top: -24rem;
+  background: radial-gradient(circle, rgba(244,180,0,.16), transparent 66%);
+}
+
+.hk-hero-orb-two {
+  width: 34rem;
+  height: 34rem;
+  left: -18rem;
+  bottom: -25rem;
+  background: radial-gradient(circle, rgba(99,102,241,.12), transparent 68%);
+}
+
+@media (max-width: 639px) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

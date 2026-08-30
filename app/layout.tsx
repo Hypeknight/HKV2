@@ -66,12 +66,12 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className="bg-black text-white">
+      <body className="bg-[#080a0f] text-white antialiased">
         <Navbar
           initialUser={user ? { id: user.id, email: user.email ?? '' } : null}
           initialRole={role}
         />
-        <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">{children}</main>
         <Footer />
       </body>
     </html>
