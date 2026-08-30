@@ -5,6 +5,7 @@ import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { US_STATES, normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
 import { recordSignal } from '@/lib/signals/server';
+import { marketFromExactQuery, normalizeMarket } from '@/lib/markets/normalize-market';
 import {
   EmptyState,
   EventCard,
@@ -271,12 +272,31 @@ export default async function EventsPage({ searchParams }: Props) {
   // choice was actually submitted. This captures Quick Search and filter usage
   // without changing the current form or URL-based discovery architecture.
   if (hasActiveFilters) {
+    // MARKET INTELLIGENCE V1.5:
+    // Resolve an explicit city filter first. If the free-text query itself is
+    // exactly a known market alias (for example "Kansas City" or "ATL"),
+    // it can also be treated as market intent. Arbitrary search text is never
+    // guessed into a city.
+    const market =
+      normalizeMarket(query.city || null, query.state || null) ||
+      marketFromExactQuery(query.q || null);
+
+    // These counts describe what THIS filtered result page returned. Current
+    // market supply is calculated separately in the admin intelligence layer.
+    const hypeknightResultCount = cards.filter(
+      (event) => event.source === 'hypeknight'
+    ).length;
+    const externalResultCount = cards.filter(
+      (event) => event.source === 'external'
+    ).length;
+
     await recordSignal(supabase, {
       signalType: 'search_performed',
-      subjectType: 'search',
-      subjectId: search || vibe || city || when || 'filtered_discovery',
-      city: query.city || null,
-      state: query.state || null,
+      subjectType: market ? 'market' : 'search',
+      subjectId:
+        market?.key || search || vibe || city || when || 'filtered_discovery',
+      city: market?.city || query.city || null,
+      state: market?.state || query.state || null,
       source: 'events_index',
       surface: 'discovery_results',
       verificationLevel: 'observed',
@@ -290,6 +310,9 @@ export default async function EventsPage({ searchParams }: Props) {
         when: query.when || null,
         source_filter: query.source || null,
         result_count: cards.length,
+        hypeknight_result_count: hypeknightResultCount,
+        external_result_count: externalResultCount,
+        market_key: market?.key || null,
       },
     });
   }
