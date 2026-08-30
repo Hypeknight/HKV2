@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import TrackView from '@/components/analytics/TrackView';
+import TicketSourceLink from '@/components/events/TicketSourceLink';
 import {
   ButtonLink,
   Chip,
@@ -137,14 +138,17 @@ export default async function ExternalEventDetailPage({ params }: Props) {
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 {officialUrl ? (
-                  <a
+                  <TicketSourceLink
                     href={officialUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    provider={event.source_code || 'external'}
+                    externalEventId={event.id}
+                    city={event.city}
+                    state={event.state}
+                    surface="external_event_detail"
                     className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-4 text-center font-semibold text-black transition hover:opacity-90 sm:w-auto"
                   >
                     View Official Event
-                  </a>
+                  </TicketSourceLink>
                 ) : null}
 
                 <ButtonLink href="/events" variant="secondary">
@@ -258,14 +262,17 @@ export default async function ExternalEventDetailPage({ params }: Props) {
               </p>
 
               {officialUrl ? (
-                <a
+                <TicketSourceLink
                   href={officialUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                  provider={event.source_code || 'external'}
+                  externalEventId={event.id}
+                  city={event.city}
+                  state={event.state}
+                  surface="external_event_detail"
                   className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-5 py-4 text-center font-semibold text-black transition hover:opacity-90 sm:w-auto"
                 >
                   View / Buy from Official Provider
-                </a>
+                </TicketSourceLink>
               ) : (
                 <p className="text-sm text-white/50">
                   No official provider link is currently available.
@@ -288,6 +295,10 @@ export default async function ExternalEventDetailPage({ params }: Props) {
 
                 <ButtonLink href="/calendar" variant="secondary">
                   Browse Calendar Themes
+                </ButtonLink>
+
+                <ButtonLink href={`/events/external/${event.id}/claim`} variant="secondary">
+                  Claim / Connect This Event
                 </ButtonLink>
 
                 <ButtonLink href="/promote" variant="secondary">

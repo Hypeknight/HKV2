@@ -37,6 +37,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: 'Venue Owner Requests', href: '/admin/venue-owner-requests', icon: '✓', description: 'Review requests to claim or manage venues.' },
       { label: 'DJs', href: '/admin/djs', icon: '♫', description: 'Review DJ records and requests.' },
       { label: 'External Events', href: '/admin/external-events', icon: '↗', description: 'Manage imported and partner event inventory.' },
+      { label: 'Event Claims', href: '/admin/event-claims', icon: '✓', description: 'Review ownership and source-link claims for imported events.' },
     ],
   },
   {

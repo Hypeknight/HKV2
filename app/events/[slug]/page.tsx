@@ -6,6 +6,8 @@ import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import TrackView from '@/components/analytics/TrackView';
 import SignalAnchor from '@/components/analytics/SignalAnchor';
 import ShareEventButton from '@/components/events/ShareEventButton';
+import TicketSourceLink from '@/components/events/TicketSourceLink';
+import { eventSourceLabel } from '@/lib/event-sources/providers';
 import PatronPulseGuestPanel from '@/components/patron-pulse/PatronPulseGuestPanel';
 import { getEventShareMetadata } from '@/lib/metadata/event-metadata';
 import { loadPublicPatronPulse } from '@/lib/patron-pulse/service';
@@ -147,6 +149,16 @@ export default async function EventDetailPage({ params }: Props) {
         .join(' | ')
     );
   }
+
+  const { data: eventSources, error: eventSourcesError } = await supabase
+    .from('event_sources')
+    .select('id,provider,provider_url,provider_event_id,is_primary_ticket_source,is_verified,relationship_status')
+    .eq('event_id', event.id)
+    .in('relationship_status', ['connected', 'verified'])
+    .order('is_primary_ticket_source', { ascending: false })
+    .order('created_at', { ascending: true });
+
+  if (eventSourcesError) throw new Error(eventSourcesError.message);
 
   const isSaved = Boolean(viewerSave);
   const viewerRsvpStatus =
@@ -470,6 +482,30 @@ export default async function EventDetailPage({ params }: Props) {
             </div>
           </Panel>
         </section>
+
+        {(eventSources || []).length ? (
+          <Panel title="Tickets & registration" eyebrow="Connected Sources">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(eventSources || []).map((source: any) => (
+                <TicketSourceLink
+                  key={source.id}
+                  href={source.provider_url}
+                  provider={source.provider}
+                  eventId={event.id}
+                  city={city}
+                  state={state}
+                  surface="event_detail_ticket_sources"
+                  className={`rounded-2xl border p-4 transition hover:-translate-y-0.5 ${source.is_primary_ticket_source ? 'border-accent/25 bg-accent/[0.08]' : 'border-white/10 bg-black/20 hover:border-white/20'}`}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span><span className="block font-black text-white">{eventSourceLabel(source.provider)}</span><span className="mt-1 block text-xs text-white/45">{source.is_verified ? 'Verified event connection' : 'Connected ticket source'}</span></span>
+                    <span className="text-accent">↗</span>
+                  </span>
+                </TicketSourceLink>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <InfoCard
@@ -827,6 +863,13 @@ export default async function EventDetailPage({ params }: Props) {
                     variant="secondary"
                   >
                     Review Event Status
+                  </ButtonLink>
+
+                  <ButtonLink
+                    href={`/dashboard/events/${event.id}/sources`}
+                    variant="secondary"
+                  >
+                    Ticket & Event Sources
                   </ButtonLink>
                 </>
               ) : null}

@@ -42,6 +42,9 @@ export const SIGNAL_TYPES = [
 
   // Economic / attributable outcome signals.
   'coupon_redeemed',
+  'ticket_outbound',
+  'event_source_connected',
+  'event_claim_submitted',
 ] as const;
 
 export type SignalType = (typeof SIGNAL_TYPES)[number];
