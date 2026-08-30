@@ -1993,6 +1993,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import TrackView from '@/components/analytics/TrackView';
+import SignalAnchor from '@/components/analytics/SignalAnchor';
 import ShareEventButton from '@/components/events/ShareEventButton';
 import PatronPulseGuestPanel from '@/components/patron-pulse/PatronPulseGuestPanel';
 import { getEventShareMetadata } from '@/lib/metadata/event-metadata';
@@ -2430,14 +2431,26 @@ export default async function EventDetailPage({ params }: Props) {
           >
             <div className="space-y-3">
               {directionsHref ? (
-                <a
+                <SignalAnchor
                   href={directionsHref}
                   target="_blank"
                   rel="noreferrer"
+                  signal={{
+                    signalType: 'directions_requested',
+                    subjectType: 'event',
+                    subjectId: event.id,
+                    eventId: event.id,
+                    venueId: event.venue_id || null,
+                    city,
+                    state,
+                    source: 'event_page',
+                    surface: 'event_detail',
+                    verificationLevel: 'observed',
+                  }}
                   className={actionClass}
                 >
                   Open Directions
-                </a>
+                </SignalAnchor>
               ) : null}
 
               {calendarHref ? (

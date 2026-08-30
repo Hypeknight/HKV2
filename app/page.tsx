@@ -326,6 +326,7 @@ import ShareButton from '@/components/ShareButton';
 import { getPlatformSettings } from '@/lib/settings';
 import { normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
+import SignalLink from '@/components/analytics/SignalLink';
 import {
   EventRail,
   MetricCard,
@@ -436,20 +437,45 @@ export default async function HomePage() {
               </p>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row [&_a]:w-full sm:[&_a]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
-                <Link
-                  href="/events"
+                <SignalLink
+                  href="/events?when=tonight"
+                  signal={{
+                    signalType: 'time_intent_selected',
+                    subjectType: 'search',
+                    subjectId: 'tonight',
+                    source: 'homepage',
+                    surface: 'hero',
+                    verificationLevel: 'declared',
+                    metadata: { when: 'tonight' },
+                  }}
                   className="rounded-2xl bg-accent px-6 py-3 text-center font-semibold text-black hover:opacity-90"
                 >
                   Explore Tonight
-                </Link>
+                </SignalLink>
 
                 {surpriseEvent ? (
-                  <Link
+                  <SignalLink
                     href={surpriseEvent.href}
+                    signal={{
+                      signalType: 'surprise_requested',
+                      subjectType: 'event',
+                      subjectId: surpriseEvent.id,
+                      eventId:
+                        surpriseEvent.source === 'hypeknight'
+                          ? surpriseEvent.id
+                          : null,
+                      source: 'homepage',
+                      surface: 'hero',
+                      verificationLevel: 'declared',
+                      metadata: {
+                        presented_event_id: surpriseEvent.id,
+                        presented_source: surpriseEvent.source,
+                      },
+                    }}
                     className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-center text-white hover:border-accent/40"
                   >
                     🎲 Surprise Me
-                  </Link>
+                  </SignalLink>
                 ) : null}
 
                 <ShareButton
@@ -672,16 +698,25 @@ function DiscoveryVibes({ vibes }: { vibes: any[] }) {
 
       <div className="mt-5 flex gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4">
         {vibes.map((vibe) => (
-          <Link
+          <SignalLink
             key={vibe.label}
             href={vibe.href}
+            signal={{
+              signalType: 'vibe_selected',
+              subjectType: 'search',
+              subjectId: vibe.value,
+              source: 'homepage',
+              surface: 'whats_your_vibe',
+              verificationLevel: 'declared',
+              metadata: { vibe: vibe.value, label: vibe.label },
+            }}
             className="min-w-[72%] rounded-[1.75rem] border border-white/10 bg-white/5 p-5 transition hover:border-accent/40 sm:min-w-0"
           >
             <p className="text-4xl">{vibe.emoji}</p>
             <h3 className="mt-4 text-xl font-black text-white">{vibe.label}</h3>
             <p className="mt-2 text-sm text-white/60">{vibe.count} events</p>
             <p className="mt-5 text-sm font-semibold text-accent">Explore →</p>
-          </Link>
+          </SignalLink>
         ))}
       </div>
     </section>
@@ -700,16 +735,26 @@ function ActiveCities({ cityCounts }: { cityCounts: any[] }) {
 
       <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2 sm:flex-wrap sm:overflow-visible">
         {cityCounts.slice(0, 12).map((item) => (
-          <Link
+          <SignalLink
             key={`${item.city}-${item.state}`}
             href={`/events?city=${encodeURIComponent(item.city)}&state=${encodeURIComponent(item.state)}`}
+            signal={{
+              signalType: 'market_selected',
+              subjectType: 'market',
+              subjectId: `${item.city},${item.state}`,
+              city: item.city,
+              state: item.state,
+              source: 'homepage',
+              surface: 'active_cities',
+              verificationLevel: 'declared',
+            }}
             className="shrink-0 rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/70 hover:border-accent/40 hover:text-accent"
           >
             {item.city}, {item.state}
             <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-black">
               {item.count}
             </span>
-          </Link>
+          </SignalLink>
         ))}
       </div>
     </section>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { recordSignal } from '@/lib/signals/server';
 
 const SHARE_CHANNELS = [
   'native_share',
@@ -73,6 +74,19 @@ export async function POST(
         }
       );
     }
+
+    // SIGNAL BRIDGE: preserve event_shares as the operational/audit record and
+    // append the advocacy action into the unified intelligence stream.
+    await recordSignal(supabase, {
+      signalType: 'event_shared',
+      subjectType: 'event',
+      subjectId: eventId,
+      eventId,
+      source: 'share_api',
+      surface: 'event_detail',
+      verificationLevel: 'observed',
+      metadata: { channel },
+    });
 
     return NextResponse.json({
       ok: true,

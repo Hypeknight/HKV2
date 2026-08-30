@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { recordSignal } from '@/lib/signals/server';
 
 const BLOCKED_WORDS = [
   'nigger',
@@ -142,6 +143,19 @@ export async function submitVenueComment(formData: FormData) {
     throw new Error(error.message);
   }
 
+  // SIGNAL BRIDGE: store engagement timing/category, not the comment text.
+  await recordSignal(supabase, {
+    signalType: 'venue_comment_created',
+    subjectType: 'venue',
+    subjectId: venueId,
+    venueId,
+    source: 'venue_action',
+    surface: 'venue_detail',
+    verificationLevel: presenceSessionId ? 'presence_supported' : 'declared',
+    sessionId: presenceSessionId,
+    metadata: { moderation_status: moderation.status },
+  });
+
   redirect(`/venues/${venueSlug}?comment_submitted=1`);
 }
 
@@ -228,6 +242,20 @@ export async function submitVenueMusicRequest(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
+  // SIGNAL BRIDGE: a request is a live preference/engagement signal. Presence
+  // requirements, when enabled, increase the verification quality.
+  await recordSignal(supabase, {
+    signalType: 'music_request_created',
+    subjectType: 'venue',
+    subjectId: venueId,
+    venueId,
+    source: 'venue_action',
+    surface: 'venue_detail',
+    sessionId: presenceSessionId,
+    verificationLevel: presenceSessionId ? 'presence_supported' : 'declared',
+    metadata: { has_artist: Boolean(artistName), has_note: Boolean(requestNote) },
+  });
+
   redirect(`/venues/${venueSlug}?music_submitted=1`);
 }
 
@@ -243,6 +271,14 @@ export async function voteVenueMusicRequest(formData: FormData) {
   const requestId = String(formData.get('request_id') || '');
   const venueSlug = String(formData.get('venue_slug') || '');
   const voteType = String(formData.get('vote_type') || 'up');
+
+  // SIGNAL BRIDGE CONTEXT: resolve the request's venue once so the resulting
+  // vote can contribute to venue-level live preference intelligence.
+  const { data: requestContext } = await supabase
+    .from('venue_music_requests')
+    .select('venue_id, presence_session_id')
+    .eq('id', requestId)
+    .maybeSingle();
 
   const { data: existing } = await supabase
     .from('venue_music_request_votes')
@@ -273,6 +309,30 @@ export async function voteVenueMusicRequest(formData: FormData) {
       .eq('id', existing.id);
 
     if (error) throw new Error(error.message);
+  }
+
+  if (requestContext?.venue_id) {
+    await recordSignal(supabase, {
+      signalType: 'music_request_voted',
+      subjectType: 'venue',
+      subjectId: requestContext.venue_id,
+      venueId: requestContext.venue_id,
+      source: 'venue_action',
+      surface: 'venue_detail',
+      sessionId: requestContext.presence_session_id || null,
+      verificationLevel: requestContext.presence_session_id
+        ? 'presence_supported'
+        : 'declared',
+      metadata: {
+        request_id: requestId,
+        vote_type: voteType,
+        action: !existing
+          ? 'created'
+          : existing.vote_type === voteType
+            ? 'removed'
+            : 'changed',
+      },
+    });
   }
 
   redirect(`/venues/${venueSlug}?music_voted=1`);

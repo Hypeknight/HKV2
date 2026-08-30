@@ -4,6 +4,7 @@ import { expandCitySearch } from '@/lib/city-aliases';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { US_STATES, normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
+import { recordSignal } from '@/lib/signals/server';
 import {
   EmptyState,
   EventCard,
@@ -265,6 +266,33 @@ export default async function EventsPage({ searchParams }: Props) {
   ].filter(Boolean).length;
 
   const hasActiveFilters = activeFilterCount > 0;
+
+  // SIGNAL BRIDGE: reaching a filtered /events result page means a discovery
+  // choice was actually submitted. This captures Quick Search and filter usage
+  // without changing the current form or URL-based discovery architecture.
+  if (hasActiveFilters) {
+    await recordSignal(supabase, {
+      signalType: 'search_performed',
+      subjectType: 'search',
+      subjectId: search || vibe || city || when || 'filtered_discovery',
+      city: query.city || null,
+      state: query.state || null,
+      source: 'events_index',
+      surface: 'discovery_results',
+      verificationLevel: 'observed',
+      metadata: {
+        query: query.q || null,
+        music: query.music || null,
+        event_type: query.event_type || null,
+        vibe: query.vibe || null,
+        amenity: query.amenity || null,
+        age: query.age || null,
+        when: query.when || null,
+        source_filter: query.source || null,
+        result_count: cards.length,
+      },
+    });
+  }
 
   return (
     <>

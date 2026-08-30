@@ -7,6 +7,7 @@ import {
   loadPublicPatronPulse,
   requirePatronPulseCapability,
 } from '@/lib/patron-pulse/service';
+import { recordSignal } from '@/lib/signals/server';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -86,6 +87,19 @@ export async function checkIntoPatronPulse(
   if (error) {
     throw new Error(error.message);
   }
+
+  // SIGNAL BRIDGE: Patron Pulse check-in is declared presence evidence. It is
+  // stronger than a normal event view, but is not labeled physically verified.
+  await recordSignal(supabase, {
+    signalType: 'patron_pulse_checkin',
+    subjectType: 'event',
+    subjectId: eventId,
+    eventId,
+    source: 'patron_pulse',
+    surface: 'event_detail',
+    sessionId: pulse.session.id,
+    verificationLevel: 'declared',
+  });
 
   revalidatePath(`/events/${slug}`);
 }
@@ -185,6 +199,24 @@ export async function submitPatronPulseResponse(
     })
     .eq('session_id', pulse.session_id)
     .eq('user_id', user.id);
+
+  // SIGNAL BRIDGE: store only response identifiers/context here. The full text
+  // response remains in patron_pulse_responses so signals avoid duplicating PII.
+  await recordSignal(supabase, {
+    signalType: 'patron_pulse_response',
+    subjectType: 'pulse',
+    subjectId: pulse.id,
+    eventId,
+    source: 'patron_pulse',
+    surface: 'event_detail',
+    sessionId: pulse.session_id,
+    verificationLevel: 'declared',
+    metadata: {
+      pulse_type: pulse.pulse_type,
+      option_id: optionId || null,
+      has_text_response: Boolean(textResponse),
+    },
+  });
 
   revalidatePath(`/events/${slug}`);
 }

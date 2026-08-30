@@ -697,6 +697,7 @@ function DisabledCard({ title, text }: { title: string; text: string }) {
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import TrackView from '@/components/analytics/TrackView';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -836,7 +837,18 @@ const canRequestMusic =
     commentsEnabled || musicRequestsEnabled || presenceEnabled || linkdnEnabled;
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <>
+      {/* SIGNAL BRIDGE: venue pages now participate in the same normalized
+          view stream as event pages without changing the visible experience. */}
+      <TrackView
+        venueId={venue.id}
+        pageType="venue_detail"
+        city={venue.city || null}
+        state={venue.state || null}
+        path={`/venues/${venue.slug}`}
+      />
+
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         <main className="space-y-8">
           <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-8 sm:p-10">
@@ -1308,7 +1320,8 @@ const canRequestMusic =
           ) : null}
         </aside>
       </div>
-    </section>
+      </section>
+    </>
   );
 }
 
