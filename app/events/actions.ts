@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { recordSignal } from '@/lib/signals/server';
 
 type RsvpStatus = 'interested' | 'going' | 'not_going';
 type ShareChannel = 'native_share' | 'copy_link' | 'facebook' | 'instagram' | 'x' | 'sms' | 'email' | 'other';
@@ -43,9 +44,32 @@ export async function toggleEventSave(formData: FormData) {
   if (existing) {
     const { error } = await supabase.from('event_saves').delete().eq('id', existing.id).eq('user_id', user.id);
     if (error) throw new Error(error.message);
+
+    // SIGNAL BRIDGE: retain the operational delete above, then record the
+    // historical transition so Intelligence can see consideration changing.
+    await recordSignal(supabase, {
+      signalType: 'event_unsaved',
+      subjectType: 'event',
+      subjectId: eventId,
+      eventId,
+      source: 'event_action',
+      surface: 'event_detail',
+      verificationLevel: 'observed',
+    });
   } else {
     const { error } = await supabase.from('event_saves').insert({ event_id: eventId, user_id: user.id });
     if (error) throw new Error(error.message);
+
+    // SIGNAL BRIDGE: Save is a strong consideration signal.
+    await recordSignal(supabase, {
+      signalType: 'event_saved',
+      subjectType: 'event',
+      subjectId: eventId,
+      eventId,
+      source: 'event_action',
+      surface: 'event_detail',
+      verificationLevel: 'observed',
+    });
   }
 
   refreshEvent(slug);
@@ -66,6 +90,25 @@ export async function updateEventRsvp(formData: FormData) {
     updated_at: new Date().toISOString(),
   }, { onConflict: 'event_id,user_id' });
   if (error) throw new Error(error.message);
+
+  // SIGNAL BRIDGE: RSVP is declared intent. Keep the current event_rsvps row
+  // as the operational state and append the historical choice to signals.
+  await recordSignal(supabase, {
+    signalType:
+      status === 'going'
+        ? 'event_rsvp_going'
+        : status === 'interested'
+          ? 'event_rsvp_interested'
+          : 'event_rsvp_not_going',
+    subjectType: 'event',
+    subjectId: eventId,
+    eventId,
+    source: 'event_action',
+    surface: 'event_detail',
+    verificationLevel: 'declared',
+    metadata: { status },
+  });
+
   refreshEvent(slug);
 }
 
@@ -113,6 +156,19 @@ export async function recordEventShare(formData: FormData) {
     channel,
   });
   if (error) throw new Error(error.message);
+
+  // SIGNAL BRIDGE: Share is advocacy. This server action is retained because
+  // other UI may still call it even though ShareEventButton uses the API route.
+  await recordSignal(supabase, {
+    signalType: 'event_shared',
+    subjectType: 'event',
+    subjectId: eventId,
+    eventId,
+    source: 'event_action',
+    surface: 'event_detail',
+    verificationLevel: 'observed',
+    metadata: { channel },
+  });
 }
 
 export async function reportEvent(formData: FormData) {

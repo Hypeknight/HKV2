@@ -3,6 +3,7 @@
 import { randomBytes } from 'crypto';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { recordSignal } from '@/lib/signals/server';
 
 function randomCode(length = 6) {
   return randomBytes(length).toString('hex').slice(0, length).toUpperCase();
@@ -144,6 +145,21 @@ export async function joinVenuePresenceSession(formData: FormData) {
   if (result.error) {
     throw new Error(result.error.message);
   }
+
+  // SIGNAL BRIDGE: a rotating venue presence session/code gives stronger
+  // contextual evidence than an ordinary button click, but it is intentionally
+  // not labeled physically verified.
+  await recordSignal(supabase, {
+    signalType: 'venue_presence_joined',
+    subjectType: 'venue',
+    subjectId: venueId,
+    venueId,
+    source: 'venue_presence',
+    surface: 'venue_detail',
+    sessionId: session.id,
+    verificationLevel: 'presence_supported',
+    metadata: { join_method: 'session_code' },
+  });
 
   redirect(`/venues/${venueSlug}?presence_joined=1`);
 }

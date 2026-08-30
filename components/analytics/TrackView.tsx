@@ -42,9 +42,11 @@ export default function TrackView({
  'use client';
 
 import { useEffect } from 'react';
+import { getAnonymousSessionId } from '@/lib/signals/browser';
 
 export default function TrackView({
   eventId,
+  venueId,
   externalEventId,
   sourceType = 'page',
   pageType,
@@ -53,6 +55,7 @@ export default function TrackView({
   path,
 }: {
   eventId?: string | null;
+  venueId?: string | null;
   externalEventId?: string | null;
   sourceType?: 'hypeknight' | 'external' | 'page';
   pageType: string;
@@ -63,6 +66,7 @@ export default function TrackView({
   useEffect(() => {
     const payload = {
       event_id: eventId || null,
+      venue_id: venueId || null,
       external_event_id: externalEventId || null,
       source_type: sourceType,
       page_type: pageType,
@@ -70,6 +74,9 @@ export default function TrackView({
       state: state || null,
       path,
       referrer: document.referrer || null,
+      // SIGNAL BRIDGE: non-PII browser id lets public views participate in
+      // unique/repeat-interest analysis without requiring an account.
+      anonymous_session_id: getAnonymousSessionId(),
     };
 
     console.log('TrackView firing:', payload);
@@ -86,7 +93,7 @@ export default function TrackView({
       .catch((error) => {
         console.error('TrackView failed:', error);
       });
-  }, [eventId, externalEventId, sourceType, pageType, city, state, path]);
+  }, [eventId, venueId, externalEventId, sourceType, pageType, city, state, path]);
 
   return null;
 }
