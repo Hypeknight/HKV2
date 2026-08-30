@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createEventStep1 } from '@/app/dashboard/events/actions';
 import EventFlyerUpload from '@/components/events/EventFlyerUpload';
+import PotentialEventMatches from '@/components/events/PotentialEventMatches';
 import { US_STATES } from '@/lib/states';
 import { InfoCard, Panel, SectionHeader } from '@/components/ui';
 
@@ -139,6 +140,8 @@ export default function NewEventStep1Page() {
             />
           </div>
         </Panel>
+
+        <PotentialEventMatches />
 
         <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
           <SectionHeader
