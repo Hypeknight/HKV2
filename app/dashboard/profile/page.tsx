@@ -13,19 +13,22 @@ export default async function DashboardProfilePage() {
 
   if (!user) redirect('/auth/login');
 
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle();
+  const [{ data: profile, error }, { data: preferences, error: preferenceError }] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+    supabase.from('user_event_preferences').select('onboarding_completed').eq('user_id', user.id).maybeSingle(),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (preferenceError) throw new Error(preferenceError.message);
 
+  // One progress model across Profile and My Night. Preferences live in
+  // user_event_preferences, not profiles, which is why the previous dashboard
+  // could remain stuck at 75% after preferences were actually saved.
   const checklist = [
     { label: 'Display name', complete: Boolean(profile?.display_name) },
-    { label: 'City', complete: Boolean(profile?.city) },
-    { label: 'State', complete: Boolean(profile?.state) },
-    { label: 'Bio', complete: Boolean(profile?.bio) },
+    { label: 'Home area', complete: Boolean(profile?.city && profile?.state) },
+    { label: 'About you', complete: Boolean(profile?.bio || profile?.username) },
+    { label: 'Nightlife preferences', complete: Boolean(preferences?.onboarding_completed) },
   ];
 
   const completed = checklist.filter((item) => item.complete).length;
@@ -77,7 +80,7 @@ export default async function DashboardProfilePage() {
             </div>
 
             <p className="mt-3 text-sm text-white/55">
-              {completed} of {checklist.length} basics complete.
+              {completed} of {checklist.length} profile signals complete.
             </p>
           </div>
         </div>
@@ -94,6 +97,14 @@ export default async function DashboardProfilePage() {
           />
         ))}
       </section>
+
+      {!preferences?.onboarding_completed ? (
+        <section className="rounded-[1.75rem] border border-accent/20 bg-accent/10 p-5">
+          <p className="font-black text-white">Your profile includes your nightlife preferences.</p>
+          <p className="mt-2 text-sm text-white/60">Finish the preferences step to reach 100% and improve personalized recommendations.</p>
+          <Link href="/dashboard/preferences" className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-black text-black">Finish preferences →</Link>
+        </section>
+      ) : null}
 
       <form action={updateProfile} className="space-y-8">
         <Panel title="Basic profile" eyebrow="Public Identity">

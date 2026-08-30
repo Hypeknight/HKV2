@@ -5,6 +5,8 @@ import { normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
 import SignalLink from '@/components/analytics/SignalLink';
 import DiscoveryCommandBar from '@/components/discovery/DiscoveryCommandBar';
+import DeviceLocationBadge from '@/components/location/DeviceLocationBadge';
+import { getRecommendedEventsForUser } from '@/lib/discovery/recommend-events';
 import { EventRail, SectionHeader } from '@/components/ui';
 
 const VIBES = [
@@ -21,6 +23,7 @@ const VIBES = [
 export default async function HomePage() {
   const supabase = await createClient();
   const settings = await getPlatformSettings();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const serverNow = new Date();
   const fourHoursAgo = new Date(serverNow.getTime() - 4 * 60 * 60 * 1000);
@@ -69,14 +72,11 @@ export default async function HomePage() {
     .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
     .slice(0, 8);
 
-  const vibeCards = VIBES.map((vibe) => ({
-    ...vibe,
-    count: allEvents.filter((event) => eventMatchesTerms(event, vibe.terms)).length,
-    href: `/events?vibe=${encodeURIComponent(vibe.value)}`,
-  })).filter((vibe) => vibe.count > 0);
+  const vibeCards = buildAccurateVibeCards(allEvents);
+  const personalizedEvents = user
+    ? (await getRecommendedEventsForUser(user.id)).recommendations.slice(0, 6).map((item) => item.event)
+    : [];
 
-  const surpriseEvent = allEvents.length ? allEvents[Math.floor(allEvents.length / 2)] : null;
-  const primaryMarket = cityCounts[0] ?? null;
 
   return (
     <>
@@ -91,24 +91,7 @@ export default async function HomePage() {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="hk-kicker">HypeKnight Discovery</span>
-                {primaryMarket ? (
-                  <SignalLink
-                    href={`/events?city=${encodeURIComponent(primaryMarket.city)}&state=${encodeURIComponent(primaryMarket.state)}`}
-                    signal={{
-                      signalType: 'market_selected',
-                      subjectType: 'market',
-                      subjectId: `${primaryMarket.city},${primaryMarket.state}`,
-                      city: primaryMarket.city,
-                      state: primaryMarket.state,
-                      source: 'homepage',
-                      surface: 'hero_market_context',
-                      verificationLevel: 'declared',
-                    }}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/55 hover:border-accent/30 hover:text-white"
-                  >
-                    ◎ {primaryMarket.city}, {primaryMarket.state}
-                  </SignalLink>
-                ) : null}
+                <DeviceLocationBadge />
               </div>
 
               <h1 className="mt-5 max-w-5xl text-[clamp(3rem,8vw,7.4rem)] font-black leading-[0.86] tracking-[-0.055em] text-white">
@@ -131,27 +114,12 @@ export default async function HomePage() {
                 <IntentChip label="Starting soon" href="/events?when=soon" signalId="soon" />
                 <IntentChip label="Tonight" href="/events?when=tonight" signalId="tonight" />
                 <IntentChip label="This weekend" href="/events?when=weekend" signalId="weekend" />
-                {surpriseEvent ? (
-                  <SignalLink
-                    href={surpriseEvent.href}
-                    signal={{
-                      signalType: 'surprise_requested',
-                      subjectType: 'event',
-                      subjectId: surpriseEvent.id,
-                      eventId: surpriseEvent.source === 'hypeknight' ? surpriseEvent.id : null,
-                      source: 'homepage',
-                      surface: 'hero_intents',
-                      verificationLevel: 'declared',
-                      metadata: {
-                        presented_event_id: surpriseEvent.id,
-                        presented_source: surpriseEvent.source,
-                      },
-                    }}
-                    className="rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-black text-accent hover:bg-accent/15"
-                  >
-                    🎲 Surprise me
-                  </SignalLink>
-                ) : null}
+                <Link
+                  href="/surprise"
+                  className="rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-black text-accent hover:bg-accent/15"
+                >
+                  🎲 Surprise me
+                </Link>
               </div>
             </div>
 
@@ -187,6 +155,17 @@ export default async function HomePage() {
             </aside>
           </div>
         </section>
+
+        {personalizedEvents.length ? (
+          <EventRail
+            eyebrow="For you"
+            title="Your night, ranked around you."
+            text="Because you are signed in, HypeKnight is using your saved nightlife preferences to prioritize what you see."
+            events={personalizedEvents}
+            href="/events/recommended"
+            action="See all recommendations"
+          />
+        ) : null}
 
         {liveNowEvents.length || startingSoonEvents.length ? (
           <section className="hk-glass-panel overflow-hidden">
@@ -464,6 +443,29 @@ function normalizeEvent(event: any, source: 'hypeknight' | 'external') {
     classification: event.classification || event.segment,
     created_at: event.created_at,
   };
+}
+
+function buildAccurateVibeCards(events: any[]) {
+  return VIBES.map((vibe) => {
+    const rankedTerms = vibe.terms
+      .map((term) => ({
+        term,
+        count: events.filter((event) => eventMatchesTerms(event, [term])).length,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const strongest = rankedTerms[0];
+    if (!strongest || strongest.count <= 0) return null;
+
+    // IMPORTANT: the displayed count and destination use the same search term.
+    // This prevents a vibe card from promising inventory and opening an empty page.
+    return {
+      ...vibe,
+      count: strongest.count,
+      href: `/events?q=${encodeURIComponent(strongest.term)}`,
+      matchedTerm: strongest.term,
+    };
+  }).filter(Boolean) as Array<(typeof VIBES)[number] & { count: number; href: string; matchedTerm: string }>;
 }
 
 function eventMatchesTerms(event: any, terms: string[]) {

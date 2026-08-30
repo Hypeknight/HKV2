@@ -112,5 +112,23 @@ export async function saveEventPreferences(formData: FormData) {
     throw new Error('Preferences were not saved.');
   }
 
+  // Keep the profile's home area aligned with discovery preferences. This
+  // removes the confusing state where the user completed preferences but the
+  // profile still appeared incomplete because location lived in two places.
+  if (preferredCity && preferredState) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        city: preferredCity,
+        state: preferredState,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (profileError) {
+      throw new Error(`Preferences were saved, but profile location could not be synchronized: ${profileError.message}`);
+    }
+  }
+
   redirect('/dashboard/preferences?saved=1');
 }
