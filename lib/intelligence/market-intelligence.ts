@@ -11,6 +11,7 @@ export type MarketSignalRow = {
   anonymous_session_id?: string | null;
   event_id?: string | null;
   venue_id?: string | null;
+  market_id?: string | null;
   city?: string | null;
   state?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -30,6 +31,7 @@ export type LegacySearchRow = {
 
 export type MarketInventoryRow = {
   id: string;
+  market_id?: string | null;
   city?: string | null;
   state?: string | null;
 };
@@ -69,6 +71,10 @@ type BuildOptions = {
   externalEvents?: MarketInventoryRow[];
   eventMarkets?: Map<string, CanonicalMarket>;
   venueMarkets?: Map<string, CanonicalMarket>;
+  // V2 can inject the database-backed metro registry resolver. V1.5 callers
+  // still fall back to normalizeMarket so the helper remains backwards-compatible.
+  resolveMarket?: (city?: string | null, state?: string | null) => CanonicalMarket | null;
+  marketsById?: Map<string, CanonicalMarket>;
 };
 
 type MutableMarket = MarketIntelligenceRow & {
@@ -84,6 +90,7 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
   const fourteenDaysAgo = now.getTime() - 14 * dayMs;
   const oneDayAgo = now.getTime() - dayMs;
   const markets = new Map<string, MutableMarket>();
+  const resolveMarket = options.resolveMarket ?? normalizeMarket;
 
   const get = (market: CanonicalMarket) => {
     const existing = markets.get(market.key);
@@ -128,7 +135,8 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
   // market from an attached event/venue when the action itself omitted it.
   for (const signal of options.signals) {
     const market =
-      normalizeMarket(signal.city, signal.state) ||
+      (signal.market_id ? options.marketsById?.get(signal.market_id) ?? null : null) ||
+      resolveMarket(signal.city, signal.state) ||
       (signal.event_id ? options.eventMarkets?.get(signal.event_id) ?? null : null) ||
       (signal.venue_id ? options.venueMarkets?.get(signal.venue_id) ?? null : null);
 
@@ -176,7 +184,7 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
   // June/legacy search history remains source evidence. We do not insert it
   // into signals or pretend it belongs to the current 7-day trend window.
   for (const legacy of options.legacySearches ?? []) {
-    const market = normalizeMarket(legacy.city, legacy.state);
+    const market = resolveMarket(legacy.city, legacy.state);
     if (!market) continue;
     const row = get(market);
     row.legacySearches += 1;
@@ -188,12 +196,16 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
   // metadata. That keeps "supply" truthful even when a user applies source or
   // date filters to one particular search.
   for (const event of options.hypeknightEvents ?? []) {
-    const market = normalizeMarket(event.city, event.state);
+    const market =
+      (event.market_id ? options.marketsById?.get(event.market_id) ?? null : null) ||
+      resolveMarket(event.city, event.state);
     if (market) get(market).hypeknightEvents += 1;
   }
 
   for (const event of options.externalEvents ?? []) {
-    const market = normalizeMarket(event.city, event.state);
+    const market =
+      (event.market_id ? options.marketsById?.get(event.market_id) ?? null : null) ||
+      resolveMarket(event.city, event.state);
     if (market) get(market).externalEvents += 1;
   }
 
