@@ -12,6 +12,10 @@ export type CanonicalMarket = {
   key: string;
   city: string;
   state: string;
+  // V2 registry-backed markets may also expose a stable database id/name.
+  // V1.5 callers can continue using only key/city/state.
+  id?: string;
+  name?: string;
 };
 
 /**

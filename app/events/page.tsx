@@ -5,7 +5,11 @@ import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { US_STATES, normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
 import { recordSignal } from '@/lib/signals/server';
-import { marketFromExactQuery, normalizeMarket } from '@/lib/markets/normalize-market';
+import {
+  buildMarketRegistry,
+  isLocationInMarket,
+  resolveSearchMarket,
+} from '@/lib/markets/registry';
 import {
   EmptyState,
   EventCard,
@@ -52,6 +56,8 @@ type DiscoveryCard = {
   amenities: string[];
   event_types: string[];
   age_requirement?: string | null;
+  // V2 keeps physical city/state and metro market identity separate.
+  market_id?: string | null;
 };
 
 const ALL_PREVIEW_LIMIT = 24;
@@ -79,6 +85,8 @@ export default async function EventsPage({ searchParams }: Props) {
     { data: hypeEvents, error: hypeError },
     { data: externalEvents, error: externalError },
     lookups,
+    { data: marketRows, error: marketError },
+    { data: marketAreaRows, error: marketAreaError },
   ] = await Promise.all([
     loadHypeKnightEvents(supabase),
     loadExternalEvents(supabase),
@@ -89,10 +97,32 @@ export default async function EventsPage({ searchParams }: Props) {
       'event_amenities',
       'age_requirements',
     ]),
+    supabase
+      .from('markets')
+      .select('id, market_key, name, primary_city, primary_state, status')
+      .neq('status', 'retired'),
+    supabase
+      .from('market_areas')
+      .select('id, market_id, city, state, normalized_city, normalized_state, area_type, is_primary, priority, is_active')
+      .eq('is_active', true),
   ]);
 
   if (hypeError) throw new Error(hypeError.message);
   if (externalError) throw new Error(externalError.message);
+  if (marketError) throw new Error(marketError.message);
+  if (marketAreaError) throw new Error(marketAreaError.message);
+
+  // MARKET REGISTRY V2:
+  // Discovery can now treat a metro as the searchable geography while each
+  // card continues to display its actual city/state.
+  const marketRegistry = buildMarketRegistry(marketRows ?? [], marketAreaRows ?? []);
+  const searchMarket = resolveSearchMarket(
+    marketRegistry,
+    query.city || null,
+    query.state || null,
+    query.q || null
+  );
+  const exactMarketQuery = !query.city && Boolean(query.q && searchMarket);
 
   const allCards: DiscoveryCard[] = [
     ...(hypeEvents ?? []).map((event: any) => ({
@@ -120,6 +150,7 @@ export default async function EventsPage({ searchParams }: Props) {
       amenities: arrayValue(event.amenities),
       event_types: splitValue(event.event_type),
       age_requirement: event.age_requirement,
+      market_id: event.market_id || null,
     })),
 
     ...(externalEvents ?? []).map((event: any) => ({
@@ -150,6 +181,7 @@ export default async function EventsPage({ searchParams }: Props) {
         event.classification || event.segment,
       ].filter(Boolean),
       age_requirement: null,
+      market_id: event.market_id || null,
     })),
   ].sort(sortByStartTime);
 
@@ -161,25 +193,41 @@ export default async function EventsPage({ searchParams }: Props) {
 
     const haystack = buildSearchHaystack(event);
 
+    const eventIsInSearchMarket = searchMarket
+      ? event.market_id === searchMarket.id ||
+        isLocationInMarket(marketRegistry, searchMarket.id, event.city, event.state)
+      : false;
+
+    // If free text is exactly a known market alias (for example "Kansas City"),
+    // the market itself satisfies the location portion of the query. A normal
+    // keyword search such as "jazz Kansas City" still uses the content haystack.
     const matchesSearch = search
-      ? haystack.includes(search) ||
+      ? (exactMarketQuery && eventIsInSearchMarket) ||
+        haystack.includes(search) ||
         searchTerms.some((term) =>
           haystack.includes(String(term).toLowerCase())
         )
       : true;
 
-    const matchesCity = cityTerms.length
-      ? cityTerms.some((term) => {
-          const cleanTerm = String(term).toLowerCase();
+    // An explicit city that belongs to a registered metro expands to all linked
+    // market areas. This is what lets Kansas City discovery include Overland
+    // Park, KCK, North Kansas City, Raytown, etc.
+    const matchesCity = searchMarket && city
+      ? eventIsInSearchMarket
+      : cityTerms.length
+        ? cityTerms.some((term) => {
+            const cleanTerm = String(term).toLowerCase();
 
-          return (
-            eventCity.includes(cleanTerm) ||
-            cleanTerm.includes(eventCity)
-          );
-        })
-      : true;
+            return (
+              eventCity.includes(cleanTerm) ||
+              cleanTerm.includes(eventCity)
+            );
+          })
+        : true;
 
-    const matchesState = state ? eventState === state : true;
+    // Do not re-apply a single-state filter after a metro match; Kansas City is
+    // intentionally allowed to cross the Missouri/Kansas state line.
+    const matchesState = searchMarket && city ? true : state ? eventState === state : true;
 
     const matchesMusic = music
       ? includesNormalized(event.music_selection, music) ||
@@ -277,9 +325,7 @@ export default async function EventsPage({ searchParams }: Props) {
     // exactly a known market alias (for example "Kansas City" or "ATL"),
     // it can also be treated as market intent. Arbitrary search text is never
     // guessed into a city.
-    const market =
-      normalizeMarket(query.city || null, query.state || null) ||
-      marketFromExactQuery(query.q || null);
+    const market = searchMarket;
 
     // These counts describe what THIS filtered result page returned. Current
     // market supply is calculated separately in the admin intelligence layer.
@@ -313,6 +359,9 @@ export default async function EventsPage({ searchParams }: Props) {
         hypeknight_result_count: hypeknightResultCount,
         external_result_count: externalResultCount,
         market_key: market?.key || null,
+        market_id: market?.id || null,
+        searched_city: query.city || null,
+        searched_state: query.state || null,
       },
     });
   }
