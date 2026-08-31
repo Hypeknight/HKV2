@@ -3,431 +3,53 @@ import { notFound, redirect } from 'next/navigation';
 import { updateEventStep2 } from '@/app/dashboard/events/actions';
 import { createClient } from '@/lib/supabase/server';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
-import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
-type Step2PageProps = {
-  params: Promise<{
-    id: string;
-  }>;
-};
+type Props = { params: Promise<{ id: string }> };
 
-export default async function EditEventStep2Page({ params }: Step2PageProps) {
+export default async function ExperienceStep({ params }: Props) {
   const { id } = await params;
-
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
-
-  const { data: event, error } = await supabase
-    .from('events')
-    .select(`
-      id,
-      owner_id,
-      name,
-      description,
-      dress_code,
-      entry_price,
-      music_selection,
-      age_requirement,
-      event_type,
-      vibe_tags,
-      amenities,
-      smoking_policy,
-      parking_notes,
-      special_notes,
-      status
-    `)
-    .eq('id', id)
-    .eq('owner_id', user.id)
-    .single();
-
+  const { data: event, error } = await supabase.from('events').select('id,name,description,dress_code,entry_price,music_selection,age_requirement,event_type,vibe_tags,amenities,smoking_policy,parking_notes,special_notes,status').eq('id', id).eq('owner_id', user.id).single();
   if (error || !event) notFound();
 
-  const lookups = await getLookupMap([
-    'dress_codes',
-    'age_requirements',
-    'event_types',
-    'music_genres',
-    'vibe_tags',
-    'smoking_policies',
-    'parking_options',
-    'event_amenities',
-  ]);
-
-  const selectedMusic = Array.isArray(event.music_selection)
-    ? event.music_selection
-    : [];
-
+  const lookups = await getLookupMap(['dress_codes','age_requirements','event_types','music_genres','vibe_tags','smoking_policies','parking_options','event_amenities']);
+  const selectedMusic = Array.isArray(event.music_selection) ? event.music_selection : [];
   const selectedVibes = Array.isArray(event.vibe_tags) ? event.vibe_tags : [];
-
-  const selectedEventTypes = splitValue(event.event_type);
-
-  const selectedAmenities = Array.isArray(event.amenities)
-    ? event.amenities
-    : [];
+  const selectedAmenities = Array.isArray(event.amenities) ? event.amenities : [];
+  const selectedTypes = String(event.event_type || '').split(',').map((v) => v.trim()).filter(Boolean);
 
   return (
-    <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
-      <Link
-        href="/dashboard/events"
-        className="text-sm text-white/60 hover:text-accent"
-      >
-        ← Back to My Events
-      </Link>
+    <section className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+      <Link href="/dashboard/events" className="text-sm text-white/60 hover:text-accent">← Save and return later</Link>
+      <header className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-6 sm:p-10">
+        <p className="text-xs uppercase tracking-[0.3em] text-accent">2 of 4 · Experience</p>
+        <h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">What will the night feel like?</h1>
+        <p className="mt-4 max-w-3xl text-sm leading-6 text-white/65">Use quick selections for the information that powers HypeKnight discovery. Extra operational details stay optional instead of turning this into an endless form.</p>
+      </header>
 
-      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[3rem] sm:p-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
-
-        <div className="relative grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-              Create Event
-            </p>
-
-            <h1 className="mt-3 text-4xl font-black leading-tight text-white sm:text-6xl">
-              Add the details people search for.
-            </h1>
-
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Step 2 helps HypeKnight categorize your event by music, vibe,
-              attire, age, event type, entry cost, amenities, and guest expectations.
-            </p>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Chip>{event.name || 'Untitled Event'}</Chip>
-              <Chip>Status: {event.status}</Chip>
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
-            <p className="text-xs uppercase tracking-[0.25em] text-white/45">
-              Progress
-            </p>
-
-            <div className="mt-5 grid gap-3">
-              <InfoCard label="Step 1" icon="✅" value="Basics" />
-              <InfoCard label="Step 2" icon="✅" value="Details" accent />
-              <InfoCard label="Step 3" icon="•" value="Review / Submit" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <form action={updateEventStep2} className="space-y-8">
+      <form action={updateEventStep2} className="space-y-6">
         <input type="hidden" name="event_id" value={event.id} />
-
-        <Panel title="Event description" eyebrow="The Story">
-          <label htmlFor="description" className="block">
-            <span className="text-sm font-semibold text-white/70">
-              Description
-            </span>
-
-            <textarea
-              id="description"
-              name="description"
-              rows={6}
-              defaultValue={event.description || ''}
-              placeholder="Describe the event, the energy, the experience, and what guests should expect."
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-            />
-
-            <span className="mt-2 block text-xs leading-5 text-white/45">
-              A strong description helps users decide if this event fits their
-              night.
-            </span>
-          </label>
-        </Panel>
-
-        <Panel title="Category and age" eyebrow="Uniform Event Info">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Select
-              name="dress_code"
-              label="Attire / Dress Code"
-              defaultValue={event.dress_code || ''}
-              options={lookups.dress_codes}
-            />
-
-            <Select
-              name="age_requirement"
-              label="Age Requirement"
-              defaultValue={event.age_requirement || ''}
-              options={lookups.age_requirements}
-            />
-          </div>
-
-          <div className="mt-5">
-            <CheckboxGroup
-              title="Event Type"
-              description="Choose every category that fits. This helps users filter by type."
-              name="event_type"
-              options={lookups.event_types}
-              selected={selectedEventTypes}
-            />
+        <Panel title="Event type" text="Choose at least one."><ChoiceGrid name="event_type" options={lookups.event_types} selected={selectedTypes} /></Panel>
+        <Panel title="Music" text="Choose the sounds guests should expect."><ChoiceGrid name="music_selection" options={lookups.music_genres} selected={selectedMusic} /></Panel>
+        <Panel title="Vibe" text="Choose at least one experience signal."><ChoiceGrid name="vibe_tags" options={lookups.vibe_tags} selected={selectedVibes} /></Panel>
+        <Panel title="Need to know" text="The essentials people use to decide whether the event fits their night.">
+          <div className="grid gap-5 md:grid-cols-2">
+            <Select name="age_requirement" label="Age requirement" value={event.age_requirement || ''} options={lookups.age_requirements} />
+            <Select name="dress_code" label="Dress code" value={event.dress_code || ''} options={lookups.dress_codes} />
+            <Field name="entry_price" label="Entry / ticket note" value={event.entry_price || ''} placeholder="Free before 11, $20 at door" />
+            <Select name="parking_notes" label="Parking / access" value={event.parking_notes || ''} options={lookups.parking_options} />
           </div>
         </Panel>
-
-        <Panel title="Music and vibe" eyebrow="Discovery Tags">
-          <CheckboxGroup
-            title="Music Selection"
-            description="Choose the sounds people can expect."
-            name="music_selection"
-            options={lookups.music_genres}
-            selected={selectedMusic}
-          />
-
-          <div className="mt-8">
-            <CheckboxGroup
-              title="Vibe Tags"
-              description="Choose the energy, setting, or experience."
-              name="vibe_tags"
-              options={lookups.vibe_tags}
-              selected={selectedVibes}
-            />
-          </div>
-        </Panel>
-
-        <Panel title="Entry and guest details" eyebrow="Know Before You Go">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Input
-              id="entry_price"
-              name="entry_price"
-              label="Entry Price"
-              defaultValue={event.entry_price || ''}
-              placeholder="$10, Free before 11, $20 at door"
-              helper="Keep this simple and clear for users."
-            />
-
-            <Select
-              name="smoking_policy"
-              label="Smoking Policy"
-              defaultValue={event.smoking_policy || ''}
-              options={lookups.smoking_policies}
-            />
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <Select
-              name="parking_notes"
-              label="Parking / Access"
-              defaultValue={event.parking_notes || ''}
-              options={lookups.parking_options}
-            />
-
-            <Input
-              id="special_notes_short"
-              name="special_notes_short"
-              label="Quick Guest Note"
-              placeholder="Example: Arrive early. Limited capacity."
-              helper="Optional. We can use this later for short event cards."
-            />
-          </div>
-        </Panel>
-
-        <Panel title="Amenities" eyebrow="What is available?">
-          <CheckboxGroup
-            title="Event Amenities"
-            description="Optional. These can power future filters and event badges."
-            name="amenities"
-            options={lookups.event_amenities}
-            selected={selectedAmenities}
-          />
-        </Panel>
-
-        <Panel title="Special notes" eyebrow="Extra Details">
-          <label htmlFor="special_notes" className="block">
-            <span className="text-sm font-semibold text-white/70">
-              Anything else guests should know?
-            </span>
-
-            <textarea
-              id="special_notes"
-              name="special_notes"
-              rows={5}
-              defaultValue={event.special_notes || ''}
-              placeholder="Add anything else guests should know before attending."
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-            />
-          </label>
-        </Panel>
-
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
-          <SectionHeader
-            eyebrow="Next"
-            title="Ready for review?"
-            text="Step 3 lets you review pricing, promotion windows, and submission readiness."
-          />
-
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between">
-            <Link
-              href="/dashboard/events"
-              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-4 font-semibold text-white hover:border-white/20 sm:w-auto"
-            >
-              Save and return later
-            </Link>
-
-            <button
-              type="submit"
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90 sm:w-auto"
-            >
-              Continue to Step 3
-            </button>
-          </div>
-        </section>
+        <details className="rounded-[2rem] border border-white/10 bg-white/5 p-6"><summary className="cursor-pointer text-xl font-black text-white">+ More event details</summary><div className="mt-6 space-y-6"><label className="block"><span className="text-sm font-bold text-white/70">Description</span><textarea name="description" rows={5} defaultValue={event.description || ''} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white" /></label><Select name="smoking_policy" label="Smoking policy" value={event.smoking_policy || ''} options={lookups.smoking_policies} /><div><p className="text-sm font-bold text-white/70">Amenities</p><ChoiceGrid name="amenities" options={lookups.event_amenities} selected={selectedAmenities} /></div><label className="block"><span className="text-sm font-bold text-white/70">Additional information</span><textarea name="special_notes" rows={4} defaultValue={event.special_notes || ''} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white" /></label></div></details>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between"><Link href="/dashboard/events" className="rounded-2xl border border-white/10 px-5 py-4 text-center font-bold text-white">Save and exit</Link><button className="rounded-2xl bg-accent px-6 py-4 font-black text-black">Continue to Enhance →</button></div>
       </form>
     </section>
   );
 }
 
-function CheckboxGroup({
-  title,
-  description,
-  name,
-  options = [],
-  selected,
-}: {
-  title: string;
-  description: string;
-  name: string;
-  options?: LookupValue[];
-  selected: string[];
-}) {
-  return (
-    <section>
-      <h3 className="text-xl font-black text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-white/60">{description}</p>
-
-      {options.length ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {options.map((option) => (
-            <CheckCard
-              key={option.value}
-              name={name}
-              value={option.value}
-              label={`${option.icon ? `${option.icon} ` : ''}${option.display_name}`}
-              defaultChecked={selected.includes(option.value)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-100">
-          No active lookup values found for this section. Add them in Admin
-          Lookups.
-        </div>
-      )}
-    </section>
-  );
-}
-
-function CheckCard({
-  name,
-  value,
-  label,
-  defaultChecked,
-}: {
-  name: string;
-  value: string;
-  label: string;
-  defaultChecked?: boolean;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white transition hover:border-accent/40">
-      <input
-        type="checkbox"
-        name={name}
-        value={value}
-        defaultChecked={defaultChecked}
-        className="h-4 w-4 shrink-0"
-      />
-      <span className="font-semibold">{label}</span>
-    </label>
-  );
-}
-
-function Select({
-  name,
-  label,
-  defaultValue,
-  options = [],
-}: {
-  name: string;
-  label: string;
-  defaultValue?: string;
-  options?: LookupValue[];
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm font-semibold text-white/70">{label}</span>
-
-      <select
-        name={name}
-        defaultValue={defaultValue || ''}
-        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-      >
-        <option value="">Select one</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.icon ? `${option.icon} ` : ''}
-            {option.display_name}
-          </option>
-        ))}
-      </select>
-
-      {!options.length ? (
-        <span className="mt-2 block text-xs text-yellow-200">
-          No active lookup values found.
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
-function Input({
-  id,
-  name,
-  label,
-  defaultValue = '',
-  placeholder,
-  helper,
-}: {
-  id: string;
-  name: string;
-  label: string;
-  defaultValue?: string;
-  placeholder?: string;
-  helper?: string;
-}) {
-  return (
-    <label htmlFor={id} className="block">
-      <span className="text-sm font-semibold text-white/70">{label}</span>
-
-      <input
-        id={id}
-        name={name}
-        type="text"
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-      />
-
-      {helper ? (
-        <span className="mt-2 block text-xs leading-5 text-white/45">
-          {helper}
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
-function splitValue(value?: string | string[] | null) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-
-  return String(value)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+function Panel({ title, text, children }: { title:string; text:string; children:React.ReactNode }) { return <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8"><h2 className="text-2xl font-black text-white">{title}</h2><p className="mt-2 text-sm text-white/50">{text}</p><div className="mt-6">{children}</div></section>; }
+function ChoiceGrid({ name, options=[], selected }: { name:string; options?:LookupValue[]; selected:string[] }) { return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{options.map((o) => <label key={o.value} className="cursor-pointer rounded-2xl border border-white/10 bg-black/20 p-4 text-white has-[:checked]:border-accent/60 has-[:checked]:bg-accent/10"><input type="checkbox" name={name} value={o.value} defaultChecked={selected.includes(o.value)} className="mr-3 accent-current" />{o.icon ? `${o.icon} ` : ''}{o.display_name}</label>)}</div>; }
+function Field({ name,label,value,placeholder }: { name:string;label:string;value:string;placeholder?:string }) { return <label className="block"><span className="text-sm font-bold text-white/70">{label}</span><input name={name} defaultValue={value} placeholder={placeholder} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white" /></label>; }
+function Select({ name,label,value,options=[] }: { name:string;label:string;value:string;options?:LookupValue[] }) { return <label className="block"><span className="text-sm font-bold text-white/70">{label}</span><select name={name} defaultValue={value} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white"><option value="">Not specified</option>{options.map((o) => <option key={o.value} value={o.value}>{o.display_name}</option>)}</select></label>; }
