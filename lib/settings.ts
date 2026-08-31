@@ -45,6 +45,12 @@ const defaultSettings = {
   ambassador_min_payout: 25,
   ambassador_program_enabled: true,
   ambassador_founder_limit: 50,
+  event_builder_enabled: true,
+  venue_matching_enabled: true,
+  venue_approval_required: true,
+  default_discovery_buffer_minutes: 30,
+  commerce_receipts_enabled: true,
+  coupons_enabled: true,
 };
 
 export async function getPlatformSettings() {

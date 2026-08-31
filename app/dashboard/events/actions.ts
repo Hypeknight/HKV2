@@ -488,9 +488,13 @@ export async function updateEventStep1(formData: FormData) {
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { calculateTotalPrice } from '@/lib/events/workflow';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getPlatformSettings } from '@/lib/settings';
 import { transitionEventStatus } from '@/lib/events/transition';
+import { normalizePhysicalAddress, validatePhysicalAddress } from '@/lib/events/address';
+import { resolveEventLifecycle } from '@/lib/events/lifecycle';
+import { buildEventOrderLines } from '@/lib/commerce/event-order';
+import { detectEventSourceProvider, normalizeProviderUrl } from '@/lib/event-sources/providers';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -760,46 +764,101 @@ function slugify(value: string) {
     .replace(/-+/g, '-');
 }
 
-function calculatePromotionWindow({
-  eventStartAt,
-  includedPromoDays,
-  extraPromoDays,
+function parseLocalDateTime(date: string, time: string) {
+  const value = new Date(`${date}T${time}`);
+  if (Number.isNaN(value.getTime())) throw new Error('Invalid event date or time.');
+  return value;
+}
+
+async function connectMatchingVenue({
+  eventId,
+  userId,
+  address,
+  city,
+  state,
 }: {
-  eventStartAt: string;
-  includedPromoDays: number;
-  extraPromoDays: number;
+  eventId: string;
+  userId: string;
+  address: string;
+  city: string;
+  state: string;
 }) {
-  const eventDate = new Date(eventStartAt);
+  const admin = createAdminClient();
+  const normalized = normalizePhysicalAddress({ address, city, state });
+  const { data: venues } = await admin
+    .from('venues')
+    .select('id, owner_id, address, city, state')
+    .eq('city', city)
+    .eq('state', state)
+    .limit(50);
 
-  if (Number.isNaN(eventDate.getTime())) {
-    throw new Error('Invalid event start date.');
-  }
-
-  const eventMidnight = new Date(eventDate);
-  eventMidnight.setHours(0, 0, 0, 0);
-
-  const totalPromoDays = Math.max(
-    Number(includedPromoDays || 0) + Number(extraPromoDays || 0),
-    1
+  const venue = (venues || []).find((row: any) =>
+    normalizePhysicalAddress({
+      address: String(row.address || ''),
+      city: String(row.city || ''),
+      state: String(row.state || ''),
+    }) === normalized
   );
 
-  const promotionStart = new Date(eventMidnight);
-  promotionStart.setDate(promotionStart.getDate() - totalPromoDays);
+  if (!venue) {
+    await admin.from('events').update({
+      address_normalized: normalized,
+      venue_connection_status: 'unmatched',
+    }).eq('id', eventId);
+    return;
+  }
 
-  return {
-    promotionStartAt: promotionStart.toISOString(),
-    promotionEndAt: eventMidnight.toISOString(),
-  };
+  if (venue.owner_id === userId) {
+    await admin.from('events').update({
+      venue_id: venue.id,
+      address_normalized: normalized,
+      venue_connection_status: 'approved',
+    }).eq('id', eventId);
+    return;
+  }
+
+  await admin.from('events').update({
+    address_normalized: normalized,
+    venue_connection_status: 'pending',
+  }).eq('id', eventId);
+
+  await admin.from('venue_event_connection_requests').upsert({
+    event_id: eventId,
+    venue_id: venue.id,
+    requested_by: userId,
+    venue_owner_id: venue.owner_id,
+    status: 'pending',
+    event_address_normalized: normalized,
+    venue_address_normalized: normalizePhysicalAddress({
+      address: String(venue.address || ''),
+      city: String(venue.city || ''),
+      state: String(venue.state || ''),
+    }),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'event_id,venue_id' });
+}
+
+async function connectInitialSource({ eventId, userId, sourceUrl }: { eventId: string; userId: string; sourceUrl: string }) {
+  if (!sourceUrl) return;
+  const admin = createAdminClient();
+  const normalizedUrl = normalizeProviderUrl(sourceUrl);
+  const provider = detectEventSourceProvider(normalizedUrl);
+  await admin.from('event_sources').insert({
+    event_id: eventId,
+    provider,
+    provider_url: normalizedUrl,
+    source_type: 'connected',
+    relationship_status: 'connected',
+    is_primary_ticket_source: true,
+    is_verified: false,
+    connected_by: userId,
+    metadata: { source: 'event_builder_v34' },
+  });
 }
 
 export async function createEventStep1(formData: FormData) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect('/auth/login');
+  const { supabase, user } = await requireUser();
+  const settings = await getPlatformSettings();
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -811,152 +870,107 @@ export async function createEventStep1(formData: FormData) {
   const venueName = cleanText(formData, 'venue_name');
   const address = cleanText(formData, 'address');
   const city = cleanText(formData, 'city');
-  const state = cleanText(formData, 'state');
+  const state = cleanText(formData, 'state').toUpperCase();
   const startDate = cleanText(formData, 'start_date');
   const startTime = cleanText(formData, 'start_time');
   const endDate = cleanText(formData, 'end_date');
   const endTime = cleanText(formData, 'end_time');
   const flyerUrl = cleanText(formData, 'flyer_url');
+  const sourceUrl = cleanText(formData, 'source_url');
 
   if (!eventName) throw new Error('Event name is required.');
-  if (!city) throw new Error('City is required.');
-  if (!state) throw new Error('State is required.');
-  if (!startDate || !startTime) {
-    throw new Error('Event start date and time are required.');
+  if (!venueName) throw new Error('Venue name is required.');
+  const addressError = validatePhysicalAddress({ address, city, state });
+  if (addressError) throw new Error(addressError);
+  if (!startDate || !startTime) throw new Error('Event start date and time are required.');
+  if ((endDate && !endTime) || (!endDate && endTime)) {
+    throw new Error('Provide both an end date and end time, or leave both blank.');
   }
 
-  const baseSlug = slugify(`${eventName} ${city} ${state}`);
-  const slug = `${baseSlug}-${Date.now()}`;
-
-  const eventStartAt = new Date(`${startDate}T${startTime}`);
-  const eventEndAt =
-    endDate && endTime
-      ? new Date(`${endDate}T${endTime}`)
-      : new Date(`${startDate}T${startTime}`);
-
-  if (Number.isNaN(eventStartAt.getTime())) {
-    throw new Error('Invalid event start date.');
-  }
-
-  if (Number.isNaN(eventEndAt.getTime())) {
-    throw new Error('Invalid event end date.');
-  }
-
-  const settings = await getPlatformSettings();
-
+  const eventStartAt = parseLocalDateTime(startDate, startTime);
+  const explicitEnd = endDate && endTime ? parseLocalDateTime(endDate, endTime) : null;
   const includedPromoDays = Number(settings.included_promo_days || 14);
-  const extraPromoDays = 0;
   const basePrice = Number(settings.event_base_price || 19.99);
-
-  const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
+  const lifecycle = resolveEventLifecycle({
     eventStartAt: eventStartAt.toISOString(),
+    eventEndAt: explicitEnd?.toISOString() || null,
     includedPromoDays,
-    extraPromoDays,
+    extraPromoDays: 0,
+    defaultDiscoveryBufferMinutes: Number(settings.default_discovery_buffer_minutes || 30),
   });
 
-  const { data, error } = await supabase
-    .from('events')
-    .insert({
-      owner_id: user.id,
-      owner_type: getOwnerType(profile?.app_role),
-      name: eventName,
-      slug,
-      flyer_url: flyerUrl || null,
-      venue_name: venueName || null,
-      address: address || null,
-      city,
-      state,
-      event_start_at: eventStartAt.toISOString(),
-      event_end_at: eventEndAt.toISOString(),
-      promotion_start_at: promotionStartAt,
-      promotion_end_at: promotionEndAt,
-      status: 'building',
-      is_public: false,
-      is_approved: false,
-      is_paid: false,
-      included_promo_days: includedPromoDays,
-      extra_promo_days: extraPromoDays,
-      base_price: basePrice,
-      extra_promo_price: 0,
-      linkdn_mode: 'none',
-      linkdn_price: 0,
-      total_price: basePrice,
-      payment_amount: basePrice,
-      current_step: 1,
-    })
-    .select('id')
-    .single();
+  const slug = `${slugify(`${eventName} ${city} ${state}`)}-${Date.now()}`;
+  const addressNormalized = normalizePhysicalAddress({ address, city, state });
 
-  if (error) throw new Error(error.message);
+  const { data, error } = await supabase.from('events').insert({
+    owner_id: user.id,
+    owner_type: getOwnerType(profile?.app_role),
+    name: eventName,
+    slug,
+    flyer_url: flyerUrl || null,
+    venue_name: venueName,
+    address,
+    address_normalized: addressNormalized,
+    city,
+    state,
+    event_start_at: eventStartAt.toISOString(),
+    event_end_at: lifecycle.resolvedEventEndAt,
+    end_time_is_explicit: Boolean(explicitEnd),
+    promotion_start_at: lifecycle.promotionStartAt,
+    promotion_end_at: lifecycle.promotionEndAt,
+    discovery_start_at: lifecycle.discoveryStartAt,
+    discovery_end_at: lifecycle.discoveryEndAt,
+    venue_connection_status: 'unmatched',
+    status: 'building',
+    is_public: false,
+    is_approved: false,
+    is_paid: false,
+    included_promo_days: includedPromoDays,
+    extra_promo_days: 0,
+    base_price: basePrice,
+    extra_promo_price: 0,
+    linkdn_mode: 'none',
+    linkdn_price: 0,
+    total_price: basePrice,
+    payment_amount: basePrice,
+    current_step: 1,
+  }).select('id').single();
+
+  if (error || !data) throw new Error(error?.message || 'Could not create event.');
+
+  if (settings.venue_matching_enabled !== false) {
+    await connectMatchingVenue({ eventId: data.id, userId: user.id, address, city, state });
+  }
+  if (sourceUrl) await connectInitialSource({ eventId: data.id, userId: user.id, sourceUrl });
 
   redirect(`/dashboard/events/${data.id}/edit/step-2`);
 }
 
 export async function updateEventStep2(formData: FormData) {
   const { supabase, user } = await requireUser();
-
   const eventId = cleanText(formData, 'event_id');
-
   if (!eventId) throw new Error('Missing event id.');
 
   const { data: event, error: fetchError } = await supabase
-    .from('events')
-    .select('id, owner_id, status')
-    .eq('id', eventId)
-    .eq('owner_id', user.id)
-    .single();
-
-  if (fetchError || !event) {
-    throw new Error(fetchError?.message || 'Event not found.');
-  }
-
+    .from('events').select('id, owner_id, status').eq('id', eventId).eq('owner_id', user.id).single();
+  if (fetchError || !event) throw new Error(fetchError?.message || 'Event not found.');
   if (!['draft', 'building', 'rejected', 'revision_draft'].includes(event.status)) {
     throw new Error('This event cannot be edited at its current status.');
   }
 
-  if (event.status === 'draft' || event.status === 'rejected') {
-    await transitionEventStatus({
-      supabase,
-      eventId,
-      actorId: user.id,
-      actor: 'owner',
-      toStatus: 'building',
-      source: 'owner_action',
-      note: 'Owner resumed building the event.',
-      metadata: {
-        action: 'resume_event_builder_step_2',
-      },
-      updates: {
-        isApproved: false,
-        isPublic: false,
-        hiddenByAdmin: false,
-      },
-    });
-  }
+  const eventTypes = formData.getAll('event_type').map(String).filter(Boolean);
+  const musicSelection = formData.getAll('music_selection').map(String).filter(Boolean);
+  const vibeTags = formData.getAll('vibe_tags').map(String).filter(Boolean);
+  const amenities = formData.getAll('amenities').map(String).filter(Boolean);
+  if (!eventTypes.length) throw new Error('Choose at least one event type.');
+  if (!vibeTags.length) throw new Error('Choose at least one vibe.');
 
-  const eventTypes = formData
-    .getAll('event_type')
-    .map(String)
-    .filter(Boolean);
-  const musicSelection = formData
-    .getAll('music_selection')
-    .map(String)
-    .filter(Boolean);
-  const vibeTags = formData
-    .getAll('vibe_tags')
-    .map(String)
-    .filter(Boolean);
-  const amenities = formData
-    .getAll('amenities')
-    .map(String)
-    .filter(Boolean);
-
-  const payload = {
+  const { error } = await supabase.from('events').update({
     description: cleanText(formData, 'description') || null,
     dress_code: cleanText(formData, 'dress_code') || null,
     entry_price: cleanText(formData, 'entry_price') || null,
     age_requirement: cleanText(formData, 'age_requirement') || null,
-    event_type: eventTypes.length ? eventTypes.join(', ') : null,
+    event_type: eventTypes.join(', '),
     smoking_policy: cleanText(formData, 'smoking_policy') || null,
     parking_notes: cleanText(formData, 'parking_notes') || null,
     special_notes: cleanText(formData, 'special_notes') || null,
@@ -966,14 +980,7 @@ export async function updateEventStep2(formData: FormData) {
     current_step: 2,
     is_public: false,
     updated_at: new Date().toISOString(),
-  };
-
-  const { error } = await supabase
-    .from('events')
-    .update(payload)
-    .eq('id', eventId)
-    .eq('owner_id', user.id);
-
+  }).eq('id', eventId).eq('owner_id', user.id);
   if (error) throw new Error(error.message);
 
   refreshOwnerEventPaths(eventId);
@@ -982,112 +989,140 @@ export async function updateEventStep2(formData: FormData) {
 
 export async function updateEventStep3(formData: FormData) {
   const { supabase, user } = await requireUser();
+  const admin = createAdminClient();
   const settings = await getPlatformSettings();
-
   const eventId = cleanText(formData, 'event_id');
-  const extraPromoDays = Number(formData.get('extra_promo_days') || 0);
-  const linkdnMode = String(formData.get('linkdn_mode') || 'none') as
-    | 'none'
-    | 'lite'
-    | 'full';
-
   if (!eventId) throw new Error('Missing event id.');
+
+  const extraPromoDays = Math.max(0, Number(formData.get('extra_promo_days') || 0));
+  const selectedCodes = formData.getAll('product_code').map(String).filter(Boolean);
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id, status, event_start_at, event_end_at, end_time_is_explicit')
+    .eq('id', eventId).eq('owner_id', user.id).single();
+  if (fetchError || !event) throw new Error(fetchError?.message || 'Event not found.');
+  if (!['draft', 'building', 'rejected', 'revision_draft'].includes(event.status)) {
+    throw new Error('This event cannot be edited at its current status.');
+  }
+
+  const { data: products, error: productError } = await admin
+    .from('platform_products')
+    .select('id, code, name, price, enabled, requires_event_end')
+    .in('code', selectedCodes.length ? selectedCodes : ['__none__']);
+  if (productError) throw new Error(productError.message);
+  const selectedProducts = (products || []).filter((product: any) => product.enabled);
+  if (selectedProducts.length !== selectedCodes.length) {
+    throw new Error('One or more selected add-ons are not currently available.');
+  }
+
+  const needsLiveEnd = selectedProducts.some((product: any) => product.requires_event_end);
+  let eventEndAt = event.end_time_is_explicit ? event.event_end_at : null;
+  let endIsExplicit = Boolean(event.end_time_is_explicit);
+  if (needsLiveEnd && !eventEndAt) {
+    const liveEndDate = cleanText(formData, 'live_end_date');
+    const liveEndTime = cleanText(formData, 'live_end_time');
+    if (!liveEndDate || !liveEndTime) {
+      throw new Error('Event end date and time are required for Patron Pulse or Linkd’N.');
+    }
+    eventEndAt = parseLocalDateTime(liveEndDate, liveEndTime).toISOString();
+    endIsExplicit = true;
+  }
 
   const basePrice = Number(settings.event_base_price || 19.99);
   const includedPromoDays = Number(settings.included_promo_days || 14);
   const extraDayPrice = Number(settings.extra_promo_day_price || 2.5);
-
-  const linkLiteEnabled = Boolean(settings.enable_link_lite);
-  const fullLinkEnabled = Boolean(settings.enable_full_link);
-  const litePrice = Number(settings.link_lite_price || 9.99);
-  const fullPrice = Number(settings.full_link_price || 49.99);
-
-  if (linkdnMode === 'lite' && !linkLiteEnabled) {
-    throw new Error('Link Lite is currently disabled.');
-  }
-
-  if (linkdnMode === 'full' && !fullLinkEnabled) {
-    throw new Error('Full Link is currently disabled.');
-  }
-
-  const linkdnPrice =
-    linkdnMode === 'full'
-      ? fullPrice
-      : linkdnMode === 'lite'
-        ? litePrice
-        : 0;
-
-  const { data: event, error: fetchError } = await supabase
-    .from('events')
-    .select('event_start_at, event_end_at, status')
-    .eq('id', eventId)
-    .eq('owner_id', user.id)
-    .single();
-
-  if (fetchError || !event) {
-    throw new Error(fetchError?.message || 'Event not found.');
-  }
-
-  if (!['draft', 'building', 'rejected'].includes(event.status)) {
-    redirect('/dashboard');
-  }
-
-  if (event.status === 'draft' || event.status === 'rejected') {
-    await transitionEventStatus({
-      supabase,
-      eventId,
-      actorId: user.id,
-      actor: 'owner',
-      toStatus: 'building',
-      source: 'owner_action',
-      note: 'Owner resumed building the event.',
-      metadata: {
-        action: 'resume_event_builder_step_3',
-      },
-      updates: {
-        isApproved: false,
-        isPublic: false,
-        hiddenByAdmin: false,
-      },
-    });
-  }
-
-  const extraPromoPrice = Number(
-    (extraPromoDays * extraDayPrice).toFixed(2)
-  );
-
-  const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
+  const lifecycle = resolveEventLifecycle({
     eventStartAt: event.event_start_at,
+    eventEndAt,
     includedPromoDays,
     extraPromoDays,
+    defaultDiscoveryBufferMinutes: Number(settings.default_discovery_buffer_minutes || 30),
+    liveProductSelected: needsLiveEnd,
   });
 
-  const totalPrice = calculateTotalPrice({
+  const pricedProducts = selectedProducts.map((product: any) => ({
+    code: product.code,
+    name: product.name,
+    price: Number(product.price || 0),
+    enabled: Boolean(product.enabled),
+    requires_event_end: Boolean(product.requires_event_end),
+  }));
+  const { lines, subtotal } = buildEventOrderLines({
     basePrice,
-    extraPromoPrice,
-    linkdnPrice,
+    includedPromoDays,
+    extraPromoDays,
+    extraPromoDayPrice: extraDayPrice,
+    selectedProducts: pricedProducts,
   });
 
-  const { error } = await supabase
-    .from('events')
-    .update({
-      included_promo_days: includedPromoDays,
-      extra_promo_days: extraPromoDays,
-      extra_promo_price: extraPromoPrice,
-      promotion_start_at: promotionStartAt,
-      promotion_end_at: promotionEndAt,
-      base_price: basePrice,
-      linkdn_mode: linkdnMode,
-      linkdn_price: linkdnPrice,
-      total_price: totalPrice,
-      payment_amount: totalPrice,
-      current_step: 3,
-      is_public: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', eventId)
-    .eq('owner_id', user.id);
+  await admin.from('event_product_selections').delete().eq('event_id', eventId);
+  if (selectedProducts.length) {
+    const { error: selectionError } = await admin.from('event_product_selections').insert(
+      selectedProducts.map((product: any) => ({
+        event_id: eventId,
+        product_id: product.id,
+        product_code: product.code,
+        unit_price: Number(product.price || 0),
+        status: 'selected',
+      }))
+    );
+    if (selectionError) throw new Error(selectionError.message);
+  }
 
+  const { data: order, error: orderError } = await admin.from('event_orders').upsert({
+    event_id: eventId,
+    user_id: user.id,
+    status: 'draft',
+    subtotal,
+    discount_amount: 0,
+    total: subtotal,
+    coupon_id: null,
+    coupon_code: null,
+    discount_type: null,
+    discount_value: null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'event_id' }).select('id').single();
+  if (orderError || !order) throw new Error(orderError?.message || 'Could not create order.');
+
+  await admin.from('event_order_items').delete().eq('order_id', order.id);
+  const { error: itemError } = await admin.from('event_order_items').insert(
+    lines.map((line) => ({
+      order_id: order.id,
+      event_id: eventId,
+      product_code: line.code,
+      label: line.label,
+      quantity: line.quantity,
+      unit_price: line.unitPrice,
+      line_total: line.total,
+      metadata: line.metadata || {},
+    }))
+  );
+  if (itemError) throw new Error(itemError.message);
+
+  const linkdnSelected = selectedCodes.includes('LINKDN');
+  const { error } = await supabase.from('events').update({
+    included_promo_days: includedPromoDays,
+    extra_promo_days: extraPromoDays,
+    extra_promo_price: Number((extraPromoDays * extraDayPrice).toFixed(2)),
+    promotion_start_at: lifecycle.promotionStartAt,
+    promotion_end_at: lifecycle.promotionEndAt,
+    discovery_start_at: lifecycle.discoveryStartAt,
+    discovery_end_at: lifecycle.discoveryEndAt,
+    event_end_at: lifecycle.resolvedEventEndAt,
+    end_time_is_explicit: endIsExplicit,
+    base_price: basePrice,
+    linkdn_mode: linkdnSelected ? 'full' : 'none',
+    linkdn_price: Number(pricedProducts.find((p) => p.code === 'LINKDN')?.price || 0),
+    total_price: subtotal,
+    payment_amount: subtotal,
+    discounted_total: null,
+    discount_amount: 0,
+    coupon_code: null,
+    current_step: 3,
+    is_public: false,
+    updated_at: new Date().toISOString(),
+  }).eq('id', eventId).eq('owner_id', user.id);
   if (error) throw new Error(error.message);
 
   refreshOwnerEventPaths(eventId);
@@ -1285,13 +1320,13 @@ export async function updateEventStep1(formData: FormData) {
   const eventEndAt =
     endDate && endTime
       ? new Date(`${endDate}T${endTime}`)
-      : new Date(`${startDate}T${startTime}`);
+      : null;
 
   if (Number.isNaN(eventStartAt.getTime())) {
     throw new Error('Invalid event start date.');
   }
 
-  if (Number.isNaN(eventEndAt.getTime())) {
+  if (eventEndAt && Number.isNaN(eventEndAt.getTime())) {
     throw new Error('Invalid event end date.');
   }
 
@@ -1336,11 +1371,14 @@ export async function updateEventStep1(formData: FormData) {
   const includedPromoDays = Number(currentEvent.included_promo_days || 14);
   const extraPromoDays = Number(currentEvent.extra_promo_days || 0);
 
-  const { promotionStartAt, promotionEndAt } = calculatePromotionWindow({
+  const lifecycle = resolveEventLifecycle({
     eventStartAt: eventStartAt.toISOString(),
+    eventEndAt: eventEndAt?.toISOString() || null,
     includedPromoDays,
     extraPromoDays,
   });
+
+  const { promotionStartAt, promotionEndAt } = lifecycle;
 
   const { error } = await supabase
     .from('events')
@@ -1353,7 +1391,7 @@ export async function updateEventStep1(formData: FormData) {
       city,
       state,
       event_start_at: eventStartAt.toISOString(),
-      event_end_at: eventEndAt.toISOString(),
+      event_end_at: eventEndAt?.toISOString() || null,
       promotion_start_at: promotionStartAt,
       promotion_end_at: promotionEndAt,
       current_step: 1,
@@ -1463,8 +1501,7 @@ export async function duplicateEvent(
    */
   const eventStartAt = sourceEvent.event_start_at;
   const eventEndAt =
-    sourceEvent.event_end_at ||
-    sourceEvent.event_start_at;
+    sourceEvent.event_end_at || null;
 
   const includedPromoDays = Number(
     settings.included_promo_days || 14
@@ -1478,14 +1515,14 @@ export async function duplicateEvent(
   const extraPromoPrice = 0;
   const linkdnPrice = 0;
 
-  const {
-    promotionStartAt,
-    promotionEndAt,
-  } = calculatePromotionWindow({
+  const lifecycle = resolveEventLifecycle({
     eventStartAt,
+    eventEndAt,
     includedPromoDays,
     extraPromoDays,
   });
+
+  const { promotionStartAt, promotionEndAt } = lifecycle;
 
   const nowIso = new Date().toISOString();
 

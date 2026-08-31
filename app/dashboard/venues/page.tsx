@@ -43,6 +43,13 @@ export default async function DashboardVenuesPage() {
         </div>
 
         <Link
+          href="/dashboard/venues/connections"
+          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
+        >
+          Venue Connection Requests
+        </Link>
+
+        <Link
           href="/dashboard"
           className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
         >

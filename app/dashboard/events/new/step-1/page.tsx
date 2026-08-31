@@ -2,235 +2,59 @@ import Link from 'next/link';
 import { createEventStep1 } from '@/app/dashboard/events/actions';
 import EventFlyerUpload from '@/components/events/EventFlyerUpload';
 import PotentialEventMatches from '@/components/events/PotentialEventMatches';
+import VenueAddressMatch from '@/components/events/VenueAddressMatch';
 import { US_STATES } from '@/lib/states';
-import { InfoCard, Panel, SectionHeader } from '@/components/ui';
 
-export default function NewEventStep1Page() {
+type Props = { searchParams?: Promise<{ source?: string }> };
+
+export default async function NewEventStep1Page({ searchParams }: Props) {
+  const query = searchParams ? await searchParams : {};
+  const sourceMode = query.source === '1';
   return (
-    <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
-      <Link href="/dashboard/events" className="text-sm text-white/60 hover:text-accent">
-        ← Back to My Events
-      </Link>
+    <section className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+      <Link href="/dashboard/events/new" className="text-sm text-white/60 hover:text-accent">← Choose another start</Link>
+      <header className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-6 sm:p-10">
+        <div className="flex items-center justify-between gap-4"><p className="text-xs uppercase tracking-[0.3em] text-accent">1 of 4 · Start</p><span className="text-sm text-white/40">Saved when you continue</span></div>
+        <h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">What, where, and when?</h1>
+        <p className="mt-4 max-w-3xl text-sm leading-6 text-white/65">A real physical street address, city, and state are required. That address also lets HypeKnight find an existing venue account and request permission to connect it.</p>
+      </header>
 
-      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[3rem] sm:p-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
+      <form action={createEventStep1} data-event-start-form="true" className="space-y-6">
+        {sourceMode ? <section className="rounded-[2rem] border border-accent/20 bg-accent/5 p-6"><label className="block"><span className="text-sm font-bold text-white">Official event URL</span><input name="source_url" type="url" required placeholder="https://eventbrite.com/e/..." className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none focus:border-accent/50" /></label><p className="mt-2 text-xs text-white/45">HypeKnight will preserve this as the event source. You keep your existing ticketing platform.</p></section> : null}
 
-        <div className="relative grid gap-6 lg:grid-cols-[1fr_320px] lg:items-center">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-              Create Event
-            </p>
-
-            <h1 className="mt-3 text-4xl font-black leading-tight text-white sm:text-6xl">
-              Start your event listing.
-            </h1>
-
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Step 1 captures the essentials: flyer, name, venue, location, and
-              event time. You can keep building the listing in the next steps.
-            </p>
+        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
+          <h2 className="text-2xl font-black text-white">Event identity</h2>
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <Field name="name" label="Event name *" required placeholder="Atlanta Rooftop Saturdays" />
+            <Field name="venue_name" label="Venue name *" required placeholder="Skyline Rooftop" />
           </div>
+          <div className="mt-5"><EventFlyerUpload /></div>
+        </section>
 
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
-            <p className="text-xs uppercase tracking-[0.25em] text-white/45">
-              Progress
-            </p>
-
-            <div className="mt-5 grid gap-3">
-              <InfoCard label="Step 1" icon="✅" value="Basics" accent />
-              <InfoCard label="Step 2" icon="•" value="Details" />
-              <InfoCard label="Step 3" icon="•" value="Review / Submit" />
-            </div>
+        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
+          <h2 className="text-2xl font-black text-white">Physical location</h2>
+          <p className="mt-2 text-sm text-white/50">Street number + street name, city, and state are required for in-person events.</p>
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <Field name="address" label="Street address *" required placeholder="123 Peachtree St NE" />
+            <Field name="city" label="City *" required placeholder="Atlanta" />
+            <label className="block md:col-span-2"><span className="text-sm font-bold text-white/70">State *</span><select name="state" required className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white"><option value="">Select state</option>{US_STATES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           </div>
-        </div>
-      </section>
+          <div className="mt-5"><VenueAddressMatch /></div>
+        </section>
 
-      <form action={createEventStep1} className="space-y-8">
-        <Panel title="Event flyer" eyebrow="Visual First">
-          <p className="mb-5 text-sm leading-6 text-white/65">
-            Upload a flyer if you have one. Flyers often include important event
-            details and help your listing stand out.
-          </p>
-
-          <EventFlyerUpload />
-        </Panel>
-
-        <Panel title="Event identity" eyebrow="What is happening?">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Input
-              id="name"
-              name="name"
-              label="Event Name"
-              required
-              placeholder="Midnight Vibes"
-            />
-
-            <Input
-              id="venue_name"
-              name="venue_name"
-              label="Venue Name"
-              placeholder="Club Nova"
-            />
-          </div>
-        </Panel>
-
-        <Panel title="Location" eyebrow="Where is it?">
-          <div className="grid gap-4">
-            <Input
-              id="address"
-              name="address"
-              label="Street Address"
-              required
-              placeholder="123 Main St"
-            />
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input
-                id="city"
-                name="city"
-                label="City"
-                required
-                placeholder="Kansas City"
-              />
-
-              <StateSelect />
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-accent/20 bg-accent/10 p-5 text-sm leading-6 text-white/75">
-            Use the full address when possible. The event detail page displays
-            the address so users can find the venue without already knowing it.
-          </div>
-        </Panel>
-
-        <Panel title="Date and time" eyebrow="When does it start?">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Input
-              id="start_date"
-              name="start_date"
-              label="Start Date"
-              type="date"
-              required
-            />
-
-            <Input
-              id="start_time"
-              name="start_time"
-              label="Start Time"
-              type="time"
-              required
-            />
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <Input
-              id="end_date"
-              name="end_date"
-              label="End Date"
-              type="date"
-              helper="Optional. Use this for overnight or multi-day events."
-            />
-
-            <Input
-              id="end_time"
-              name="end_time"
-              label="End Time"
-              type="time"
-              helper="Optional, but helpful for users deciding where to go."
-            />
-          </div>
-        </Panel>
+        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
+          <h2 className="text-2xl font-black text-white">Date & time</h2>
+          <div className="mt-6 grid gap-5 md:grid-cols-2"><Field name="start_date" label="Start date *" type="date" required /><Field name="start_time" label="Start time *" type="time" required /><Field name="end_date" label="End date" type="date" /><Field name="end_time" label="End time" type="time" /></div>
+          <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/55">If you do not provide an end time, discovery ends <strong className="text-white">30 minutes after the event starts</strong>. Patron Pulse or Linkd’N will require an end time if selected later.</div>
+        </section>
 
         <PotentialEventMatches />
-
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
-          <SectionHeader
-            eyebrow="Next"
-            title="Ready to keep building?"
-            text="After this, you will add event details, vibe, entry information, and anything users should know before attending."
-          />
-
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between">
-            <Link
-              href="/dashboard/events"
-              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-4 font-semibold text-white hover:border-white/20 sm:w-auto"
-            >
-              Cancel
-            </Link>
-
-            <button
-              type="submit"
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90 sm:w-auto"
-            >
-              Continue to Step 2
-            </button>
-          </div>
-        </section>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between"><Link href="/dashboard/events" className="rounded-2xl border border-white/10 px-5 py-4 text-center font-bold text-white">Cancel</Link><button className="rounded-2xl bg-accent px-6 py-4 font-black text-black">Continue to Experience →</button></div>
       </form>
     </section>
   );
 }
 
-function Input({
-  id,
-  name,
-  label,
-  defaultValue = '',
-  required = false,
-  placeholder,
-  type = 'text',
-  helper,
-}: {
-  id: string;
-  name: string;
-  label: string;
-  defaultValue?: string;
-  required?: boolean;
-  placeholder?: string;
-  type?: string;
-  helper?: string;
-}) {
-  return (
-    <label htmlFor={id} className="block">
-      <span className="text-sm font-semibold text-white/70">{label}</span>
-      <input
-        id={id}
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
-      />
-      {helper ? (
-        <span className="mt-2 block text-xs leading-5 text-white/45">
-          {helper}
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
-function StateSelect() {
-  return (
-    <label htmlFor="state" className="block">
-      <span className="text-sm font-semibold text-white/70">State</span>
-      <select
-        id="state"
-        name="state"
-        required
-        defaultValue=""
-        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-accent/50"
-      >
-        <option value="" disabled>
-          Select a state
-        </option>
-        {US_STATES.map(([abbr, name]) => (
-          <option key={abbr} value={abbr}>
-            {name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function Field({ name, label, type='text', required=false, placeholder }: { name:string; label:string; type?:string; required?:boolean; placeholder?:string }) {
+  return <label className="block"><span className="text-sm font-bold text-white/70">{label}</span><input name={name} type={type} required={required} placeholder={placeholder} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-accent/50" /></label>;
 }

@@ -62,6 +62,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'Revenue',
     items: [
       { label: 'Payments', href: '/admin/payments', icon: '$', description: 'Payment exceptions, refunds, overrides, and transaction operations.' },
+      { label: 'Commerce', href: '/admin/commerce', icon: '¤', description: 'Event Builder products, pricing, venue matching, coupons, and receipt controls.' },
       { label: 'Coupons', href: '/admin/coupons', icon: '%', description: 'Discounts, campaigns, and ambassador codes.' },
       { label: 'Venue Plans', href: '/admin/venue-plans', icon: '▤', description: 'Manage venue plan definitions and pricing.' },
     ],

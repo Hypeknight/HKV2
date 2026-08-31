@@ -49,12 +49,29 @@ if (kind === 'event_payment') {
       stripe_checkout_session_id: session.id,
       stripe_payment_intent_id:
         typeof session.payment_intent === 'string' ? session.payment_intent : null,
-      status: 'submitted',
+      status: 'paid_awaiting_approval',
       updated_at: nowIso,
     })
     .eq('id', eventId);
 
   if (eventError) throw new Error(eventError.message);
+
+  const orderId = session.metadata?.order_id || null;
+  if (orderId) {
+    const { error: orderError } = await supabase
+      .from('event_orders')
+      .update({
+        status: 'paid',
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id:
+          typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        paid_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', orderId);
+
+    if (orderError) throw new Error(orderError.message);
+  }
 
   await supabase.from('stripe_webhook_events').upsert({
     stripe_event_id: event.id,
