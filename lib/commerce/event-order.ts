@@ -34,12 +34,15 @@ export function buildEventOrderLines({
 }) {
   const lines: EventOrderLine[] = [
     {
-      code: 'HYPEKNIGHT_EVENT_PROMOTION',
-      label: `HypeKnight Event Promotion (${includedPromoDays} days included)`,
+      code: 'HYPEKNIGHT_INCLUDED_DISCOVERY',
+      label: `Included Discovery (${includedPromoDays} days)`,
       quantity: 1,
-      unitPrice: money(basePrice),
-      total: money(basePrice),
-      metadata: { included_promo_days: includedPromoDays },
+      unitPrice: 0,
+      total: 0,
+      metadata: {
+        included_discovery_days: includedPromoDays,
+        price: 'free',
+      },
     },
   ];
 

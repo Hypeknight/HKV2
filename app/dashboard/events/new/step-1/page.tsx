@@ -26,7 +26,7 @@ export default async function NewEventStep1Page({ searchParams }: Props) {
           <h2 className="text-2xl font-black text-white">Event identity</h2>
           <div className="mt-6 grid gap-5 md:grid-cols-2">
             <Field name="name" label="Event name *" required placeholder="Atlanta Rooftop Saturdays" />
-            <Field name="venue_name" label="Venue name *" required placeholder="Skyline Rooftop" />
+            <Field name="venue_name" label="Venue name (optional)" placeholder="Skyline Rooftop" />
           </div>
           <div className="mt-5"><EventFlyerUpload /></div>
         </section>

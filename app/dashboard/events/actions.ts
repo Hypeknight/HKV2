@@ -114,7 +114,7 @@ export async function createEventStep1(formData: FormData) {
       name: eventName,
       slug,
       flyer_url: flyerUrl,
-      venue_name: venueName,
+      venue_name: venueName || null,
       address,
       city,
       state,
@@ -879,7 +879,6 @@ export async function createEventStep1(formData: FormData) {
   const sourceUrl = cleanText(formData, 'source_url');
 
   if (!eventName) throw new Error('Event name is required.');
-  if (!venueName) throw new Error('Venue name is required.');
   const addressError = validatePhysicalAddress({ address, city, state });
   if (addressError) throw new Error(addressError);
   if (!startDate || !startTime) throw new Error('Event start date and time are required.');
@@ -890,7 +889,11 @@ export async function createEventStep1(formData: FormData) {
   const eventStartAt = parseLocalDateTime(startDate, startTime);
   const explicitEnd = endDate && endTime ? parseLocalDateTime(endDate, endTime) : null;
   const includedPromoDays = Number(settings.included_promo_days || 14);
-  const basePrice = Number(settings.event_base_price || 19.99);
+  // Business Model 1.0:
+  // Creating and publishing a base HypeKnight event is free.
+  // Revenue comes from optional enhancements such as Extended Discovery,
+  // Featured, Patron Pulse, and Linkd'N.
+  const basePrice = 0;
   const lifecycle = resolveEventLifecycle({
     eventStartAt: eventStartAt.toISOString(),
     eventEndAt: explicitEnd?.toISOString() || null,
@@ -938,7 +941,7 @@ export async function createEventStep1(formData: FormData) {
 
   if (error || !data) throw new Error(error?.message || 'Could not create event.');
 
-  if (settings.venue_matching_enabled !== false) {
+  if (venueName && settings.venue_matching_enabled !== false) {
     await connectMatchingVenue({ eventId: data.id, userId: user.id, address, city, state });
   }
   if (sourceUrl) await connectInitialSource({ eventId: data.id, userId: user.id, sourceUrl });
@@ -1029,7 +1032,11 @@ export async function updateEventStep3(formData: FormData) {
     endIsExplicit = true;
   }
 
-  const basePrice = Number(settings.event_base_price || 19.99);
+  // Business Model 1.0:
+  // Creating and publishing a base HypeKnight event is free.
+  // Revenue comes from optional enhancements such as Extended Discovery,
+  // Featured, Patron Pulse, and Linkd'N.
+  const basePrice = 0;
   const includedPromoDays = Number(settings.included_promo_days || 14);
   const extraDayPrice = Number(settings.extra_promo_day_price || 2.5);
   const lifecycle = resolveEventLifecycle({
