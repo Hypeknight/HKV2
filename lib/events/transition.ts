@@ -337,12 +337,10 @@ function createTransitionUpdates({
     payload.rejection_reason = null;
   }
 
-  if (
-    toStatus === 'cancelled' ||
-    toStatus === 'removed' ||
-    toStatus === 'ended' ||
-    toStatus === 'archived'
-  ) {
+  // Business Model 1.0:
+  // Completed, cancelled, and archived events retain their historical
+  // public HypeKnight page. Only an explicitly removed event is hidden.
+  if (toStatus === 'removed') {
     payload.is_public = false;
   }
 

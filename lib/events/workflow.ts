@@ -52,6 +52,9 @@ export const PUBLIC_EVENT_STATUSES = [
   'scheduled',
   'active',
   'live',
+  'ended',
+  'cancelled',
+  'archived',
 ] as const satisfies readonly EventStatus[];
 
 export type PublicEventStatus =
@@ -97,7 +100,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     ],
     to: 'scheduled',
     actors: ['admin', 'payment', 'system'],
-    description: 'The event is approved, financially eligible, and scheduled.',
+    description: 'The approved event has a public HypeKnight page and is scheduled.',
   },
   {
     from: ['approved_unpaid', 'approved_awaiting_payment'],
@@ -122,7 +125,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     from: ['scheduled'],
     to: 'active',
     actors: ['admin', 'system', 'automation'],
-    description: 'The event entered its active promotion period.',
+    description: 'The event entered its active Discovery Window.',
   },
   {
     from: ['scheduled', 'active'],

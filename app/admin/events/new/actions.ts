@@ -849,11 +849,10 @@ export async function approveEvent(formData: FormData) {
     eventId
   );
 
-  const paid = eventIsPaid(event);
-
-  const nextStatus: EventStatus = paid
-    ? 'scheduled'
-    : 'approved_unpaid';
+  // Business Model 1.0:
+  // Approval activates the base HypeKnight event regardless of payment.
+  // Payment applies only to optional enhancements.
+  const nextStatus: EventStatus = 'scheduled';
 
   await transitionEventStatus({
     supabase,
@@ -862,9 +861,7 @@ export async function approveEvent(formData: FormData) {
     actor: 'admin',
     toStatus: nextStatus,
     source: 'admin_action',
-    reason: paid
-      ? 'Event approved and cleared for scheduling.'
-      : 'Event approved and awaiting payment.',
+    reason: 'Event approved and cleared for its public HypeKnight page.',
     note: textValue(formData, 'admin_note') || null,
     metadata: {
       action: 'approve_event',
@@ -897,11 +894,9 @@ export async function approveEvent(formData: FormData) {
     newState: {
       status: nextStatus,
       is_approved: true,
-      financially_eligible: paid,
+      financially_eligible: true,
     },
-    reason: paid
-      ? 'Event approved and cleared for scheduling.'
-      : 'Event approved and awaiting payment.',
+    reason: 'Event approved and cleared for its public HypeKnight page.',
     note: textValue(formData, 'admin_note') || null,
   });
 
@@ -1925,12 +1920,6 @@ export async function updateAdminEventVisibility(
         );
       }
 
-      if (!eventIsPaid(event)) {
-        throw new Error(
-          'Payment or a payment override is required before reactivation.'
-        );
-      }
-
       await transitionEventStatus({
         supabase,
         eventId,
@@ -1974,8 +1963,8 @@ export async function updateAdminEventVisibility(
           previous_status: event.status,
         },
         updates: {
-          isPublic: false,
-          hiddenByAdmin: true,
+          isPublic: true,
+          hiddenByAdmin: false,
         },
       });
 
