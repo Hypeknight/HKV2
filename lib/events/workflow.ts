@@ -479,53 +479,18 @@ export function derivePublicState(input: {
   promotionEndAt?: string | Date | null;
   status: EventStatus;
 }) {
+  // Business Model 1.0:
+  // Approval controls whether an event has a public HypeKnight page.
+  //
+  // Payment is reserved for optional products such as Extended Discovery,
+  // Featured, Patron Pulse, and Linkd'N. It does not gate the base event page.
+  //
+  // Discovery timing is handled separately from public-page availability.
   if (!isPublicEventStatus(input.status)) {
     return false;
   }
 
-  if (!input.isApproved) {
-    return false;
-  }
-
-  if (!input.isPaid && !input.paymentOverride) {
-    return false;
-  }
-
-  if (
-    !input.promotionStartAt ||
-    !input.promotionEndAt
-  ) {
-    return false;
-  }
-
-  const promotionStart = new Date(
-    input.promotionStartAt
-  );
-
-  const promotionEnd = new Date(
-    input.promotionEndAt
-  );
-
-  if (
-    Number.isNaN(promotionStart.getTime()) ||
-    Number.isNaN(promotionEnd.getTime())
-  ) {
-    return false;
-  }
-
-  if (
-    promotionEnd.getTime() <
-    promotionStart.getTime()
-  ) {
-    return false;
-  }
-
-  const now = Date.now();
-
-  return (
-    now >= promotionStart.getTime() &&
-    now <= promotionEnd.getTime()
-  );
+  return input.isApproved;
 }
 
 export function isPublicEventStatus(

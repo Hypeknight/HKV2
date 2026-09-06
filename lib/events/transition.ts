@@ -26,6 +26,8 @@ export type TransitionEventRecord = {
   payment_override: boolean | null;
   promotion_start_at: string | null;
   promotion_end_at: string | null;
+  discovery_start_at: string | null;
+  discovery_end_at: string | null;
 };
 
 export type TransitionEventInput = {
@@ -156,7 +158,9 @@ export async function getTransitionEvent(
       payment_status,
       payment_override,
       promotion_start_at,
-      promotion_end_at
+      promotion_end_at,
+      discovery_start_at,
+      discovery_end_at
     `)
     .eq('id', eventId)
     .single();
@@ -182,6 +186,8 @@ export async function getTransitionEvent(
     payment_override: data.payment_override,
     promotion_start_at: data.promotion_start_at,
     promotion_end_at: data.promotion_end_at,
+    discovery_start_at: data.discovery_start_at,
+    discovery_end_at: data.discovery_end_at,
   };
 }
 
@@ -217,11 +223,6 @@ function validateTransitionRequirements({
       );
     }
 
-    if (!isPaid && !paymentOverride) {
-      throw new Error(
-        'Payment or a payment override is required before the event can become public.'
-      );
-    }
   }
 
   if (
@@ -229,11 +230,11 @@ function validateTransitionRequirements({
     toStatus === 'live'
   ) {
     if (
-      !event.promotion_start_at ||
-      !event.promotion_end_at
+      !event.discovery_start_at ||
+      !event.discovery_end_at
     ) {
       throw new Error(
-        'The event needs a valid promotion window before activation.'
+        'The event needs a valid Discovery Window before it can become discoverable or live.'
       );
     }
   }
@@ -422,6 +423,16 @@ function normalizeRpcEvent(
       record.promotion_end_at === undefined
         ? null
         : String(record.promotion_end_at),
+    discovery_start_at:
+      record.discovery_start_at === null ||
+      record.discovery_start_at === undefined
+        ? null
+        : String(record.discovery_start_at),
+    discovery_end_at:
+      record.discovery_end_at === null ||
+      record.discovery_end_at === undefined
+        ? null
+        : String(record.discovery_end_at),
   };
 }
 
