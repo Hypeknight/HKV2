@@ -15,6 +15,7 @@ export type EventStatus =
   | 'refund_requested'
   | 'cancelled'
   | 'removed'
+  | 'completed'
   | 'ended'
   | 'archived';
 
@@ -44,6 +45,7 @@ export const EVENT_STATUSES: readonly EventStatus[] = [
   'refund_requested',
   'cancelled',
   'removed',
+  'completed',
   'ended',
   'archived',
 ];
@@ -52,6 +54,7 @@ export const PUBLIC_EVENT_STATUSES = [
   'scheduled',
   'active',
   'live',
+  'completed',
   'ended',
   'cancelled',
   'archived',
@@ -135,12 +138,12 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
   },
   {
     from: ['scheduled', 'active', 'live'],
-    to: 'ended',
+    to: 'completed',
     actors: ['admin', 'system', 'automation'],
-    description: 'The event has ended.',
+    description: 'The event completed and remains available as historical event history.',
   },
   {
-    from: ['ended'],
+    from: ['completed', 'ended'],
     to: 'archived',
     actors: ['admin', 'system', 'automation'],
     description: 'The completed event was archived.',
@@ -247,6 +250,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
       'removal_requested',
       'refund_requested',
       'cancelled',
+      'completed',
       'ended',
       'archived'
     ],
@@ -288,7 +292,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     'An administrator restored an eligible event to scheduled status.',
 },
 {
-  from: ['ended', 'archived'],
+  from: ['completed', 'ended', 'archived'],
   to: 'scheduled',
   actors: ['admin'],
   requiresReason: true,
@@ -328,6 +332,7 @@ export const EVENT_TRANSITION_RULES: readonly TransitionRule[] = [
     'removal_requested',
     'refund_requested',
     'cancelled',
+    'completed',
     'ended',
   ],
   to: 'archived',

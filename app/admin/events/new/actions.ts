@@ -574,6 +574,7 @@ const VALID_EVENT_STATUSES: readonly EventStatus[] = [
   'refund_requested',
   'cancelled',
   'removed',
+  'completed',
   'ended',
   'archived',
 ];
@@ -2127,13 +2128,8 @@ function buildManualStatusUpdates({
         );
       }
 
-      if (!eventIsPaid(event)) {
-        throw new Error(
-          'Payment or a payment override is required before the event can become scheduled, active, or live.'
-        );
-      }
-
       updates.isApproved = true;
+      updates.isPublic = true;
       updates.hiddenByAdmin = false;
       updates.removedAt = null;
       updates.removedBy = null;
@@ -2157,8 +2153,8 @@ function buildManualStatusUpdates({
       break;
 
     case 'cancelled':
-      updates.isPublic = false;
-      updates.hiddenByAdmin = true;
+      updates.isPublic = true;
+      updates.hiddenByAdmin = false;
       break;
 
     case 'removed':
@@ -2168,9 +2164,11 @@ function buildManualStatusUpdates({
       updates.removedBy = userId;
       break;
 
+    case 'completed':
     case 'ended':
     case 'archived':
-      updates.isPublic = false;
+      updates.isPublic = true;
+      updates.hiddenByAdmin = false;
       break;
   }
 

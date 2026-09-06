@@ -26,7 +26,15 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
-const PUBLIC_STATUSES = ["scheduled", "active", "live"];
+const PUBLIC_STATUSES = [
+  "scheduled",
+  "active",
+  "live",
+  "completed",
+  "ended",
+  "cancelled",
+  "archived",
+];
 
 const EVENT_STATUSES = [
   "draft",
@@ -44,6 +52,7 @@ const EVENT_STATUSES = [
   "removal_requested",
   "cancelled",
   "removed",
+  "completed",
   "ended",
   "archived",
   "refund_requested",
@@ -401,7 +410,7 @@ export default async function AdminEventDetailPage({ params }: Props) {
           .from("events")
           .select("*", { count: "exact", head: true })
           .eq("owner_id", event.owner_id)
-          .in("status", ["scheduled", "active", "live", "ended"])
+          .in("status", ["scheduled", "active", "live", "completed", "ended"])
       : Promise.resolve({ count: 0 }),
 
     event.owner_id
@@ -1746,8 +1755,9 @@ function getNextAdminAction(event: any, qualityScore: number) {
 }
 
 function getPublicReadiness(event: any, qualityScore: number) {
-  const paid = isEventPaid(event);
-  const hasWindow = Boolean(event.promotion_start_at && event.promotion_end_at);
+  const hasDiscoveryWindow = Boolean(
+    event.discovery_start_at && event.discovery_end_at
+  );
   const publishableStatus = PUBLIC_STATUSES.includes(event.status);
   const visible = event.is_public === true && !event.hidden_by_admin;
 
@@ -1755,34 +1765,25 @@ function getPublicReadiness(event: any, qualityScore: number) {
     return {
       title: "Not ready for public release",
       detail:
-        "The listing is missing important content. Review the failed quality checks before approving or publishing it.",
+        "The listing is missing important content. Review the failed quality checks before approving it.",
       className: "border-red-500/20 bg-red-500/10",
     };
   }
 
-  if (!paid) {
+  if (!hasDiscoveryWindow) {
     return {
-      title: "Waiting on payment",
+      title: "Discovery timing required",
       detail:
-        "The listing content is usable, but payment or an approved override must be completed before public promotion.",
-      className: "border-yellow-500/20 bg-yellow-500/10",
-    };
-  }
-
-  if (!hasWindow) {
-    return {
-      title: "Promotion window required",
-      detail:
-        "Set both promotion start and promotion end dates before making the event discoverable.",
+        "The event needs a Discovery Window before it can participate in normal HypeKnight discovery surfaces.",
       className: "border-yellow-500/20 bg-yellow-500/10",
     };
   }
 
   if (publishableStatus && visible) {
     return {
-      title: "Public and discoverable",
+      title: "Public on HypeKnight",
       detail:
-        "The event is in a public lifecycle status and is not currently hidden by an administrator.",
+        "The event has a public page. Discovery eligibility is controlled separately by its Discovery Window.",
       className: "border-green-500/20 bg-green-500/10",
     };
   }
@@ -1790,7 +1791,7 @@ function getPublicReadiness(event: any, qualityScore: number) {
   return {
     title: "Ready for final moderation",
     detail:
-      "Content, payment, and promotion dates are ready. Approve or schedule the listing when the event should enter public discovery.",
+      "The listing content and Discovery timing are ready. Approval will make the public event page available without requiring payment.",
     className: "border-green-500/20 bg-green-500/10",
   };
 }

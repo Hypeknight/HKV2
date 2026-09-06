@@ -39,7 +39,14 @@ export async function GET(req: Request) {
     const { data: beforeEvents, error: beforeError } = await supabase
       .from('events')
       .select('id, status')
-      .in('status', ['scheduled', 'active', 'paid_awaiting_approval']);
+      .in('status', [
+        'scheduled',
+        'active',
+        'live',
+        'approved_unpaid',
+        'approved_awaiting_payment',
+        'paid_awaiting_approval',
+      ]);
 
     if (beforeError) throw new Error(beforeError.message);
 
@@ -65,7 +72,10 @@ export async function GET(req: Request) {
       .in('status', [
         'scheduled',
         'active',
+        'live',
         'completed',
+        'approved_unpaid',
+        'approved_awaiting_payment',
         'paid_awaiting_approval',
       ]);
 
