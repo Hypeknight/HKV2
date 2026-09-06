@@ -32,9 +32,33 @@ export default async function EventRevisionEditPage({ params }: Props) {
 
   if (error || !event) notFound();
 
-  if (event.status !== 'revision_draft') {
+  const { data: revision, error: revisionError } = await supabase
+    .from('event_revisions')
+    .select('id, status, proposed_data, revision_reason, admin_note')
+    .eq('event_id', event.id)
+    .eq('created_by', user.id)
+    .in('status', ['draft', 'rejected'])
+    .maybeSingle();
+
+  if (revisionError) {
+    throw new Error(revisionError.message);
+  }
+
+  if (!revision) {
     redirect(`/dashboard/events/${event.id}/review`);
   }
+
+  const proposedData =
+    revision.proposed_data && typeof revision.proposed_data === 'object'
+      ? revision.proposed_data
+      : {};
+
+  const displayEvent = {
+    ...event,
+    ...proposedData,
+    status: revision.status,
+    revision_reason: revision.revision_reason,
+  };
 
   const lookups = await getLookupMap([
     'dress_codes',
@@ -47,23 +71,23 @@ export default async function EventRevisionEditPage({ params }: Props) {
     'event_amenities',
   ]);
 
-  const startParts = getDateTimeParts(event.event_start_at);
-  const endParts = getDateTimeParts(event.event_end_at);
+  const startParts = getDateTimeParts(displayEvent.event_start_at);
+  const endParts = getDateTimeParts(displayEvent.event_end_at);
 
-  const selectedMusic = Array.isArray(event.music_selection)
-    ? event.music_selection
+  const selectedMusic = Array.isArray(displayEvent.music_selection)
+    ? displayEvent.music_selection
     : [];
 
-  const selectedVibes = Array.isArray(event.vibe_tags) ? event.vibe_tags : [];
+  const selectedVibes = Array.isArray(displayEvent.vibe_tags) ? displayEvent.vibe_tags : [];
 
-  const selectedAmenities = Array.isArray(event.amenities)
-    ? event.amenities
+  const selectedAmenities = Array.isArray(displayEvent.amenities)
+    ? displayEvent.amenities
     : [];
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:space-y-10 sm:px-6 sm:py-10 lg:px-8">
       <Link
-        href={`/dashboard/events/${event.id}/review`}
+        href={`/dashboard/events/${displayEvent.id}/review`}
         className="text-sm text-white/60 hover:text-accent"
       >
         ← Back to Event Review
@@ -88,8 +112,8 @@ export default async function EventRevisionEditPage({ params }: Props) {
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <Chip>{event.name || 'Untitled Event'}</Chip>
-              <Chip>Status: {event.status}</Chip>
+              <Chip>{displayEvent.name || 'Untitled Event'}</Chip>
+              <Chip>Status: {displayEvent.status}</Chip>
             </div>
           </div>
 
@@ -112,15 +136,15 @@ export default async function EventRevisionEditPage({ params }: Props) {
         encType="multipart/form-data"
         className="space-y-8"
       >
-        <input type="hidden" name="event_id" value={event.id} />
+        <input type="hidden" name="event_id" value={displayEvent.id} />
 
         <Panel title="Basic information" eyebrow="Event Identity">
           <div className="grid gap-4 md:grid-cols-2">
-            <Input name="name" label="Event Name" defaultValue={event.name} required />
-            <Input name="venue_name" label="Venue Name" defaultValue={event.venue_name} />
-            <Input name="address" label="Address" defaultValue={event.address} />
-            <Input name="city" label="City" defaultValue={event.city} />
-            <StateSelect defaultValue={event.state || ''} />
+            <Input name="name" label="Event Name" defaultValue={displayEvent.name} required />
+            <Input name="venue_name" label="Venue Name" defaultValue={displayEvent.venue_name} />
+            <Input name="address" label="Address" defaultValue={displayEvent.address} />
+            <Input name="city" label="City" defaultValue={displayEvent.city} />
+            <StateSelect defaultValue={displayEvent.state || ''} />
 
             <Input
               name="event_start_at"
@@ -139,11 +163,11 @@ export default async function EventRevisionEditPage({ params }: Props) {
         </Panel>
 
         <Panel title="Flyer / image" eyebrow="Visual Update">
-          {event.flyer_url ? (
+          {displayEvent.flyer_url ? (
             <div className="mb-5 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
               <img
-                src={event.flyer_url}
-                alt={event.name || 'Current event flyer'}
+                src={displayEvent.flyer_url}
+                alt={displayEvent.name || 'Current event flyer'}
                 className="max-h-96 w-full object-cover"
               />
             </div>
@@ -152,7 +176,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
           <Input
             name="flyer_url"
             label="Flyer URL"
-            defaultValue={event.flyer_url}
+            defaultValue={displayEvent.flyer_url}
           />
 
           <label className="mt-4 block">
@@ -177,42 +201,42 @@ export default async function EventRevisionEditPage({ params }: Props) {
             <Select
               name="dress_code"
               label="Dress Code"
-              defaultValue={event.dress_code || ''}
+              defaultValue={displayEvent.dress_code || ''}
               options={lookups.dress_codes}
             />
 
             <Input
               name="entry_price"
               label="Entry Price"
-              defaultValue={event.entry_price}
+              defaultValue={displayEvent.entry_price}
               placeholder="$10, Free before 11, $20 at door"
             />
 
             <Select
               name="age_requirement"
               label="Age Requirement"
-              defaultValue={event.age_requirement || ''}
+              defaultValue={displayEvent.age_requirement || ''}
               options={lookups.age_requirements}
             />
 
             <Select
               name="event_type"
               label="Primary Event Type"
-              defaultValue={event.event_type || ''}
+              defaultValue={displayEvent.event_type || ''}
               options={lookups.event_types}
             />
 
             <Select
               name="smoking_policy"
               label="Smoking Policy"
-              defaultValue={event.smoking_policy || ''}
+              defaultValue={displayEvent.smoking_policy || ''}
               options={lookups.smoking_policies}
             />
 
             <Select
               name="parking_notes"
               label="Parking / Access"
-              defaultValue={event.parking_notes || ''}
+              defaultValue={displayEvent.parking_notes || ''}
               options={lookups.parking_options}
             />
           </div>
@@ -220,14 +244,14 @@ export default async function EventRevisionEditPage({ params }: Props) {
           <Textarea
             name="description"
             label="Description"
-            defaultValue={event.description}
+            defaultValue={displayEvent.description}
             placeholder="Describe the event, the energy, and what guests should expect."
           />
 
           <Textarea
             name="special_notes"
             label="Special Notes"
-            defaultValue={event.special_notes}
+            defaultValue={displayEvent.special_notes}
             placeholder="Add anything else guests should know."
           />
         </Panel>
@@ -255,7 +279,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
         <Panel title="Amenities" eyebrow="What is available?">
           <CheckboxGroup
             title="Event Amenities"
-            description="Choose amenities available at the event."
+            description="Choose amenities available at the displayEvent."
             name="amenities"
             options={lookups.event_amenities}
             selected={selectedAmenities}
@@ -266,7 +290,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
           <Textarea
             name="revision_reason"
             label="Revision Reason"
-            defaultValue={event.revision_reason}
+            defaultValue={displayEvent.revision_reason}
             placeholder="Briefly explain what changed and why."
           />
         </Panel>
@@ -291,7 +315,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
         action={submitEventRevision}
         className="rounded-[2rem] border border-accent/20 bg-accent/10 p-5 sm:rounded-[2.5rem] sm:p-8"
       >
-        <input type="hidden" name="event_id" value={event.id} />
+        <input type="hidden" name="event_id" value={displayEvent.id} />
 
         <SectionHeader
           eyebrow="Submit Revision"
@@ -306,7 +330,7 @@ export default async function EventRevisionEditPage({ params }: Props) {
           <textarea
             name="revision_reason"
             rows={4}
-            defaultValue={event.revision_reason || ''}
+            defaultValue={displayEvent.revision_reason || ''}
             placeholder="Tell HypeKnight what was changed."
             className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
           />

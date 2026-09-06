@@ -517,20 +517,6 @@ function cleanText(formData: FormData, key: string) {
   return String(formData.get(key) || '').trim();
 }
 
-function canEditBeforePromotion(event: {
-  promotion_start_at?: string | null;
-}) {
-  if (!event.promotion_start_at) return false;
-
-  const promoStart = new Date(event.promotion_start_at);
-
-  if (Number.isNaN(promoStart.getTime())) {
-    return false;
-  }
-
-  return new Date() < promoStart;
-}
-
 function refreshOwnerEventPaths(eventId: string) {
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/events');
@@ -550,7 +536,31 @@ export async function startEventRevision(formData: FormData) {
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
-    .select('id, owner_id, status, promotion_start_at')
+    .select(`
+      id,
+      owner_id,
+      status,
+      updated_at,
+      name,
+      venue_name,
+      address,
+      city,
+      state,
+      event_start_at,
+      event_end_at,
+      flyer_url,
+      description,
+      dress_code,
+      entry_price,
+      age_requirement,
+      event_type,
+      music_selection,
+      vibe_tags,
+      smoking_policy,
+      parking_notes,
+      special_notes,
+      amenities
+    `)
     .eq('id', eventId)
     .single();
 
@@ -566,42 +576,79 @@ export async function startEventRevision(formData: FormData) {
     throw new Error('This event is not eligible for revision.');
   }
 
-  if (!canEditBeforePromotion(event)) {
-    throw new Error(
-      'This event can no longer be edited because it is inside its promotion window.'
-    );
+  const { data: existingRevision, error: existingError } = await supabase
+    .from('event_revisions')
+    .select('id, status')
+    .eq('event_id', eventId)
+    .in('status', ['draft', 'submitted', 'rejected'])
+    .maybeSingle();
+
+  if (existingError) throw new Error(existingError.message);
+
+  if (existingRevision?.status === 'submitted') {
+    throw new Error('This event already has a revision awaiting review.');
   }
 
-  const originalStatus = event.status;
+  if (existingRevision?.status === 'draft') {
+    redirect(`/dashboard/events/${eventId}/edit`);
+  }
+
+  if (existingRevision?.status === 'rejected') {
+    const { error: reopenError } = await supabase
+      .from('event_revisions')
+      .update({
+        status: 'draft',
+        reviewed_at: null,
+        reviewed_by: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existingRevision.id)
+      .eq('created_by', user.id)
+      .eq('status', 'rejected');
+
+    if (reopenError) throw new Error(reopenError.message);
+
+    refreshOwnerEventPaths(eventId);
+    redirect(`/dashboard/events/${eventId}/edit`);
+  }
+
+  const snapshot = {
+    name: event.name,
+    venue_name: event.venue_name,
+    address: event.address,
+    city: event.city,
+    state: event.state,
+    event_start_at: event.event_start_at,
+    event_end_at: event.event_end_at,
+    flyer_url: event.flyer_url,
+    description: event.description,
+    dress_code: event.dress_code,
+    entry_price: event.entry_price,
+    age_requirement: event.age_requirement,
+    event_type: event.event_type,
+    music_selection: event.music_selection,
+    vibe_tags: event.vibe_tags,
+    smoking_policy: event.smoking_policy,
+    parking_notes: event.parking_notes,
+    special_notes: event.special_notes,
+    amenities: event.amenities,
+  };
+
   const nowIso = new Date().toISOString();
 
-  await transitionEventStatus({
-    supabase,
-    eventId,
-    actorId: user.id,
-    actor: 'owner',
-    toStatus: 'revision_draft',
-    source: 'owner_action',
-    note: 'Owner opened the event for revision.',
-    metadata: {
-      action: 'start_event_revision',
-      original_status: originalStatus,
-    },
-    updates: {
-      isPublic: false,
-    },
-  });
-
   const { error: revisionError } = await supabase
-    .from('events')
-    .update({
-      original_status_before_revision: originalStatus,
-      revision_requested_at: nowIso,
-      revision_admin_note: null,
+    .from('event_revisions')
+    .insert({
+      event_id: eventId,
+      created_by: user.id,
+      status: 'draft',
+      base_event_status: event.status,
+      base_event_updated_at: event.updated_at,
+      base_data: snapshot,
+      proposed_data: snapshot,
+      created_at: nowIso,
       updated_at: nowIso,
-    })
-    .eq('id', eventId)
-    .eq('owner_id', user.id);
+    });
 
   if (revisionError) throw new Error(revisionError.message);
 
@@ -619,7 +666,7 @@ export async function submitEventRevision(formData: FormData) {
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
-    .select('id, owner_id, status')
+    .select('id, owner_id')
     .eq('id', eventId)
     .single();
 
@@ -631,39 +678,36 @@ export async function submitEventRevision(formData: FormData) {
     throw new Error('You do not have permission to submit this revision.');
   }
 
-  if (event.status !== 'revision_draft') {
-    throw new Error('This event is not in revision draft.');
+  const { data: revision, error: revisionFetchError } = await supabase
+    .from('event_revisions')
+    .select('id, status')
+    .eq('event_id', eventId)
+    .eq('created_by', user.id)
+    .eq('status', 'draft')
+    .maybeSingle();
+
+  if (revisionFetchError) throw new Error(revisionFetchError.message);
+
+  if (!revision) {
+    throw new Error('This event does not have a revision draft ready to submit.');
   }
 
   const nowIso = new Date().toISOString();
 
-  await transitionEventStatus({
-    supabase,
-    eventId,
-    actorId: user.id,
-    actor: 'owner',
-    toStatus: 'revision_submitted',
-    source: 'owner_action',
-    reason: revisionReason || null,
-    note: 'Owner submitted an event revision for review.',
-    metadata: {
-      action: 'submit_event_revision',
-    },
-    updates: {
-      isPublic: false,
-    },
-  });
-
   const { error: revisionError } = await supabase
-    .from('events')
+    .from('event_revisions')
     .update({
+      status: 'submitted',
       revision_reason: revisionReason || null,
-      revision_submitted_at: nowIso,
-      revision_admin_note: null,
+      submitted_at: nowIso,
+      reviewed_at: null,
+      reviewed_by: null,
+      admin_note: null,
       updated_at: nowIso,
     })
-    .eq('id', eventId)
-    .eq('owner_id', user.id);
+    .eq('id', revision.id)
+    .eq('created_by', user.id)
+    .eq('status', 'draft');
 
   if (revisionError) throw new Error(revisionError.message);
 
@@ -1718,7 +1762,7 @@ export async function updateEventRevision(formData: FormData) {
 
   const { data: event, error: fetchError } = await supabase
     .from('events')
-    .select('id, owner_id, status')
+    .select('id, owner_id')
     .eq('id', eventId)
     .single();
 
@@ -1730,7 +1774,17 @@ export async function updateEventRevision(formData: FormData) {
     throw new Error('You do not have permission to edit this event.');
   }
 
-  if (event.status !== 'revision_draft') {
+  const { data: revision, error: revisionFetchError } = await supabase
+    .from('event_revisions')
+    .select('id, status, proposed_data')
+    .eq('event_id', eventId)
+    .eq('created_by', user.id)
+    .in('status', ['draft', 'rejected'])
+    .maybeSingle();
+
+  if (revisionFetchError) throw new Error(revisionFetchError.message);
+
+  if (!revision) {
     throw new Error('This event is not open for revision editing.');
   }
 
@@ -1761,12 +1815,19 @@ export async function updateEventRevision(formData: FormData) {
     .getAll('music_selection')
     .map(String)
     .filter(Boolean);
+
   const vibeTags = formData
     .getAll('vibe_tags')
     .map(String)
     .filter(Boolean);
 
-  const payload = {
+  const amenities = formData
+    .getAll('amenities')
+    .map(String)
+    .filter(Boolean);
+
+  const proposedData = {
+    ...(revision.proposed_data || {}),
     name: cleanText(formData, 'name'),
     venue_name: cleanText(formData, 'venue_name') || null,
     address: cleanText(formData, 'address') || null,
@@ -1775,7 +1836,6 @@ export async function updateEventRevision(formData: FormData) {
     event_start_at: cleanText(formData, 'event_start_at') || null,
     event_end_at: cleanText(formData, 'event_end_at') || null,
     flyer_url: flyerUrl,
-
     description: cleanText(formData, 'description') || null,
     dress_code: cleanText(formData, 'dress_code') || null,
     entry_price: cleanText(formData, 'entry_price') || null,
@@ -1786,18 +1846,25 @@ export async function updateEventRevision(formData: FormData) {
     smoking_policy: cleanText(formData, 'smoking_policy') || null,
     parking_notes: cleanText(formData, 'parking_notes') || null,
     special_notes: cleanText(formData, 'special_notes') || null,
-    revision_reason: cleanText(formData, 'revision_reason') || null,
-    updated_at: new Date().toISOString(),
+    amenities,
   };
 
-  if (!payload.name) throw new Error('Event name is required.');
+  if (!proposedData.name) throw new Error('Event name is required.');
+
+  const revisionReason = cleanText(formData, 'revision_reason');
+  const nowIso = new Date().toISOString();
 
   const { error } = await supabase
-    .from('events')
-    .update(payload)
-    .eq('id', eventId)
-    .eq('owner_id', user.id)
-    .eq('status', 'revision_draft');
+    .from('event_revisions')
+    .update({
+      status: 'draft',
+      proposed_data: proposedData,
+      revision_reason: revisionReason || null,
+      updated_at: nowIso,
+    })
+    .eq('id', revision.id)
+    .eq('created_by', user.id)
+    .in('status', ['draft', 'rejected']);
 
   if (error) throw new Error(error.message);
 
