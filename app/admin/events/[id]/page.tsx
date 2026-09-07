@@ -290,6 +290,7 @@ export default async function AdminEventDetailPage({ params }: Props) {
     { data: event, error: eventError },
     { data: statusHistory, error: historyError },
     { data: linkdNRooms, error: linkdNRoomsError },
+    { data: submittedRevision, error: revisionError },
     activity,
     lookups,
   ] = await Promise.all([
@@ -343,6 +344,24 @@ export default async function AdminEventDetailPage({ params }: Props) {
       .eq("event_id", id)
       .order("created_at", { ascending: false }),
 
+    supabase
+      .from("event_revisions")
+      .select(`
+        id,
+        status,
+        base_event_updated_at,
+        base_data,
+        proposed_data,
+        revision_reason,
+        submitted_at,
+        reviewed_at,
+        reviewed_by,
+        admin_note
+      `)
+      .eq("event_id", id)
+      .eq("status", "submitted")
+      .maybeSingle(),
+
     getAdminActivity(supabase, {
       entityType: "event",
       search: id,
@@ -372,6 +391,10 @@ export default async function AdminEventDetailPage({ params }: Props) {
 
   if (linkdNRoomsError) {
     throw new Error(linkdNRoomsError.message);
+  }
+
+  if (revisionError) {
+    throw new Error(revisionError.message);
   }
 
   const [
@@ -453,14 +476,101 @@ export default async function AdminEventDetailPage({ params }: Props) {
     "approved_awaiting_payment",
   ].includes(event.status);
 
-  const canReviewRevision = event.status === "revision_submitted";
+  const canReviewRevision = Boolean(submittedRevision);
+
+  const revisionProposed =
+    submittedRevision?.proposed_data &&
+    typeof submittedRevision.proposed_data === "object" &&
+    !Array.isArray(submittedRevision.proposed_data)
+      ? (submittedRevision.proposed_data as Record<string, unknown>)
+      : {};
+
+  const revisionFieldDefinitions = [
+    ["name", "Event Name"],
+    ["venue_name", "Venue Name"],
+    ["address", "Address"],
+    ["city", "City"],
+    ["state", "State"],
+    ["event_start_at", "Event Start"],
+    ["event_end_at", "Event End"],
+    ["flyer_url", "Flyer"],
+    ["description", "Description"],
+    ["dress_code", "Dress Code"],
+    ["entry_price", "Entry Price"],
+    ["age_requirement", "Age Requirement"],
+    ["event_type", "Event Type"],
+    ["music_selection", "Music"],
+    ["vibe_tags", "Vibes"],
+    ["smoking_policy", "Smoking Policy"],
+    ["parking_notes", "Parking Notes"],
+    ["special_notes", "Special Notes"],
+    ["amenities", "Amenities"],
+  ] as const;
+
+  const formatRevisionValue = (
+    field: string,
+    value: unknown,
+  ) => {
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
+
+    if (Array.isArray(value)) {
+      return value.length ? value.join(", ") : "—";
+    }
+
+    if (
+      (field === "event_start_at" || field === "event_end_at") &&
+      typeof value === "string"
+    ) {
+      return formatDate(value);
+    }
+
+    return String(value);
+  };
+
+  const revisionChanges = submittedRevision
+    ? revisionFieldDefinitions.flatMap(([field, label]) => {
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            revisionProposed,
+            field,
+          )
+        ) {
+          return [];
+        }
+
+        const currentValue = event[field];
+        const proposedValue = revisionProposed[field];
+
+        const currentComparable = Array.isArray(currentValue)
+          ? JSON.stringify(currentValue)
+          : currentValue ?? null;
+
+        const proposedComparable = Array.isArray(proposedValue)
+          ? JSON.stringify(proposedValue)
+          : proposedValue ?? null;
+
+        if (currentComparable === proposedComparable) {
+          return [];
+        }
+
+        return [
+          {
+            field,
+            label,
+            current: formatRevisionValue(field, currentValue),
+            proposed: formatRevisionValue(field, proposedValue),
+          },
+        ];
+      })
+    : [];
 
   const canReject = [
     "submitted",
     "paid_awaiting_approval",
     "approved_unpaid",
     "approved_awaiting_payment",
-    "revision_submitted",
   ].includes(event.status);
 
   const canViewPublic =
@@ -507,7 +617,11 @@ export default async function AdminEventDetailPage({ params }: Props) {
 
   const qualityChecks = buildQualityChecks(event);
   const qualityScore = calculateQualityScore(qualityChecks);
-  const nextAction = getNextAdminAction(event, qualityScore);
+  const nextAction = getNextAdminAction(
+    event,
+    qualityScore,
+    canReviewRevision,
+  );
   const publicReadiness = getPublicReadiness(event, qualityScore);
 
   const normalizedLinkdNRooms = (linkdNRooms || []).map((membership: any) => ({
@@ -1019,6 +1133,92 @@ export default async function AdminEventDetailPage({ params }: Props) {
               </button>
             </form>
           </Panel>
+
+          {submittedRevision ? (
+            <Panel
+              title="Pending Revision"
+              eyebrow="Public Version Remains Live"
+            >
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
+                  <p className="font-semibold text-purple-100">
+                    These are proposed organizer changes.
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-purple-100/65">
+                    The current approved event remains public until this revision is approved.
+                    Rejecting the revision does not remove or unapprove the public event.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Info
+                    label="Revision Reason"
+                    value={submittedRevision.revision_reason || "No reason provided"}
+                  />
+                  <Info
+                    label="Submitted"
+                    value={
+                      submittedRevision.submitted_at
+                        ? formatDate(submittedRevision.submitted_at)
+                        : "—"
+                    }
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-black text-white">
+                      Proposed Changes
+                    </h3>
+                    <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-200">
+                      {revisionChanges.length} changed field
+                      {revisionChanges.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  {revisionChanges.length ? (
+                    <div className="space-y-3">
+                      {revisionChanges.map((change) => (
+                        <div
+                          key={change.field}
+                          className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                            {change.label}
+                          </p>
+
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-xs uppercase tracking-[0.18em] text-white/35">
+                                Current Public
+                              </p>
+                              <p className="mt-2 break-words whitespace-pre-wrap text-sm text-white/65">
+                                {change.current}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl border border-purple-500/20 bg-purple-500/10 p-3">
+                              <p className="text-xs uppercase tracking-[0.18em] text-purple-200/60">
+                                Proposed Revision
+                              </p>
+                              <p className="mt-2 break-words whitespace-pre-wrap text-sm text-purple-100">
+                                {change.proposed}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/55">
+                      No differences were detected between the submitted revision
+                      and the current public event.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel
             title="Internal Admin Notes"
@@ -1705,8 +1905,12 @@ function QualityCheck({
   );
 }
 
-function getNextAdminAction(event: any, qualityScore: number) {
-  if (event.status === "revision_submitted") {
+function getNextAdminAction(
+  event: any,
+  qualityScore: number,
+  hasSubmittedRevision: boolean,
+) {
+  if (hasSubmittedRevision) {
     return {
       label: "Review Revision",
       detail: "Compare the owner's changes with the requested corrections.",

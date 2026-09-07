@@ -555,6 +555,7 @@ import {
   type EventStatus,
 } from '@/lib/events/workflow';
 import { transitionEventStatus } from '@/lib/events/transition';
+import { resolveEventLifecycle } from '@/lib/events/lifecycle';
 import { logAdminActivity } from '@/lib/admin/activity-log';
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = [
@@ -1137,76 +1138,377 @@ export async function approveEventRevision(
     eventId
   );
 
-  if (event.status !== 'revision_submitted') {
+  const { data: canonicalEvent, error: eventError } =
+    await supabase
+      .from('events')
+      .select(`
+        id,
+        updated_at,
+        event_start_at,
+        event_end_at,
+        included_promo_days,
+        extra_promo_days
+      `)
+      .eq('id', eventId)
+      .single();
+
+  if (eventError || !canonicalEvent) {
     throw new Error(
-      'This event is not waiting for revision approval.'
+      eventError?.message || 'Event not found.'
     );
   }
 
-  const originalStatus =
-    event.original_status_before_revision;
+  const { data: revision, error: revisionError } =
+    await supabase
+      .from('event_revisions')
+      .select(`
+        id,
+        status,
+        base_event_updated_at,
+        proposed_data
+      `)
+      .eq('event_id', eventId)
+      .eq('status', 'submitted')
+      .maybeSingle();
 
-  let restoredStatus: EventStatus;
-
-  if (
-    originalStatus &&
-    [
-      'scheduled',
-      'active',
-      'live',
-      'approved_unpaid',
-      'approved_awaiting_payment',
-      'paid_awaiting_approval',
-    ].includes(originalStatus)
-  ) {
-    restoredStatus = originalStatus as EventStatus;
-  } else {
-    restoredStatus = eventIsPaid(event)
-      ? 'scheduled'
-      : 'approved_unpaid';
+  if (revisionError) {
+    throw new Error(revisionError.message);
   }
 
-  await transitionEventStatus({
-    supabase,
-    eventId,
-    actorId: user.id,
-    actor: 'admin',
-    toStatus: restoredStatus,
-    source: 'admin_action',
-    reason: 'Event revision approved.',
-    note: adminNote || null,
-    metadata: {
-      action: 'approve_event_revision',
-      original_status_before_revision:
-        originalStatus || null,
-      restored_status: restoredStatus,
-    },
-    updates: {
-      isApproved: true,
-      rejectedAt: null,
-      rejectedBy: null,
-      rejectionReason: null,
-    },
-  });
+  if (!revision) {
+    throw new Error(
+      'This event does not have a submitted revision waiting for review.'
+    );
+  }
+
+  if (
+    revision.base_event_updated_at &&
+    canonicalEvent.updated_at &&
+    new Date(revision.base_event_updated_at).getTime() !==
+      new Date(canonicalEvent.updated_at).getTime()
+  ) {
+    throw new Error(
+      'The public event changed after this revision was started. Review the current event before approving this revision.'
+    );
+  }
+
+  const proposed =
+    revision.proposed_data &&
+    typeof revision.proposed_data === 'object' &&
+    !Array.isArray(revision.proposed_data)
+      ? revision.proposed_data as Record<string, unknown>
+      : {};
+
+  const updates: Record<string, unknown> = {};
+
+  const textFields = [
+    'venue_name',
+    'address',
+    'city',
+    'state',
+    'flyer_url',
+    'description',
+    'dress_code',
+    'entry_price',
+    'age_requirement',
+    'event_type',
+    'smoking_policy',
+    'parking_notes',
+    'special_notes',
+  ] as const;
+
+  const arrayFields = [
+    'music_selection',
+    'vibe_tags',
+    'amenities',
+  ] as const;
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      proposed,
+      'name'
+    )
+  ) {
+    if (
+      typeof proposed.name !== 'string' ||
+      !proposed.name.trim()
+    ) {
+      throw new Error(
+        'The proposed event name is invalid.'
+      );
+    }
+
+    updates.name = proposed.name.trim();
+  }
+
+  for (const field of textFields) {
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        proposed,
+        field
+      )
+    ) {
+      continue;
+    }
+
+    const value = proposed[field];
+
+    if (value !== null && typeof value !== 'string') {
+      throw new Error(
+        `Invalid proposed value for ${field}.`
+      );
+    }
+
+    let normalized =
+      typeof value === 'string'
+        ? value.trim() || null
+        : null;
+
+    if (
+      field === 'state' &&
+      typeof normalized === 'string'
+    ) {
+      normalized = normalized.toUpperCase();
+    }
+
+    updates[field] = normalized;
+  }
+
+  for (const field of arrayFields) {
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        proposed,
+        field
+      )
+    ) {
+      continue;
+    }
+
+    const value = proposed[field];
+
+    if (
+      !Array.isArray(value) ||
+      value.some(
+        (item) => typeof item !== 'string'
+      )
+    ) {
+      throw new Error(
+        `Invalid proposed value for ${field}.`
+      );
+    }
+
+    updates[field] = value;
+  }
+
+  const proposedStart =
+    Object.prototype.hasOwnProperty.call(
+      proposed,
+      'event_start_at'
+    )
+      ? proposed.event_start_at
+      : canonicalEvent.event_start_at;
+
+  if (
+    typeof proposedStart !== 'string' ||
+    !proposedStart
+  ) {
+    throw new Error(
+      'The revised event must have a valid start time.'
+    );
+  }
+
+  const proposedEnd =
+    Object.prototype.hasOwnProperty.call(
+      proposed,
+      'event_end_at'
+    )
+      ? proposed.event_end_at
+      : canonicalEvent.event_end_at;
+
+  if (
+    proposedEnd !== null &&
+    proposedEnd !== undefined &&
+    typeof proposedEnd !== 'string'
+  ) {
+    throw new Error(
+      'The proposed event end time is invalid.'
+    );
+  }
+
+  const startDate = new Date(proposedStart);
+
+  if (Number.isNaN(startDate.getTime())) {
+    throw new Error(
+      'The proposed event start time is invalid.'
+    );
+  }
+
+  const normalizedEnd =
+    typeof proposedEnd === 'string' &&
+    proposedEnd.trim()
+      ? proposedEnd.trim()
+      : null;
+
+  if (normalizedEnd) {
+    const endDate = new Date(normalizedEnd);
+
+    if (Number.isNaN(endDate.getTime())) {
+      throw new Error(
+        'The proposed event end time is invalid.'
+      );
+    }
+
+    if (endDate <= startDate) {
+      throw new Error(
+        'Event end time must be after the event start time.'
+      );
+    }
+  }
+
+  const { data: selections, error: selectionError } =
+    await supabase
+      .from('event_product_selections')
+      .select('product_id')
+      .eq('event_id', eventId)
+      .eq('status', 'selected');
+
+  if (selectionError) {
+    throw new Error(selectionError.message);
+  }
+
+  const productIds = Array.from(
+    new Set(
+      (selections || [])
+        .map((selection) => selection.product_id)
+        .filter(Boolean)
+    )
+  );
+
+  let requiresExplicitEnd = false;
+
+  if (productIds.length > 0) {
+    const { data: products, error: productError } =
+      await supabase
+        .from('platform_products')
+        .select('id, requires_event_end')
+        .in('id', productIds);
+
+    if (productError) {
+      throw new Error(productError.message);
+    }
+
+    requiresExplicitEnd = (products || []).some(
+      (product) =>
+        product.requires_event_end === true
+    );
+  }
+
+  if (requiresExplicitEnd && !normalizedEnd) {
+    throw new Error(
+      'An event end time is required while Patron Pulse or Linkd\'N is selected.'
+    );
+  }
+
+  const currentStartMs =
+    canonicalEvent.event_start_at
+      ? new Date(
+          canonicalEvent.event_start_at
+        ).getTime()
+      : NaN;
+
+  const proposedStartMs =
+    startDate.getTime();
+
+  const currentEndMs =
+    canonicalEvent.event_end_at
+      ? new Date(
+          canonicalEvent.event_end_at
+        ).getTime()
+      : null;
+
+  const proposedEndMs =
+    normalizedEnd
+      ? new Date(normalizedEnd).getTime()
+      : null;
+
+  const datesChanged =
+    currentStartMs !== proposedStartMs ||
+    currentEndMs !== proposedEndMs;
+
+  updates.event_start_at = proposedStart;
+  updates.event_end_at = normalizedEnd;
+  updates.end_time_is_explicit =
+    Boolean(normalizedEnd);
+
+  if (datesChanged) {
+    const lifecycle = resolveEventLifecycle({
+      eventStartAt: proposedStart,
+      eventEndAt: normalizedEnd,
+      includedPromoDays: Number(
+        canonicalEvent.included_promo_days || 14
+      ),
+      extraPromoDays: Number(
+        canonicalEvent.extra_promo_days || 0
+      ),
+      defaultDiscoveryBufferMinutes: 30,
+      liveProductSelected: requiresExplicitEnd,
+    });
+
+    updates.promotion_start_at =
+      lifecycle.promotionStartAt;
+    updates.promotion_end_at =
+      lifecycle.promotionEndAt;
+    updates.discovery_start_at =
+      lifecycle.discoveryStartAt;
+    updates.discovery_end_at =
+      lifecycle.discoveryEndAt;
+  }
 
   const nowIso = new Date().toISOString();
 
-  const { error: revisionUpdateError } = await supabase
+  updates.admin_last_updated_at = nowIso;
+  updates.admin_last_updated_by = user.id;
+  updates.updated_at = nowIso;
+
+  const {
+    data: updatedEvent,
+    error: updateEventError,
+  } = await supabase
     .from('events')
-    .update({
-      revision_admin_note: adminNote || null,
-      revision_reviewed_at: nowIso,
-      revision_reviewed_by: user.id,
-      original_status_before_revision: null,
+    .update(updates)
+    .eq('id', eventId)
+    .eq(
+      'updated_at',
+      canonicalEvent.updated_at
+    )
+    .select('id')
+    .maybeSingle();
 
-      admin_last_updated_at: nowIso,
-      admin_last_updated_by: user.id,
-      updated_at: nowIso,
-    })
-    .eq('id', eventId);
+  if (updateEventError) {
+    throw new Error(updateEventError.message);
+  }
 
-  if (revisionUpdateError) {
-    throw new Error(revisionUpdateError.message);
+  if (!updatedEvent) {
+    throw new Error(
+      'The public event changed while this revision was being approved. No revision changes were applied.'
+    );
+  }
+
+  const { error: updateRevisionError } =
+    await supabase
+      .from('event_revisions')
+      .update({
+        status: 'approved',
+        admin_note: adminNote || null,
+        reviewed_at: nowIso,
+        reviewed_by: user.id,
+        updated_at: nowIso,
+      })
+      .eq('id', revision.id)
+      .eq('status', 'submitted');
+
+  if (updateRevisionError) {
+    throw new Error(updateRevisionError.message);
   }
 
   await recordEventAdminActivity({
@@ -1216,13 +1518,12 @@ export async function approveEventRevision(
     action: 'approve_event_revision',
     previousState: {
       status: event.status,
-      original_status_before_revision:
-        originalStatus || null,
+      revision_status: revision.status,
     },
     newState: {
-      status: restoredStatus,
-      is_approved: true,
-      original_status_before_revision: null,
+      status: event.status,
+      revision_status: 'approved',
+      dates_changed: datesChanged,
     },
     reason: 'Event revision approved.',
     note: adminNote || null,
@@ -1258,49 +1559,40 @@ export async function rejectEventRevision(
     eventId
   );
 
-  if (event.status !== 'revision_submitted') {
+  const { data: revision, error: revisionError } =
+    await supabase
+      .from('event_revisions')
+      .select('id, status')
+      .eq('event_id', eventId)
+      .eq('status', 'submitted')
+      .maybeSingle();
+
+  if (revisionError) {
+    throw new Error(revisionError.message);
+  }
+
+  if (!revision) {
     throw new Error(
-      'This event is not waiting for revision review.'
+      'This event does not have a submitted revision waiting for review.'
     );
   }
 
-  await transitionEventStatus({
-    supabase,
-    eventId,
-    actorId: user.id,
-    actor: 'admin',
-    toStatus: 'revision_draft',
-    source: 'admin_action',
-    reason: adminNote,
-    note: adminNote,
-    metadata: {
-      action: 'reject_event_revision',
-      original_status_before_revision:
-        event.original_status_before_revision || null,
-    },
-    updates: {
-      isApproved: false,
-      isPublic: false,
-    },
-  });
-
   const nowIso = new Date().toISOString();
 
-  const { error: revisionUpdateError } = await supabase
-    .from('events')
+  const { error: updateError } = await supabase
+    .from('event_revisions')
     .update({
-      revision_admin_note: adminNote,
-      revision_reviewed_at: nowIso,
-      revision_reviewed_by: user.id,
-
-      admin_last_updated_at: nowIso,
-      admin_last_updated_by: user.id,
+      status: 'rejected',
+      admin_note: adminNote,
+      reviewed_at: nowIso,
+      reviewed_by: user.id,
       updated_at: nowIso,
     })
-    .eq('id', eventId);
+    .eq('id', revision.id)
+    .eq('status', 'submitted');
 
-  if (revisionUpdateError) {
-    throw new Error(revisionUpdateError.message);
+  if (updateError) {
+    throw new Error(updateError.message);
   }
 
   await recordEventAdminActivity({
@@ -1310,13 +1602,11 @@ export async function rejectEventRevision(
     action: 'reject_event_revision',
     previousState: {
       status: event.status,
-      original_status_before_revision:
-        event.original_status_before_revision || null,
+      revision_status: revision.status,
     },
     newState: {
-      status: 'revision_draft',
-      is_approved: false,
-      is_public: false,
+      status: event.status,
+      revision_status: 'rejected',
     },
     reason: adminNote,
     note: adminNote,
