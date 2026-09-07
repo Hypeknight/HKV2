@@ -20,7 +20,7 @@ export async function applyEventCoupon(formData: FormData) {
 
   const { data:event } = await supabase.from('events').select('id,owner_id,total_price').eq('id',eventId).eq('owner_id',user.id).single();
   if (!event) throw new Error('Event not found.');
-  const { data:order } = await admin.from('event_orders').select('*').eq('event_id',eventId).eq('user_id',user.id).single();
+  const { data:order } = await admin.from('event_orders').select('*').eq('event_id',eventId).eq('user_id',user.id).eq('order_kind','event_initial').single();
   if (!order) throw new Error('Event order not found. Return to Enhance and rebuild the package.');
   const { data:coupon } = await admin.from('event_coupons').select('*').eq('code',code).maybeSingle();
   if (!coupon || !coupon.is_active) throw new Error('Invalid coupon code.');

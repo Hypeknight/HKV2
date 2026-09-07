@@ -30,6 +30,7 @@ export async function POST(req: Request) {
     .select('*')
     .eq('event_id', eventId)
     .eq('user_id', user.id)
+    .eq('order_kind', 'event_initial')
     .single();
   if (orderError || !order) {
     return NextResponse.json({ error: 'Event order not found. Revisit the Enhance step.' }, { status: 400 });

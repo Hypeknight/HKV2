@@ -40,7 +40,7 @@ export default async function EventReviewPage({ params, searchParams }: Props) {
     revision?.status === 'draft' || revision?.status === 'rejected';
   const revisionSubmitted = revision?.status === 'submitted';
 
-  const { data:order } = await supabase.from('event_orders').select('id,order_number,status,subtotal,discount_amount,total,coupon_code').eq('event_id',id).maybeSingle();
+  const { data:order } = await supabase.from('event_orders').select('id,order_number,status,subtotal,discount_amount,total,coupon_code').eq('event_id',id).eq('order_kind','event_initial').maybeSingle();
   const { data:items } = order ? await supabase.from('event_order_items').select('id,label,quantity,unit_price,line_total,product_code').eq('order_id',order.id).order('created_at') : { data: [] as any[] };
   const orderTotal = Number(order?.total ?? event.payment_amount ?? 0);
   const hasPaidEnhancements = orderTotal > 0;

@@ -1184,6 +1184,7 @@ export async function updateEventStep3(formData: FormData) {
   const { data: order, error: orderError } = await admin.from('event_orders').upsert({
     event_id: eventId,
     user_id: user.id,
+    order_kind: 'event_initial',
     status: 'draft',
     subtotal,
     discount_amount: 0,
@@ -1193,7 +1194,7 @@ export async function updateEventStep3(formData: FormData) {
     discount_type: null,
     discount_value: null,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'event_id' }).select('id').single();
+  }, { onConflict: 'event_id,order_kind' }).select('id').single();
   if (orderError || !order) throw new Error(orderError?.message || 'Could not create order.');
 
   await admin.from('event_order_items').delete().eq('order_id', order.id);

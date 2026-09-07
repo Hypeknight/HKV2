@@ -10,7 +10,7 @@ export default async function EventPaymentPage({params,searchParams}:Props){
  const {id}=await params; const query=searchParams?await searchParams:{}; const supabase=await createClient(); const settings=await getPlatformSettings();
  const {data:{user}}=await supabase.auth.getUser(); if(!user)redirect('/auth/login');
  const {data:event,error}=await supabase.from('events').select('id,name,slug,status,payment_status,is_paid,payment_override').eq('id',id).eq('owner_id',user.id).single(); if(error||!event)notFound();
- const {data:order}=await supabase.from('event_orders').select('*').eq('event_id',id).eq('user_id',user.id).maybeSingle();
+ const {data:order}=await supabase.from('event_orders').select('*').eq('event_id',id).eq('user_id',user.id).eq('order_kind','event_initial').maybeSingle();
  const {data:items}=order?await supabase.from('event_order_items').select('*').eq('order_id',order.id).order('created_at'):{data:[] as any[]};
  if(!order) return <section className="mx-auto max-w-4xl px-4 py-10"><div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-6 text-yellow-100"><h1 className="text-2xl font-black">Your event package needs to be rebuilt.</h1><p className="mt-2 text-sm">Open Enhance once so HypeKnight can create the itemized order record.</p><Link href={`/dashboard/events/${id}/edit/step-3`} className="mt-5 inline-flex rounded-2xl bg-yellow-100 px-5 py-3 font-black text-black">Open Enhance</Link></div></section>;
  const paid=order.status==='paid'||event.is_paid||event.payment_status==='paid'||event.payment_override||Number(order.total)<=0;
