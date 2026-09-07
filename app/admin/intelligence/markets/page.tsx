@@ -2,7 +2,12 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { buildMarketRegistry, getMarketAreas } from '@/lib/markets/registry';
-import { createMarket, linkMarketArea, overrideRecordMarket } from './actions';
+import {
+  createMarket,
+  linkMarketArea,
+  overrideRecordMarket,
+  setMarketTimezone,
+} from './actions';
 
 /**
  * INTELLIGENCE V2.1 — MARKET REGISTRY MANAGEMENT
@@ -32,7 +37,7 @@ export default async function AdminMarketRegistryPage() {
   const [marketsResult, areasResult, eventsResult, venuesResult] = await Promise.all([
     supabase
       .from('markets')
-      .select('id, market_key, name, primary_city, primary_state, status, source, first_seen_at, last_seen_at')
+      .select('id, market_key, name, primary_city, primary_state, timezone, status, source, first_seen_at, last_seen_at')
       .order('name'),
     supabase
       .from('market_areas')
@@ -199,6 +204,36 @@ export default async function AdminMarketRegistryPage() {
                   <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white/70">
                     {areas.length} area{areas.length === 1 ? '' : 's'}
                   </span>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/40">
+                      Market timezone
+                    </p>
+                    <p className="mt-2 font-semibold text-white">
+                      {market.timezone || 'Not configured'}
+                    </p>
+                    {!market.timezone ? (
+                      <p className="mt-1 text-sm text-amber-300">
+                        Date-specific commerce unavailable until a timezone is configured.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <form action={setMarketTimezone} className="flex w-full max-w-md gap-2">
+                    <input type="hidden" name="market_key" value={market.key} />
+                    <input
+                      name="timezone"
+                      required
+                      defaultValue={market.timezone || ''}
+                      placeholder="America/Chicago"
+                      className={inputClass}
+                    />
+                    <button className={buttonClass}>Save</button>
+                  </form>
                 </div>
               </div>
 

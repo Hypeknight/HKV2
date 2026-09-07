@@ -43,6 +43,26 @@ export async function createMarket(formData: FormData) {
   revalidatePath('/admin/intelligence/markets');
 }
 
+export async function setMarketTimezone(formData: FormData) {
+  const supabase = await requireAdmin();
+  const marketKey = String(formData.get('market_key') || '').trim();
+  const timezone = String(formData.get('timezone') || '').trim();
+
+  if (!marketKey) {
+    throw new Error('Market is required.');
+  }
+
+  const { error } = await supabase.rpc('set_hypeknight_market_timezone', {
+    p_market_key: marketKey,
+    p_timezone: timezone,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/admin/intelligence/markets');
+  revalidatePath('/admin/intelligence');
+}
+
 /** Add a new municipality to a metro, or move an existing municipality into it. */
 export async function linkMarketArea(formData: FormData) {
   const supabase = await requireAdmin();

@@ -14,6 +14,7 @@ export type MarketRegistryMarketRow = {
   name: string;
   primary_city: string;
   primary_state: string;
+  timezone?: string | null;
   status?: string | null;
 };
 
@@ -33,6 +34,7 @@ export type MarketRegistryAreaRow = {
 export type RegisteredMarket = CanonicalMarket & {
   id: string;
   name: string;
+  timezone?: string | null;
   status?: string | null;
 };
 
@@ -61,6 +63,7 @@ export function buildMarketRegistry(
       name: row.name,
       city: row.primary_city,
       state: normalizeState(row.primary_state),
+      timezone: row.timezone ?? null,
       status: row.status ?? null,
     };
     marketsById.set(row.id, market);
