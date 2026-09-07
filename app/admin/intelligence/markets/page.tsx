@@ -6,6 +6,8 @@ import {
   createMarket,
   linkMarketArea,
   overrideRecordMarket,
+  saveFeaturedInventory,
+  setFeaturedInventoryEnabled,
   setMarketTimezone,
 } from './actions';
 
@@ -34,7 +36,7 @@ export default async function AdminMarketRegistryPage() {
 
   if (profile?.app_role !== 'admin') redirect('/dashboard');
 
-  const [marketsResult, areasResult, eventsResult, venuesResult] = await Promise.all([
+  const [marketsResult, areasResult, eventsResult, venuesResult, featuredResult] = await Promise.all([
     supabase
       .from('markets')
       .select('id, market_key, name, primary_city, primary_state, timezone, status, source, first_seen_at, last_seen_at')
@@ -54,12 +56,17 @@ export default async function AdminMarketRegistryPage() {
       .select('id, name, city, state, market_id')
       .order('created_at', { ascending: false })
       .limit(50),
+    supabase
+      .from('featured_inventory')
+      .select('id, market_id, feature_date, capacity, unit_price, enabled')
+      .order('feature_date', { ascending: true }),
   ]);
 
   if (marketsResult.error) throw new Error(marketsResult.error.message);
   if (areasResult.error) throw new Error(areasResult.error.message);
   if (eventsResult.error) throw new Error(eventsResult.error.message);
   if (venuesResult.error) throw new Error(venuesResult.error.message);
+  if (featuredResult.error) throw new Error(featuredResult.error.message);
 
   const registry = buildMarketRegistry(marketsResult.data ?? [], areasResult.data ?? []);
   const markets = Array.from(registry.marketsById.values()).sort((a, b) =>
@@ -67,6 +74,24 @@ export default async function AdminMarketRegistryPage() {
   );
 
   const marketNameById = new Map(markets.map((market) => [market.id, market.name]));
+
+  const featuredByMarketId = new Map<
+    string,
+    {
+      id: string;
+      market_id: string;
+      feature_date: string;
+      capacity: number;
+      unit_price: number | string;
+      enabled: boolean;
+    }[]
+  >();
+
+  for (const row of featuredResult.data ?? []) {
+    const rows = featuredByMarketId.get(row.market_id) ?? [];
+    rows.push(row);
+    featuredByMarketId.set(row.market_id, rows);
+  }
 
   return (
     <section className="mx-auto max-w-7xl space-y-8 px-4 py-12 sm:px-6 lg:px-8">
@@ -189,6 +214,8 @@ export default async function AdminMarketRegistryPage() {
       <section className="space-y-5">
         {markets.map((market) => {
           const areas = getMarketAreas(registry, market.id);
+          const featuredRows = featuredByMarketId.get(market.id) ?? [];
+
           return (
             <article key={market.id} className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -234,6 +261,141 @@ export default async function AdminMarketRegistryPage() {
                     />
                     <button className={buttonClass}>Save</button>
                   </form>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-accent/20 bg-accent/5 p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-accent">
+                      Featured Calendar
+                    </p>
+                    <h3 className="mt-2 text-lg font-black text-white">
+                      Market/date inventory
+                    </h3>
+                    <p className="mt-1 max-w-2xl text-sm text-white/55">
+                      Featured is limited inventory controlled by HypeKnight. Set the
+                      capacity and price available for an individual market date.
+                    </p>
+                  </div>
+
+                  <span className="w-fit rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
+                    {featuredRows.length} configured date{featuredRows.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+
+                <form
+                  action={saveFeaturedInventory}
+                  className="mt-5 grid gap-3 md:grid-cols-[1fr_120px_140px_auto] md:items-end"
+                >
+                  <input type="hidden" name="market_id" value={market.id} />
+
+                  <Field label="Featured date">
+                    <input
+                      type="date"
+                      name="feature_date"
+                      required
+                      disabled={!market.timezone}
+                      className={inputClass}
+                    />
+                  </Field>
+
+                  <Field label="Capacity">
+                    <input
+                      type="number"
+                      name="capacity"
+                      min="1"
+                      step="1"
+                      defaultValue="3"
+                      required
+                      disabled={!market.timezone}
+                      className={inputClass}
+                    />
+                  </Field>
+
+                  <Field label="Price">
+                    <input
+                      type="number"
+                      name="unit_price"
+                      min="0"
+                      step="0.01"
+                      placeholder="5.00"
+                      required
+                      disabled={!market.timezone}
+                      className={inputClass}
+                    />
+                  </Field>
+
+                  <button
+                    disabled={!market.timezone}
+                    className={`${buttonClass} disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    Save date
+                  </button>
+                </form>
+
+                {!market.timezone ? (
+                  <p className="mt-3 text-sm text-amber-300">
+                    Configure the market timezone before creating Featured inventory.
+                  </p>
+                ) : null}
+
+                <div className="mt-5 space-y-2">
+                  {featuredRows.length ? (
+                    featuredRows.map((row) => (
+                      <div
+                        key={row.id}
+                        className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                          <div>
+                            <p className="font-bold text-white">{row.feature_date}</p>
+                            <p className="text-xs text-white/45">Featured date</p>
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-white">{row.capacity}</p>
+                            <p className="text-xs text-white/45">Capacity</p>
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-white">
+                              ${Number(row.unit_price).toFixed(2)}
+                            </p>
+                            <p className="text-xs text-white/45">Per placement</p>
+                          </div>
+
+                          <span
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                              row.enabled
+                                ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+                                : 'border-white/10 bg-white/5 text-white/45'
+                            }`}
+                          >
+                            {row.enabled ? 'Available' : 'Disabled'}
+                          </span>
+                        </div>
+
+                        <form action={setFeaturedInventoryEnabled}>
+                          <input type="hidden" name="inventory_id" value={row.id} />
+                          <input
+                            type="hidden"
+                            name="enabled"
+                            value={row.enabled ? 'false' : 'true'}
+                          />
+                          <button
+                            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/75 transition hover:bg-white/10"
+                          >
+                            {row.enabled ? 'Disable' : 'Enable'}
+                          </button>
+                        </form>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-white/45">
+                      No Featured inventory has been configured for this market.
+                    </div>
+                  )}
                 </div>
               </div>
 

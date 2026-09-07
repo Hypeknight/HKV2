@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { startEventRevision } from "@/app/dashboard/events/actions";
 import PublicEventLinkCard from "@/components/events/PublicEventLinkCard";
 import ExtendedDiscoveryUpgradeControl from "@/components/events/ExtendedDiscoveryUpgradeControl";
+import FeaturedPurchaseControl, {
+  type FeaturedInventoryOption,
+} from "@/components/events/FeaturedPurchaseControl";
 import { getExtendedDiscoveryUpgradeOptions } from "@/lib/commerce/event-order";
 
 type Props = {
@@ -172,6 +175,53 @@ export default async function EventCommandCenterPage({ params }: Props) {
           extraDays,
         })
       : [];
+
+  const {
+    data: featuredInventoryData,
+    error: featuredInventoryError,
+  } = await supabase.rpc(
+    "get_featured_inventory_for_event",
+    {
+      p_event_id: event.id,
+    }
+  );
+
+  if (featuredInventoryError) {
+    console.error(
+      "[mission-control] Unable to load Featured inventory:",
+      {
+        eventId: event.id,
+        message: featuredInventoryError.message,
+      }
+    );
+  }
+
+  const featuredInventory: FeaturedInventoryOption[] =
+    (
+      (featuredInventoryData as
+        | Array<{
+            inventory_id: string;
+            feature_date: string;
+            capacity: number | string;
+            unit_price: number | string;
+            remaining_capacity: number | string;
+            reserved_by_event: boolean;
+            sold_by_event: boolean;
+          }>
+        | null) || []
+    ).map((row) => ({
+      inventory_id: String(row.inventory_id),
+      feature_date: String(row.feature_date),
+      capacity: Number(row.capacity || 0),
+      unit_price: Number(row.unit_price || 0),
+      remaining_capacity: Number(
+        row.remaining_capacity || 0
+      ),
+      reserved_by_event:
+        row.reserved_by_event === true,
+      sold_by_event:
+        row.sold_by_event === true,
+    }));
 
   return (
     <main className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
@@ -538,11 +588,9 @@ export default async function EventCommandCenterPage({ params }: Props) {
                 options={extendedDiscoveryOptions}
               />
 
-              <GrowCard
-                label="Featured"
-                promise="More attention"
-                detail="Premium placement will be offered by market and date during an event's active Discovery Window."
-                status="Coming soon"
+              <FeaturedPurchaseControl
+                eventId={event.id}
+                inventory={featuredInventory}
               />
 
               <GrowCard
