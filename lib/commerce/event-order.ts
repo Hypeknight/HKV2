@@ -37,6 +37,18 @@ export type ExtendedDiscoveryEntitlement = {
   availablePackages: ExtendedDiscoveryPackage[];
 };
 
+export type ExtendedDiscoveryUpgradeOption = {
+  package: ExtendedDiscoveryPackage;
+  targetDiscoveryStartAt: string;
+  upgradePrice: number | null;
+  available: boolean;
+  reason:
+    | 'available'
+    | 'event_started'
+    | 'discovery_time_elapsed'
+    | 'legacy_entitlement';
+};
+
 /**
  * Business Model 1.0 provisional package pricing.
  *
@@ -127,6 +139,87 @@ export function resolveExtendedDiscoveryEntitlement({
         (candidate) => candidate.totalDays > totalDays
       ),
   };
+}
+
+export function getExtendedDiscoveryUpgradeOptions({
+  eventStartAt,
+  includedDays,
+  extraDays,
+  now = new Date(),
+}: {
+  eventStartAt: string | Date;
+  includedDays: number;
+  extraDays: number;
+  now?: Date;
+}): ExtendedDiscoveryUpgradeOption[] {
+  const eventStart = new Date(eventStartAt);
+
+  if (Number.isNaN(eventStart.getTime())) {
+    throw new Error('Invalid event start date.');
+  }
+
+  if (Number.isNaN(now.getTime())) {
+    throw new Error('Invalid current date.');
+  }
+
+  const entitlement = resolveExtendedDiscoveryEntitlement({
+    includedDays,
+    extraDays,
+  });
+
+  return entitlement.availablePackages.map((targetPackage) => {
+    const targetStart = new Date(eventStart);
+    targetStart.setDate(
+      targetStart.getDate() - targetPackage.totalDays
+    );
+
+    if (eventStart <= now) {
+      return {
+        package: targetPackage,
+        targetDiscoveryStartAt: targetStart.toISOString(),
+        upgradePrice: null,
+        available: false,
+        reason: 'event_started' as const,
+      };
+    }
+
+    if (targetStart <= now) {
+      return {
+        package: targetPackage,
+        targetDiscoveryStartAt: targetStart.toISOString(),
+        upgradePrice: null,
+        available: false,
+        reason: 'discovery_time_elapsed' as const,
+      };
+    }
+
+    /*
+     * Legacy entitlements keep all of their existing Discovery days.
+     *
+     * We intentionally do not infer monetary credit for a legacy entitlement
+     * because historical days may have come from payment, coupons, testing,
+     * or an administrative grant.
+     */
+    if (entitlement.isLegacy || !entitlement.package) {
+      return {
+        package: targetPackage,
+        targetDiscoveryStartAt: targetStart.toISOString(),
+        upgradePrice: null,
+        available: false,
+        reason: 'legacy_entitlement' as const,
+      };
+    }
+
+    return {
+      package: targetPackage,
+      targetDiscoveryStartAt: targetStart.toISOString(),
+      upgradePrice: money(
+        targetPackage.price - entitlement.package.price
+      ),
+      available: true,
+      reason: 'available' as const,
+    };
+  });
 }
 
 export function requireExtendedDiscoveryPackage(
