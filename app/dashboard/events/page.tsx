@@ -20,6 +20,7 @@ type DashboardEvent = {
   id: string;
   slug: string | null;
   name: string | null;
+  flyer_url: string | null;
   venue_name: string | null;
   city: string | null;
   state: string | null;
@@ -70,6 +71,7 @@ export default async function DashboardEventsPage() {
       id,
       slug,
       name,
+      flyer_url,
       venue_name,
       city,
       state,
@@ -210,57 +212,42 @@ export default async function DashboardEventsPage() {
         </Link>
       </div>
 
-      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[3rem] sm:p-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
+      <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:p-7">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_34%)]" />
 
-        <div className="relative grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-accent sm:text-sm">
-              Event Management Center
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">
+              My Events
             </p>
 
-            <h1 className="mt-3 max-w-4xl text-4xl font-black leading-[0.95] text-white sm:text-6xl lg:text-7xl">
-              Manage your HypeKnight events.
+            <h1 className="mt-2 text-3xl font-black text-white sm:text-4xl">
+              Your HypeKnight events.
             </h1>
 
-            <p className="mt-5 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              See what each event needs next, continue drafts, respond to admin
-              feedback, complete payment, track review, and manage public
-              listings from one place.
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">
+              Choose an event to open Mission Control, continue work, or check
+              its current status.
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <StatusChip
                 label={`${needsAction.length} need your action`}
                 tone={needsAction.length ? "yellow" : "neutral"}
               />
 
               <StatusChip
-                label={`${pending.length} waiting on review`}
+                label={`${pending.length} under review`}
                 tone={pending.length ? "blue" : "neutral"}
               />
 
               <StatusChip label={`${publicCount} public`} tone="green" />
-
-              <StatusChip
-                label={`${paymentNeededCount} need payment`}
-                tone={paymentNeededCount ? "red" : "neutral"}
-              />
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
-            <p className="text-xs uppercase tracking-[0.25em] text-white/45">
-              Create Another Event
-            </p>
-
-            <p className="mt-3 text-sm leading-6 text-white/60">
-              Start a new draft now. You can save your progress and finish the
-              submission later.
-            </p>
-
+          <div className="shrink-0">
             <ButtonLink href="/dashboard/events/new/step-1" variant="primary">
-              Create New Event
+              + Create Event
             </ButtonLink>
           </div>
         </div>
@@ -313,7 +300,7 @@ export default async function DashboardEventsPage() {
               id="needs-action"
               eyebrow="Needs Your Attention"
               title="Events waiting on you"
-              text="Continue drafts, respond to feedback, finish revisions, or complete payment."
+              text="Continue drafts, respond to feedback, or finish revisions that need your attention."
               events={needsAction}
             />
           ) : null}
@@ -331,9 +318,9 @@ export default async function DashboardEventsPage() {
           {active.length ? (
             <EventSection
               id="active"
-              eyebrow="Public Pipeline"
-              title="Scheduled, active, and live"
-              text="These events have cleared the core approval process and are moving through public promotion."
+              eyebrow="Upcoming"
+              title="Your public events"
+              text="Open an event's Mission Control to manage Discovery, performance, sharing, enhancements, and event changes."
               events={active}
             />
           ) : null}
@@ -349,13 +336,33 @@ export default async function DashboardEventsPage() {
           ) : null}
 
           {completed.length ? (
-            <EventSection
-              id="completed"
-              eyebrow="History"
-              title="Completed or archived events"
-              text="Past, removed, archived, or completed event listings."
-              events={completed}
-            />
+            <section id="completed" className="scroll-mt-24">
+              <SectionHeader
+                eyebrow="History"
+                title="Recent past events"
+                text="Your most recently completed, archived, or removed events."
+              />
+
+              <div className="mt-5 grid gap-4 sm:mt-8">
+                {completed.slice(0, 3).map((event) => (
+                  <DashboardEventCard key={event.id} event={event} />
+                ))}
+              </div>
+
+              {completed.length > 3 ? (
+                <details className="mt-5 rounded-2xl border border-white/10 bg-white/5">
+                  <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-white/70 hover:text-white">
+                    View all {completed.length} past events
+                  </summary>
+
+                  <div className="grid gap-4 border-t border-white/10 p-4 sm:p-5">
+                    {completed.slice(3).map((event) => (
+                      <DashboardEventCard key={event.id} event={event} />
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </section>
           ) : null}
         </>
       )}
@@ -400,168 +407,149 @@ function DashboardEventCard({ event }: { event: DashboardEvent }) {
   const hasSubmittedRevision = event.revision_status === "submitted";
   const hasRejectedRevision = event.revision_status === "rejected";
 
-  const canRevise =
-    PUBLIC_STATUSES.includes(event.status) &&
-    !event.revision_status;
-
-  const canDiscard = ["draft", "building"].includes(event.status);
-  const canRequestRemoval = PUBLIC_STATUSES.includes(event.status);
-
   const canViewPublic =
     Boolean(event.slug) &&
     event.is_public === true &&
     PUBLIC_STATUSES.includes(event.status);
 
+  const canOpenMissionControl =
+    PUBLIC_STATUSES.includes(event.status) ||
+    ["completed", "ended", "archived", "cancelled", "removal_requested", "refund_requested"].includes(
+      event.status,
+    );
+
   const editHref = getEditHref(event);
   const guidance = getOwnerGuidance(event);
-  const paymentLabel = getPaymentLabel(event);
 
   return (
-    <article className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 sm:rounded-[2.5rem]">
-      <div className="grid gap-0 xl:grid-cols-[1fr_300px]">
-        <div className="p-5 sm:p-6 lg:p-8">
+    <article className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 transition hover:border-white/20">
+      <div className="grid gap-0 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="p-5 sm:p-6">
+          <div className="grid gap-5 sm:grid-cols-[96px_1fr] sm:items-start">
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+              {event.flyer_url ? (
+                <div
+                  className="aspect-square bg-cover bg-center"
+                  style={{ backgroundImage: `url("${event.flyer_url}")` }}
+                />
+              ) : (
+                <div className="flex aspect-square items-center justify-center p-3 text-center">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                    HypeKnight
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-2xl font-black leading-tight text-white sm:text-3xl">
+            <h2 className="text-xl font-black leading-tight text-white sm:text-2xl">
               {event.name || "Untitled Event"}
             </h2>
 
             <StatusBadge status={event.status} />
 
-            <StatusChip label={guidance.label} tone={guidance.tone} />
+            {hasDraftRevision ? (
+              <StatusChip label="Revision Draft" tone="yellow" />
+            ) : null}
+
+            {hasSubmittedRevision ? (
+              <StatusChip label="Revision Under Review" tone="blue" />
+            ) : null}
+
+            {hasRejectedRevision ? (
+              <StatusChip label="Revision Needs Changes" tone="red" />
+            ) : null}
           </div>
 
-          <p className="mt-3 text-sm text-white/60">
-            {event.venue_name || "No venue listed"} ·{" "}
+          <p className="mt-2 text-sm text-white/55">
+            {event.venue_name || "No venue listed"}
+            {" · "}
             {[event.city, event.state].filter(Boolean).join(", ") ||
               "Location pending"}
           </p>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <InfoCard
-              label="Starts"
-              icon="🕒"
-              value={<EventTime value={event.event_start_at} mode="wall" />}
-              accent
-            />
+          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                Starts
+              </p>
+              <div className="mt-1 text-sm font-semibold text-white/80">
+                <EventTime value={event.event_start_at} mode="wall" />
+              </div>
+            </div>
 
-            <InfoCard
-              label="Visibility"
-              icon="👁️"
-              value={
-                canViewPublic
-                  ? "Public now"
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                Visibility
+              </p>
+              <p className="mt-1 text-sm font-semibold text-white/80">
+                {canViewPublic
+                  ? "Public"
                   : event.is_public
                     ? "Public status pending"
-                    : "Not public"
-              }
-            />
-
-            <InfoCard label="Payment" icon="💳" value={paymentLabel} />
-
-            <InfoCard
-              label="Total"
-              icon="💵"
-              value={`$${Number(event.total_price || 0).toFixed(2)}`}
-            />
-          </div>
-
-          <div className={`mt-5 rounded-2xl border p-4 ${guidance.panelClass}`}>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
-              What happens next
-            </p>
-
-            <p className="mt-2 text-sm font-semibold">{guidance.title}</p>
-
-            <p className="mt-1 text-sm leading-6 opacity-75">
-              {guidance.description}
-            </p>
-          </div>
-
-          {hasSubmittedRevision ? (
-            <div className="mt-4 rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4 text-sm leading-6 text-purple-100">
-              <p className="font-semibold">Revision awaiting approval</p>
-
-              <p className="mt-1 text-purple-100/75">
-                HypeKnight is reviewing your submitted changes. Your currently
-                approved event remains public, and you cannot start another
-                revision until this request is reviewed.
+                    : "Not public"}
               </p>
             </div>
-          ) : null}
+
+            {event.status === "scheduled" ? (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                  Discovery
+                </p>
+                <p className="mt-1 text-sm font-semibold text-white/80">
+                  Begins {formatShortDate(event.promotion_start_at)}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className={`mt-4 rounded-xl border px-4 py-3 ${guidance.panelClass}`}>
+            <p className="text-sm font-semibold">{guidance.title}</p>
+          </div>
 
           {event.rejection_reason ||
           event.revision_admin_feedback ||
           event.revision_admin_note ? (
-            <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm leading-6 text-red-100">
-              <p className="font-semibold">Administrator feedback</p>
-
-              <p className="mt-1 text-red-100/75">
-                {event.revision_admin_feedback ||
-                  event.revision_admin_note ||
-                  event.rejection_reason}
-              </p>
-            </div>
+            <p className="mt-3 text-sm leading-6 text-red-200/75">
+              <span className="font-semibold text-red-100">
+                Admin feedback:
+              </span>{" "}
+              {event.revision_admin_feedback ||
+                event.revision_admin_note ||
+                event.rejection_reason}
+            </p>
           ) : null}
-
-          {event.removal_reason ? (
-            <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm leading-6 text-yellow-100/80">
-              <span className="font-semibold">Removal reason:</span>{" "}
-              {event.removal_reason}
             </div>
-          ) : null}
-
-          {event.refund_status ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/65">
-              Refund status:{" "}
-              <span className="font-semibold text-white">
-                {formatStatus(event.refund_status)}
-              </span>
-            </div>
-          ) : null}
+          </div>
         </div>
 
-        <div className="border-t border-white/10 bg-black/20 p-5 sm:p-6 xl:border-l xl:border-t-0">
-          <p className="text-xs uppercase tracking-[0.22em] text-white/40">
-            Event Actions
-          </p>
-
-          <div className="mt-4 flex flex-col gap-3">
-            <Link
-              href={`/dashboard/events/${event.id}/review`}
-              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center font-semibold text-white hover:border-accent/40"
-            >
-              Review Event Details
-            </Link>
-
-            {canViewPublic ? (
+        <div className="border-t border-white/10 p-5 md:min-w-[220px] md:border-l md:border-t-0">
+          <div className="flex flex-col gap-3">
+            {canOpenMissionControl ? (
               <Link
-                href={`/events/${event.slug}`}
-                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center font-semibold text-white hover:border-accent/40"
+                href={`/dashboard/events/${event.id}`}
+                className="rounded-xl bg-accent px-5 py-3 text-center text-sm font-black text-black hover:opacity-90"
               >
-                View Public Event
+                Open Mission Control
               </Link>
-            ) : (
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-sm text-white/40">
-                Public page unavailable
-              </div>
-            )}
+            ) : null}
 
             {canEdit ? (
               <Link
                 href={editHref}
-                className="rounded-2xl bg-accent px-4 py-3 text-center font-semibold text-black hover:opacity-90"
+                className="rounded-xl bg-accent px-5 py-3 text-center text-sm font-black text-black hover:opacity-90"
               >
-                {event.status === "rejected" ||
-                event.status === "revision_draft"
-                  ? "Continue Revision"
-                  : "Continue / Edit"}
+                {event.status === "rejected"
+                  ? "Correct Event"
+                  : "Continue Event"}
               </Link>
             ) : null}
 
             {hasDraftRevision ? (
               <Link
                 href={`/dashboard/events/${event.id}/edit`}
-                className="rounded-2xl bg-accent px-4 py-3 text-center font-semibold text-black hover:opacity-90"
+                className="rounded-xl bg-accent px-5 py-3 text-center text-sm font-black text-black hover:opacity-90"
               >
                 Continue Revision
               </Link>
@@ -570,116 +558,53 @@ function DashboardEventCard({ event }: { event: DashboardEvent }) {
             {hasRejectedRevision ? (
               <Link
                 href={`/dashboard/events/${event.id}/edit`}
-                className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-center font-semibold text-yellow-100 hover:border-yellow-500/40"
+                className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-5 py-3 text-center text-sm font-semibold text-yellow-100"
               >
                 Correct Revision
               </Link>
             ) : null}
 
             {hasSubmittedRevision ? (
-              <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 px-4 py-3 text-center">
-                <p className="font-semibold text-purple-100">
-                  Revision Awaiting Approval
-                </p>
-                <p className="mt-1 text-xs text-purple-100/60">
-                  Another revision cannot be started yet.
-                </p>
-              </div>
-            ) : null}
-
-            {canRevise ? (
-              <form action={startEventRevision}>
-                <input type="hidden" name="event_id" value={event.id} />
-
-                <button
-                  type="submit"
-                  className="w-full rounded-2xl bg-accent px-4 py-3 text-center font-semibold text-black hover:opacity-90"
-                >
-                  Revise Event
-                </button>
-              </form>
-            ) : null}
-
-            {["approved_unpaid", "approved_awaiting_payment"].includes(
-              event.status,
-            ) && !isFinanciallyEligible(event) ? (
               <Link
                 href={`/dashboard/events/${event.id}/review`}
-                className="rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-center font-semibold text-green-200 hover:border-green-500/40"
+                className="rounded-xl border border-purple-500/20 bg-purple-500/10 px-5 py-3 text-center text-sm font-semibold text-purple-100"
               >
-                Review Payment Requirement
+                View Revision Status
               </Link>
             ) : null}
 
-            {canDiscard ? (
-              <form action={discardDraftEvent}>
-                <input type="hidden" name="event_id" value={event.id} />
-
-                <button
-                  type="submit"
-                  className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 font-semibold text-red-200 hover:border-red-500/40"
-                >
-                  Remove Draft
-                </button>
-              </form>
+            {["submitted", "paid_awaiting_approval"].includes(event.status) ? (
+              <Link
+                href={`/dashboard/events/${event.id}/review`}
+                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-center text-sm font-semibold text-white hover:border-accent/40"
+              >
+                View Review Status
+              </Link>
             ) : null}
 
-            {canRequestRemoval ? (
-              <details className="rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
-                <summary className="cursor-pointer text-sm font-semibold">
-                  Request removal or refund
-                </summary>
-
-                <form action={requestEventRemoval} className="mt-4 space-y-3">
-                  <input type="hidden" name="event_id" value={event.id} />
-
-                  <textarea
-                    name="removal_reason"
-                    rows={3}
-                    required
-                    placeholder="Explain why this event should be removed."
-                    className={fieldClass}
-                  />
-
-                  <select
-                    name="refund_requested"
-                    defaultValue="no"
-                    className={fieldClass}
-                  >
-                    <option value="no">No refund requested</option>
-                    <option value="yes">Request refund review</option>
-                  </select>
-
-                  <button
-                    type="submit"
-                    className="w-full rounded-2xl border border-accent/20 bg-accent/10 px-4 py-3 font-semibold text-accent hover:border-accent/40"
-                  >
-                    Submit Request
-                  </button>
-                </form>
-              </details>
+            {canViewPublic ? (
+              <Link
+                href={`/events/${event.slug}`}
+                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-center text-sm font-semibold text-white hover:border-accent/40"
+              >
+                View Public Page
+              </Link>
             ) : null}
-          </div>
 
-          <div className="mt-5 space-y-3">
-            <CompactFact label="Updated" value={formatDate(event.updated_at)} />
-
-            <CompactFact
-              label="Promotion Begins"
-              value={formatDate(event.promotion_start_at)}
-            />
-
-            <CompactFact
-              label="Promotion Ends"
-              value={formatDate(event.promotion_end_at)}
-            />
+            {["removed"].includes(event.status) ? (
+              <Link
+                href={`/dashboard/events/${event.id}/review`}
+                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-center text-sm font-semibold text-white/70"
+              >
+                View Record
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>
     </article>
   );
 }
-
 function CompactFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -936,6 +861,21 @@ function formatStatus(value: string) {
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatShortDate(value: string | null) {
+  if (!value) return "Not set";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Not set";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
 }
 
 function formatDate(value?: string | null) {
