@@ -493,7 +493,10 @@ import { getPlatformSettings } from '@/lib/settings';
 import { transitionEventStatus } from '@/lib/events/transition';
 import { normalizePhysicalAddress, validatePhysicalAddress } from '@/lib/events/address';
 import { resolveEventLifecycle } from '@/lib/events/lifecycle';
-import { buildEventOrderLines } from '@/lib/commerce/event-order';
+import {
+  buildEventOrderLines,
+  getExtendedDiscoveryUpgradeOptions,
+} from '@/lib/commerce/event-order';
 import { detectEventSourceProvider, normalizeProviderUrl } from '@/lib/event-sources/providers';
 
 async function requireUser() {
@@ -1998,4 +2001,295 @@ export async function updateEventRevision(formData: FormData) {
 
   refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/edit?saved=1`);
+}
+
+export async function createExtendedDiscoveryDraftOrder(
+  formData: FormData
+) {
+  const { supabase, user } = await requireUser();
+  const admin = createAdminClient();
+
+  const eventId = cleanText(formData, 'event_id');
+  const targetTotalDays = Number(
+    formData.get('target_total_days') || 0
+  );
+
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
+
+  if (!Number.isFinite(targetTotalDays)) {
+    throw new Error(
+      'Choose a valid Extended Discovery package.'
+    );
+  }
+
+  const { data: event, error: eventError } =
+    await supabase
+      .from('events')
+      .select(`
+        id,
+        owner_id,
+        name,
+        status,
+        is_public,
+        is_approved,
+        event_start_at,
+        included_promo_days,
+        extra_promo_days
+      `)
+      .eq('id', eventId)
+      .eq('owner_id', user.id)
+      .single();
+
+  if (eventError || !event) {
+    throw new Error(
+      eventError?.message || 'Event not found.'
+    );
+  }
+
+  if (
+    event.is_approved !== true ||
+    event.is_public !== true
+  ) {
+    throw new Error(
+      'Extended Discovery is available after the event has been approved and published.'
+    );
+  }
+
+  if (event.status !== 'scheduled') {
+    throw new Error(
+      'Extended Discovery is not available at this stage of the event lifecycle.'
+    );
+  }
+
+  if (!event.event_start_at) {
+    throw new Error(
+      'An event start date is required for Extended Discovery.'
+    );
+  }
+
+  const includedDays = Number(
+    event.included_promo_days || 14
+  );
+
+  const currentExtraDays = Number(
+    event.extra_promo_days || 0
+  );
+
+  const options = getExtendedDiscoveryUpgradeOptions({
+    eventStartAt: event.event_start_at,
+    includedDays,
+    extraDays: currentExtraDays,
+  });
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.package.totalDays === targetTotalDays
+    ) || null;
+
+  if (!selectedOption) {
+    throw new Error(
+      'That Extended Discovery package is not available for this event.'
+    );
+  }
+
+  if (
+    !selectedOption.available ||
+    selectedOption.upgradePrice === null
+  ) {
+    if (
+      selectedOption.reason ===
+      'discovery_time_elapsed'
+    ) {
+      throw new Error(
+        'Some of the Discovery time in that package has already elapsed.'
+      );
+    }
+
+    if (
+      selectedOption.reason ===
+      'legacy_entitlement'
+    ) {
+      throw new Error(
+        'This event has a legacy Discovery entitlement that requires HypeKnight review before self-service upgrading.'
+      );
+    }
+
+    if (
+      selectedOption.reason === 'event_started'
+    ) {
+      throw new Error(
+        'Extended Discovery cannot be purchased after the event has started.'
+      );
+    }
+
+    throw new Error(
+      'That Extended Discovery package is not currently available.'
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: pendingOrder, error: pendingError } =
+    await admin
+      .from('event_orders')
+      .select('id')
+      .eq('event_id', event.id)
+      .eq('user_id', user.id)
+      .eq('order_kind', 'extended_discovery')
+      .eq('status', 'pending')
+      .maybeSingle();
+
+  if (pendingError) {
+    throw new Error(pendingError.message);
+  }
+
+  if (pendingOrder) {
+    throw new Error(
+      'An Extended Discovery checkout is already in progress for this event.'
+    );
+  }
+
+  const { data: existingDraft, error: draftError } =
+    await admin
+      .from('event_orders')
+      .select('id')
+      .eq('event_id', event.id)
+      .eq('user_id', user.id)
+      .eq('order_kind', 'extended_discovery')
+      .eq('status', 'draft')
+      .order('created_at', {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+  if (draftError) {
+    throw new Error(draftError.message);
+  }
+
+  const orderValues = {
+    status: 'draft',
+    subtotal: selectedOption.upgradePrice,
+    discount_amount: 0,
+    total: selectedOption.upgradePrice,
+    coupon_id: null,
+    coupon_code: null,
+    discount_type: null,
+    discount_value: null,
+    stripe_checkout_session_id: null,
+    stripe_payment_intent_id: null,
+    updated_at: nowIso,
+  };
+
+  let order: { id: string } | null = null;
+
+  if (existingDraft) {
+    const {
+      data: updatedOrder,
+      error: updateOrderError,
+    } = await admin
+      .from('event_orders')
+      .update(orderValues)
+      .eq('id', existingDraft.id)
+      .select('id')
+      .single();
+
+    if (updateOrderError || !updatedOrder) {
+      throw new Error(
+        updateOrderError?.message ||
+          'Could not update the Extended Discovery order.'
+      );
+    }
+
+    order = updatedOrder;
+  } else {
+    const {
+      data: insertedOrder,
+      error: insertOrderError,
+    } = await admin
+      .from('event_orders')
+      .insert({
+        event_id: event.id,
+        user_id: user.id,
+        order_kind: 'extended_discovery',
+        ...orderValues,
+      })
+      .select('id')
+      .single();
+
+    if (insertOrderError || !insertedOrder) {
+      throw new Error(
+        insertOrderError?.message ||
+          'Could not create the Extended Discovery order.'
+      );
+    }
+
+    order = insertedOrder;
+  }
+
+  const { error: deleteItemError } = await admin
+    .from('event_order_items')
+    .delete()
+    .eq('order_id', order.id);
+
+  if (deleteItemError) {
+    throw new Error(deleteItemError.message);
+  }
+
+  const { error: itemError } = await admin
+    .from('event_order_items')
+    .insert({
+      order_id: order.id,
+      event_id: event.id,
+      product_code:
+        'HYPEKNIGHT_EXTENDED_DISCOVERY',
+      label: `Extended Discovery · ${targetTotalDays} total days`,
+      quantity: 1,
+      unit_price: selectedOption.upgradePrice,
+      line_total: selectedOption.upgradePrice,
+      metadata: {
+        current_total_days:
+          includedDays + currentExtraDays,
+        target_total_days:
+          selectedOption.package.totalDays,
+        target_extra_days:
+          selectedOption.package.extraDays,
+        current_package_price:
+          selectedOption.package.price -
+          selectedOption.upgradePrice,
+        target_package_price:
+          selectedOption.package.price,
+        upgrade_price:
+          selectedOption.upgradePrice,
+        target_discovery_start_at:
+          selectedOption.targetDiscoveryStartAt,
+        quote_generated_at: nowIso,
+      },
+    });
+
+  if (itemError) {
+    throw new Error(itemError.message);
+  }
+
+  revalidatePath(
+    `/dashboard/events/${event.id}`
+  );
+
+  return {
+    orderId: order.id,
+    eventId: event.id,
+    currentTotalDays:
+      includedDays + currentExtraDays,
+    targetTotalDays:
+      selectedOption.package.totalDays,
+    targetExtraDays:
+      selectedOption.package.extraDays,
+    upgradePrice:
+      selectedOption.upgradePrice,
+    targetDiscoveryStartAt:
+      selectedOption.targetDiscoveryStartAt,
+  };
 }
