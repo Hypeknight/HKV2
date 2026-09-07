@@ -1181,21 +1181,80 @@ export async function updateEventStep3(formData: FormData) {
     if (selectionError) throw new Error(selectionError.message);
   }
 
-  const { data: order, error: orderError } = await admin.from('event_orders').upsert({
-    event_id: eventId,
-    user_id: user.id,
-    order_kind: 'event_initial',
-    status: 'draft',
-    subtotal,
-    discount_amount: 0,
-    total: subtotal,
-    coupon_id: null,
-    coupon_code: null,
-    discount_type: null,
-    discount_value: null,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'event_id,order_kind' }).select('id').single();
-  if (orderError || !order) throw new Error(orderError?.message || 'Could not create order.');
+  const nowIso = new Date().toISOString();
+
+  const { data: existingInitialOrder, error: existingOrderError } =
+    await admin
+      .from('event_orders')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('user_id', user.id)
+      .eq('order_kind', 'event_initial')
+      .maybeSingle();
+
+  if (existingOrderError) {
+    throw new Error(existingOrderError.message);
+  }
+
+  let order: { id: string } | null = null;
+
+  if (existingInitialOrder) {
+    const { data: updatedOrder, error: updateOrderError } =
+      await admin
+        .from('event_orders')
+        .update({
+          status: 'draft',
+          subtotal,
+          discount_amount: 0,
+          total: subtotal,
+          coupon_id: null,
+          coupon_code: null,
+          discount_type: null,
+          discount_value: null,
+          updated_at: nowIso,
+        })
+        .eq('id', existingInitialOrder.id)
+        .select('id')
+        .single();
+
+    if (updateOrderError || !updatedOrder) {
+      throw new Error(
+        updateOrderError?.message ||
+          'Could not update the initial event order.'
+      );
+    }
+
+    order = updatedOrder;
+  } else {
+    const { data: insertedOrder, error: insertOrderError } =
+      await admin
+        .from('event_orders')
+        .insert({
+          event_id: eventId,
+          user_id: user.id,
+          order_kind: 'event_initial',
+          status: 'draft',
+          subtotal,
+          discount_amount: 0,
+          total: subtotal,
+          coupon_id: null,
+          coupon_code: null,
+          discount_type: null,
+          discount_value: null,
+          updated_at: nowIso,
+        })
+        .select('id')
+        .single();
+
+    if (insertOrderError || !insertedOrder) {
+      throw new Error(
+        insertOrderError?.message ||
+          'Could not create the initial event order.'
+      );
+    }
+
+    order = insertedOrder;
+  }
 
   await admin.from('event_order_items').delete().eq('order_id', order.id);
   const { error: itemError } = await admin.from('event_order_items').insert(
