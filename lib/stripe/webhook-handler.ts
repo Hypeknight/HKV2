@@ -3,6 +3,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import {
   reconcileExtendedDiscoveryCheckoutSession,
 } from '@/lib/stripe/reconcile-extended-discovery-checkout';
+import {
+  reconcileFeaturedCheckoutSession,
+} from '@/lib/stripe/reconcile-featured-checkout';
 
 export async function handleStripeWebhookEvent(
   event: Stripe.Event,
@@ -38,6 +41,29 @@ if (kind === 'extended_discovery_payment') {
   }
 
   await reconcileExtendedDiscoveryCheckoutSession(
+    session.id,
+    stripe
+  );
+
+  await supabase.from('stripe_webhook_events').upsert({
+    stripe_event_id: event.id,
+    event_type: event.type,
+    livemode: event.livemode,
+    processed: true,
+    error_message: null,
+  });
+
+  return;
+}
+
+if (kind === 'featured_payment') {
+  if (!stripe) {
+    throw new Error(
+      'Stripe client is required for Featured webhook reconciliation.'
+    );
+  }
+
+  await reconcileFeaturedCheckoutSession(
     session.id,
     stripe
   );
