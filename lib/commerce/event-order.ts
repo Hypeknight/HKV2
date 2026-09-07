@@ -28,6 +28,15 @@ export type ExtendedDiscoveryUpgradeQuote = {
   upgradePrice: number;
 };
 
+export type ExtendedDiscoveryEntitlement = {
+  includedDays: number;
+  extraDays: number;
+  totalDays: number;
+  package: ExtendedDiscoveryPackage | null;
+  isLegacy: boolean;
+  availablePackages: ExtendedDiscoveryPackage[];
+};
+
 /**
  * Business Model 1.0 provisional package pricing.
  *
@@ -80,6 +89,44 @@ export function getExtendedDiscoveryPackage(
       (pkg) => pkg.totalDays === Number(totalDays)
     ) || null
   );
+}
+
+export function resolveExtendedDiscoveryEntitlement({
+  includedDays,
+  extraDays,
+}: {
+  includedDays: number;
+  extraDays: number;
+}): ExtendedDiscoveryEntitlement {
+  const normalizedIncludedDays = Math.max(
+    0,
+    Number(includedDays || 0)
+  );
+
+  const normalizedExtraDays = Math.max(
+    0,
+    Number(extraDays || 0)
+  );
+
+  const totalDays =
+    normalizedIncludedDays + normalizedExtraDays;
+
+  const pkg =
+    normalizedIncludedDays === 14
+      ? getExtendedDiscoveryPackage(totalDays)
+      : null;
+
+  return {
+    includedDays: normalizedIncludedDays,
+    extraDays: normalizedExtraDays,
+    totalDays,
+    package: pkg,
+    isLegacy: pkg === null,
+    availablePackages:
+      EXTENDED_DISCOVERY_PACKAGES.filter(
+        (candidate) => candidate.totalDays > totalDays
+      ),
+  };
 }
 
 export function requireExtendedDiscoveryPackage(
