@@ -49,6 +49,10 @@ export default function FeaturedPurchaseControl({
       Number(row.remaining_capacity || 0) > 0
   );
 
+  const purchasedInventory = inventory.filter(
+    (row) => row.sold_by_event
+  );
+
   function toggleInventory(
     inventoryId: string
   ) {
@@ -175,6 +179,10 @@ export default function FeaturedPurchaseControl({
         {selectableInventory.length ? (
           <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-purple-200">
             Available
+          </span>
+        ) : purchasedInventory.length ? (
+          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+            Purchased
           </span>
         ) : (
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
