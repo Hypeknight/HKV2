@@ -507,8 +507,61 @@ export default async function EventCommandCenterPage({ params }: Props) {
           </section>
 
           <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
+            <p className="text-xs uppercase tracking-[0.25em] text-accent">
+              Grow this event
+            </p>
+
+            <h2 className="mt-2 text-xl font-black text-white">
+              Optional ways to build on your event
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-white/45">
+              Add more discovery time, premium attention, intelligence, or
+              connected live experiences as those tools become available.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <GrowCard
+                label="Extended Discovery"
+                promise="More time"
+                detail={
+                  extraDays > 0
+                    ? `${extraDays} additional Discovery days are attached to this event.`
+                    : `${includedDays} days of Discovery are already included. Extended Discovery purchasing is not open yet.`
+                }
+                status={
+                  extraDays > 0
+                    ? `${totalDiscoveryDays} total days`
+                    : "Coming next"
+                }
+              />
+
+              <GrowCard
+                label="Featured"
+                promise="More attention"
+                detail="Premium placement will be offered by market and date during an event's active Discovery Window."
+                status="Coming soon"
+              />
+
+              <GrowCard
+                label="Patron Pulse"
+                promise="More understanding"
+                detail="Event intelligence and live audience-response tools are being prepared for organizer access."
+                status="In development"
+              />
+
+              <GrowCard
+                label="Linkd'N"
+                promise="More live experience"
+                detail="Connected venue and live-event experiences are still being developed and are not available for purchase."
+                status="In development"
+              />
+            </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
             <p className="text-xs uppercase tracking-[0.25em] text-white/40">
-              Event tools
+              Manage
             </p>
 
             <div className="mt-5 flex flex-col gap-3">
@@ -527,20 +580,6 @@ export default async function EventCommandCenterPage({ params }: Props) {
                   View Public Event
                 </Link>
               ) : null}
-
-              <Link
-                href={`/dashboard/events/${event.id}/patron-pulse`}
-                className={secondaryButton}
-              >
-                Patron Pulse
-              </Link>
-
-              <Link
-                href={`/dashboard/events/${event.id}/linkdn`}
-                className={secondaryButton}
-              >
-                Linkd'N
-              </Link>
 
               <Link
                 href={`/dashboard/events/${event.id}/sources`}
@@ -688,6 +727,37 @@ function NowItem({
           <p className="mt-2 text-xs leading-5 text-white/45">{detail}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function GrowCard({
+  label,
+  promise,
+  detail,
+  status,
+}: {
+  label: string;
+  promise: string;
+  detail: string;
+  status: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-bold text-white">{label}</p>
+          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-accent">
+            {promise}
+          </p>
+        </div>
+
+        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+          {status}
+        </span>
+      </div>
+
+      <p className="mt-3 text-sm leading-6 text-white/45">{detail}</p>
     </div>
   );
 }
