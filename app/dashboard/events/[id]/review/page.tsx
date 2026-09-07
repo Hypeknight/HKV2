@@ -1,7 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { submitEventForModeration, discardDraftEvent } from '@/app/dashboard/events/actions';
+import {
+  cancelEventRevision,
+  submitEventForModeration,
+  discardDraftEvent,
+} from '@/app/dashboard/events/actions';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -38,11 +42,17 @@ export default async function EventReviewPage({ params, searchParams }: Props) {
 
   const { data:order } = await supabase.from('event_orders').select('id,order_number,status,subtotal,discount_amount,total,coupon_code').eq('event_id',id).maybeSingle();
   const { data:items } = order ? await supabase.from('event_order_items').select('id,label,quantity,unit_price,line_total,product_code').eq('order_id',order.id).order('created_at') : { data: [] as any[] };
-  const paid = event.is_paid || event.payment_status === 'paid' || event.payment_override || Number(order?.total ?? event.payment_amount ?? 0) <= 0;
+  const orderTotal = Number(order?.total ?? event.payment_amount ?? 0);
+  const hasPaidEnhancements = orderTotal > 0;
+  const paid =
+    event.is_paid ||
+    event.payment_status === 'paid' ||
+    event.payment_override ||
+    orderTotal <= 0;
 
   return <section className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
     <Link href="/dashboard/events" className="text-sm text-white/60 hover:text-accent">My Events</Link>
-    <header className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-6 sm:p-10"><p className="text-xs uppercase tracking-[0.3em] text-accent">4 of 4 · Review</p><h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">See the night before you submit it.</h1><p className="mt-4 max-w-3xl text-sm leading-6 text-white/65">Review the public event identity, discovery timing, and order. Payment and coupon handling happen from this order, while admin moderation remains intact.</p></header>
+    <header className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-6 sm:p-10"><p className="text-xs uppercase tracking-[0.3em] text-accent">Event Review</p><h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">Review your event.</h1><p className="mt-4 max-w-3xl text-sm leading-6 text-white/65">Confirm your event details and Discovery setup before submitting. Every approved event receives a public page and 14 days of Included Discovery at no cost.</p></header>
     {query.submitted ? <Notice>Event submitted successfully.</Notice> : null}
     {query.paid ? <Notice>Payment reconciled successfully.</Notice> : null}
     {revisionSubmitted ? (
@@ -60,9 +70,193 @@ export default async function EventReviewPage({ params, searchParams }: Props) {
       <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5">
         {event.flyer_url ? <div className="aspect-[16/8] bg-cover bg-center" style={{backgroundImage:`url(${event.flyer_url})`}} /> : <div className="flex aspect-[16/6] items-center justify-center bg-black/30 text-white/30">Event image preview</div>}
         <div className="p-6 sm:p-8"><p className="text-xs uppercase tracking-[.25em] text-accent">HypeKnight Event</p><h2 className="mt-3 text-3xl font-black text-white">{event.name}</h2><p className="mt-3 text-white/65">{event.venue_name}<br />{event.address}, {event.city}, {event.state}</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><Info label="Starts" value={formatDate(event.event_start_at)} /><Info label="Ends" value={event.event_end_at ? formatDate(event.event_end_at) : 'Not specified'} /><Info label="Discoverable until" value={formatDate(event.discovery_end_at || event.promotion_end_at)} /><Info label="Venue connection" value={event.venue_connection_status || 'unmatched'} /></div><div className="mt-5 flex flex-wrap gap-2">{split(event.event_type).map((v)=><Tag key={v}>{v}</Tag>)}{(event.vibe_tags||[]).map((v:string)=><Tag key={v}>{v}</Tag>)}{(event.music_selection||[]).map((v:string)=><Tag key={v}>{v}</Tag>)}</div>{event.description ? <p className="mt-6 leading-7 text-white/60">{event.description}</p> : null}</div>
-      </section>
-      <div className="space-y-6">
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div className="flex items-center justify-between"><div><p className="text-xs uppercase tracking-[.25em] text-white/40">Order</p><h2 className="mt-2 text-xl font-black text-white">{order?.order_number || 'Event package'}</h2></div><span className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60">{paid ? 'Paid / ready' : 'Payment due'}</span></div><div className="mt-6 space-y-3">{(items||[]).map((item:any)=><div key={item.id} className="flex justify-between gap-4 text-sm"><span className="text-white/60">{item.label}{Number(item.quantity)>1 ? ` × ${item.quantity}`:''}</span><span className="font-bold text-white">${Number(item.line_total||0).toFixed(2)}</span></div>)}</div><div className="mt-5 border-t border-white/10 pt-4"><Row label="Subtotal" value={Number(order?.subtotal ?? event.total_price ?? 0)} />{Number(order?.discount_amount||0)>0 ? <Row label={`Discount${order?.coupon_code ? ` (${order.coupon_code})`:''}`} value={-Number(order?.discount_amount||0)} />:null}<div className="mt-3 flex items-center justify-between text-lg"><span className="font-bold text-white">Total</span><span className="text-2xl font-black text-white">${Number(order?.total ?? event.payment_amount ?? 0).toFixed(2)}</span></div></div>{!paid ? <Link href={`/dashboard/events/${id}/payment`} className="mt-6 block rounded-2xl bg-accent px-5 py-4 text-center font-black text-black">Coupons & Payment →</Link> : null}</section>
+          </section>
+
+          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
+            <p className="text-xs uppercase tracking-[.25em] text-accent">
+              What happens after approval
+            </p>
+
+            <h2 className="mt-2 text-2xl font-black text-white">
+              Your HypeKnight event lifecycle
+            </h2>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+              HypeKnight handles your public page, Discovery timing, and eligible
+              event signals automatically. Here is what each stage means.
+            </p>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[.2em] text-white/35">
+                  1 · Public / Pre-Discovery
+                </p>
+                <h3 className="mt-2 font-black text-white">
+                  Begins immediately after approval
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-white/50">
+                  Your event receives a public HypeKnight page. Direct links and
+                  exact searches can reach it, and eligible event signals begin
+                  accumulating before normal Discovery starts.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[.2em] text-white/35">
+                  2 · Included Discovery
+                </p>
+                <h3 className="mt-2 font-black text-white">
+                  Starts 14 days before the event
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-white/50">
+                  HypeKnight can begin surfacing your event through eligible
+                  Discovery experiences. These 14 days are included at no cost.
+                  Extended Discovery can start this window earlier.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[.2em] text-white/35">
+                  3 · Live
+                </p>
+                <h3 className="mt-2 font-black text-white">
+                  During the event
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-white/50">
+                  Your event enters HypeKnight's night-of context while eligible
+                  engagement and experience signals continue accumulating.
+                  Patron Pulse or Linkd'N can add deeper live intelligence when enabled.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[.2em] text-white/35">
+                  4 · Completed
+                </p>
+                <h3 className="mt-2 font-black text-white">
+                  After the night
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-white/50">
+                  Active Discovery ends, but the event page and its performance
+                  history remain available as part of your HypeKnight record.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+              <p className="text-xs uppercase tracking-[.2em] text-white/35">
+                Signals included automatically
+              </p>
+
+              <h3 className="mt-2 font-black text-white">
+                HypeKnight measures how people discover and respond to your event.
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-white/50">
+                Depending on available activity, your free event reporting can
+                include page views, Discovery impressions, saves, shares,
+                ticket-link clicks, directions, engagement signals, traffic
+                attribution, and performance during Pre-Discovery versus active
+                Discovery.
+              </p>
+
+              <div className="mt-4 rounded-xl border border-accent/20 bg-accent/10 p-4">
+                <p className="text-sm font-semibold text-white">
+                  HypeKnight shows you what happened. Patron Pulse helps explain
+                  what it means.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <div className="space-y-6">
+            {hasPaidEnhancements ? (
+              <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[.25em] text-white/40">
+                      Discovery & Enhancements
+                    </p>
+                    <h2 className="mt-2 text-xl font-black text-white">
+                      {order?.order_number || 'Event package'}
+                    </h2>
+                  </div>
+
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60">
+                    {paid ? 'Ready' : 'Payment required'}
+                  </span>
+                </div>
+
+                <div className="mt-6 space-y-3">
+                  {(items || []).map((item: any) => (
+                    <div key={item.id} className="flex justify-between gap-4 text-sm">
+                      <span className="text-white/60">
+                        {item.label}
+                        {Number(item.quantity) > 1 ? ` × ${item.quantity}` : ''}
+                      </span>
+                      <span className="font-bold text-white">
+                        ${Number(item.line_total || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 border-t border-white/10 pt-4">
+                  <Row
+                    label="Subtotal"
+                    value={Number(order?.subtotal ?? event.total_price ?? 0)}
+                  />
+
+                  {Number(order?.discount_amount || 0) > 0 ? (
+                    <Row
+                      label={`Discount${order?.coupon_code ? ` (${order.coupon_code})` : ''}`}
+                      value={-Number(order?.discount_amount || 0)}
+                    />
+                  ) : null}
+
+                  <div className="mt-3 flex items-center justify-between text-lg">
+                    <span className="font-bold text-white">Total</span>
+                    <span className="text-2xl font-black text-white">
+                      ${orderTotal.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {!paid ? (
+                  <Link
+                    href={`/dashboard/events/${id}/payment`}
+                    className="mt-6 block rounded-2xl bg-accent px-5 py-4 text-center font-black text-black"
+                  >
+                    Review Enhancements
+                  </Link>
+                ) : null}
+              </section>
+            ) : (
+              <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
+                <p className="text-xs uppercase tracking-[.25em] text-accent">
+                  Included Discovery
+                </p>
+
+                <h2 className="mt-2 text-xl font-black text-white">
+                  14 days included
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-white/50">
+                  Your approved event receives 14 days of HypeKnight Discovery
+                  before the event.
+                </p>
+
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    No payment required
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-white/40">
+                    Posting and included Discovery are free. Paid enhancements
+                    can be added separately.
+                  </p>
+                </div>
+              </section>
+            )}
         {hasOpenRevision ? (
           <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
             <p className="text-xs uppercase tracking-[.25em] text-accent">Event Revision</p>
@@ -87,13 +281,31 @@ export default async function EventReviewPage({ params, searchParams }: Props) {
             ) : null}
 
             {revisionEditable ? (
-              <Link
-                href={`/dashboard/events/${id}/edit`}
-                className="mt-5 block rounded-2xl bg-white px-5 py-4 text-center font-black text-black"
-              >
-                Continue Revision
-              </Link>
-            ) : null}
+                <div className="mt-5 space-y-3">
+                  <Link
+                    href={`/dashboard/events/${id}/edit`}
+                    className="block rounded-2xl bg-white px-5 py-4 text-center font-black text-black"
+                  >
+                    Continue Revision
+                  </Link>
+
+                  <form action={cancelEventRevision}>
+                    <input type="hidden" name="event_id" value={id} />
+
+                    <button
+                      type="submit"
+                      className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-center font-semibold text-red-200 hover:border-red-500/40"
+                    >
+                      Cancel Revision
+                    </button>
+                  </form>
+
+                  <p className="text-center text-xs leading-5 text-white/35">
+                    Cancelling this revision will not remove or change your
+                    currently approved public event.
+                  </p>
+                </div>
+              ) : null}
           </section>
         ) : (
           <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">

@@ -658,6 +658,51 @@ export async function startEventRevision(formData: FormData) {
   redirect(`/dashboard/events/${eventId}/edit?saved=1`);
 }
 
+export async function cancelEventRevision(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = cleanText(formData, 'event_id');
+
+  if (!eventId) throw new Error('Missing event id.');
+
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, owner_id')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    throw new Error(fetchError?.message || 'Event not found.');
+  }
+
+  if (event.owner_id !== user.id) {
+    throw new Error('You do not have permission to cancel this revision.');
+  }
+
+  const { data: cancelledRevision, error: cancelError } = await supabase
+    .from('event_revisions')
+    .update({
+      status: 'cancelled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('event_id', eventId)
+    .eq('created_by', user.id)
+    .in('status', ['draft', 'rejected'])
+    .select('id, status')
+    .maybeSingle();
+
+  if (cancelError) throw new Error(cancelError.message);
+
+  if (!cancelledRevision || cancelledRevision.status !== 'cancelled') {
+    throw new Error(
+      'This revision could not be cancelled. It may already have been submitted for review.'
+    );
+  }
+
+  refreshOwnerEventPaths(eventId);
+  redirect('/dashboard/events');
+}
+
 export async function submitEventRevision(formData: FormData) {
   const { supabase, user } = await requireUser();
 
