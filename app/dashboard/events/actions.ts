@@ -586,7 +586,9 @@ export async function startEventRevision(formData: FormData) {
   if (existingError) throw new Error(existingError.message);
 
   if (existingRevision?.status === 'submitted') {
-    throw new Error('This event already has a revision awaiting review.');
+    throw new Error(
+      'This event already has a revision awaiting HypeKnight approval. You can submit another revision after the current request is reviewed.'
+    );
   }
 
   if (existingRevision?.status === 'draft') {
@@ -653,7 +655,7 @@ export async function startEventRevision(formData: FormData) {
   if (revisionError) throw new Error(revisionError.message);
 
   refreshOwnerEventPaths(eventId);
-  redirect(`/dashboard/events/${eventId}/edit`);
+  redirect(`/dashboard/events/${eventId}/edit?saved=1`);
 }
 
 export async function submitEventRevision(formData: FormData) {
@@ -1867,7 +1869,7 @@ export async function updateEventRevision(formData: FormData) {
   const revisionReason = cleanText(formData, 'revision_reason');
   const nowIso = new Date().toISOString();
 
-  const { error } = await supabase
+  const { data: savedRevision, error } = await supabase
     .from('event_revisions')
     .update({
       status: 'draft',
@@ -1877,10 +1879,18 @@ export async function updateEventRevision(formData: FormData) {
     })
     .eq('id', revision.id)
     .eq('created_by', user.id)
-    .in('status', ['draft', 'rejected']);
+    .in('status', ['draft', 'rejected'])
+    .select('id, status, updated_at')
+    .maybeSingle();
 
   if (error) throw new Error(error.message);
 
+  if (!savedRevision || savedRevision.status !== 'draft') {
+    throw new Error(
+      'The revision draft could not be saved. Your submitted changes were not updated.'
+    );
+  }
+
   refreshOwnerEventPaths(eventId);
-  redirect(`/dashboard/events/${eventId}/edit`);
+  redirect(`/dashboard/events/${eventId}/edit?saved=1`);
 }

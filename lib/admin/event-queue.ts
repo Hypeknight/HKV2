@@ -90,6 +90,12 @@ export type EventQueueItem = {
   urgency: EventQueueUrgency;
   urgencyReasons: string[];
   isFinanciallyEligible: boolean;
+
+  hasSubmittedRevision: boolean;
+  submittedRevisionId: string | null;
+  revisionSubmittedAt: string | null;
+  revisionReason: string | null;
+  proposedRevisionName: string | null;
 };
 
 export type EventQueueResult = {
@@ -163,6 +169,14 @@ type EventQueueOwnerRow = {
   app_role: string | null;
 };
 
+type SubmittedRevisionRow = {
+  id: string;
+  event_id: string;
+  submitted_at: string | null;
+  revision_reason: string | null;
+  proposed_data: Record<string, unknown> | null;
+};
+
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 
@@ -193,6 +207,38 @@ export async function getAdminEventQueue(
 
   const sort =
     filters.sort || 'newest';
+
+  const {
+    data: submittedRevisionRows,
+    error: submittedRevisionError,
+  } = await supabase
+    .from('event_revisions')
+    .select(`
+      id,
+      event_id,
+      submitted_at,
+      revision_reason,
+      proposed_data
+    `)
+    .eq('status', 'submitted');
+
+  if (submittedRevisionError) {
+    throw new Error(submittedRevisionError.message);
+  }
+
+  const submittedRevisions =
+    (submittedRevisionRows ?? []) as SubmittedRevisionRow[];
+
+  const revisionByEventId = new Map(
+    submittedRevisions.map((revision) => [
+      revision.event_id,
+      revision,
+    ])
+  );
+
+  const revisionEventIds = submittedRevisions.map(
+    (revision) => revision.event_id
+  );
 
   let query = supabase
     .from('events')
@@ -240,10 +286,46 @@ export async function getAdminEventQueue(
       .map((value) => value.trim())
       .filter(Boolean);
 
-    if (statuses.length === 1) {
-      query = query.eq('status', statuses[0]);
-    } else if (statuses.length > 1) {
-      query = query.in('status', statuses);
+    const wantsSubmittedRevision =
+      statuses.includes('revision_submitted');
+
+    const canonicalStatuses = statuses.filter(
+      (value) => value !== 'revision_submitted'
+    );
+
+    if (wantsSubmittedRevision && canonicalStatuses.length === 0) {
+      query = query.in(
+        'id',
+        revisionEventIds.length
+          ? revisionEventIds
+          : [ZERO_UUID]
+      );
+    } else if (
+      !wantsSubmittedRevision &&
+      canonicalStatuses.length === 1
+    ) {
+      query = query.eq('status', canonicalStatuses[0]);
+    } else if (
+      !wantsSubmittedRevision &&
+      canonicalStatuses.length > 1
+    ) {
+      query = query.in('status', canonicalStatuses);
+    } else if (
+      wantsSubmittedRevision &&
+      canonicalStatuses.length
+    ) {
+      const revisionIdFilter = (
+        revisionEventIds.length
+          ? revisionEventIds
+          : [ZERO_UUID]
+      ).join(',');
+
+      query = query.or(
+        [
+          `status.in.(${canonicalStatuses.join(',')})`,
+          `id.in.(${revisionIdFilter})`,
+        ].join(',')
+      );
     }
   }
 
@@ -289,17 +371,42 @@ export async function getAdminEventQueue(
 
   if (search) {
     const safeSearch = escapePostgrestSearch(search);
+    const normalizedSearch = search.toLowerCase();
 
-    query = query.or(
-      [
-        `name.ilike.%${safeSearch}%`,
-        `venue_name.ilike.%${safeSearch}%`,
-        `city.ilike.%${safeSearch}%`,
-        `state.ilike.%${safeSearch}%`,
-        `slug.ilike.%${safeSearch}%`,
-        `id.eq.${isUuid(search) ? search : ZERO_UUID}`,
-      ].join(',')
-    );
+    const matchingRevisionEventIds = submittedRevisions
+      .filter((revision) => {
+        const searchableRevision = [
+          revision.revision_reason,
+          ...Object.values(revision.proposed_data ?? {}),
+        ]
+          .filter(
+            (value) =>
+              typeof value === 'string' ||
+              typeof value === 'number'
+          )
+          .join(' ')
+          .toLowerCase();
+
+        return searchableRevision.includes(normalizedSearch);
+      })
+      .map((revision) => revision.event_id);
+
+    const searchFilters = [
+      `name.ilike.%${safeSearch}%`,
+      `venue_name.ilike.%${safeSearch}%`,
+      `city.ilike.%${safeSearch}%`,
+      `state.ilike.%${safeSearch}%`,
+      `slug.ilike.%${safeSearch}%`,
+      `id.eq.${isUuid(search) ? search : ZERO_UUID}`,
+    ];
+
+    if (matchingRevisionEventIds.length) {
+      searchFilters.push(
+        `id.in.(${matchingRevisionEventIds.join(',')})`
+      );
+    }
+
+    query = query.or(searchFilters.join(','));
   }
 
   query = applySort(query, sort);
@@ -387,7 +494,8 @@ export async function getAdminEventQueue(
       row,
       row.owner_id
         ? ownerMap.get(row.owner_id)
-        : undefined
+        : undefined,
+      revisionByEventId.get(row.id)
     )
   );
 
@@ -469,9 +577,13 @@ async function getQueueSummary(
       'approved_awaiting_payment',
     ]),
 
-    countEvents(supabase, [
-      'revision_submitted',
-    ]),
+    supabase
+      .from('event_revisions')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('status', 'submitted'),
 
     supabase
       .from('events')
@@ -591,7 +703,8 @@ async function countEvents(
 
 function normalizeQueueItem(
   row: EventQueueDatabaseRow,
-  owner?: EventQueueOwnerRow
+  owner?: EventQueueOwnerRow,
+  revision?: SubmittedRevisionRow
 ): EventQueueItem {
 
   const totalPrice = Number(
@@ -682,6 +795,17 @@ function normalizeQueueItem(
     urgencyReasons:
       urgencyResult.reasons,
     isFinanciallyEligible,
+
+    hasSubmittedRevision: Boolean(revision),
+    submittedRevisionId: revision?.id ?? null,
+    revisionSubmittedAt:
+      revision?.submitted_at ?? null,
+    revisionReason:
+      revision?.revision_reason ?? null,
+    proposedRevisionName:
+      typeof revision?.proposed_data?.name === 'string'
+        ? revision.proposed_data.name
+        : null,
   };
 }
 

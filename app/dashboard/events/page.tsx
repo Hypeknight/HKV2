@@ -38,6 +38,10 @@ type DashboardEvent = {
   revision_admin_note: string | null;
   removal_reason: string | null;
   refund_status: string | null;
+
+  revision_status: string | null;
+  revision_id: string | null;
+  revision_admin_feedback: string | null;
 };
 
 const PUBLIC_STATUSES = ["scheduled", "active", "live"];
@@ -93,23 +97,74 @@ export default async function DashboardEventsPage() {
     throw new Error(error.message);
   }
 
-  const eventRows = (events ?? []) as DashboardEvent[];
+  const baseEventRows = (events ?? []) as Omit<
+    DashboardEvent,
+    "revision_status" | "revision_id" | "revision_admin_feedback"
+  >[];
 
-  const needsAction = eventRows.filter((event) =>
-    [
-      "draft",
-      "building",
-      "rejected",
-      "revision_draft",
-      "approved_unpaid",
-      "approved_awaiting_payment",
-    ].includes(event.status),
+  const eventIds = baseEventRows.map((event) => event.id);
+
+  let revisionMap = new Map<
+    string,
+    {
+      id: string;
+      status: string;
+      admin_note: string | null;
+    }
+  >();
+
+  if (eventIds.length) {
+    const { data: revisions, error: revisionsError } = await supabase
+      .from("event_revisions")
+      .select("id,event_id,status,admin_note")
+      .in("event_id", eventIds)
+      .in("status", ["draft", "submitted", "rejected"]);
+
+    if (revisionsError) {
+      throw new Error(revisionsError.message);
+    }
+
+    revisionMap = new Map(
+      (revisions ?? []).map((revision) => [
+        revision.event_id,
+        {
+          id: revision.id,
+          status: revision.status,
+          admin_note: revision.admin_note,
+        },
+      ]),
+    );
+  }
+
+  const eventRows: DashboardEvent[] = baseEventRows.map((event) => {
+    const revision = revisionMap.get(event.id);
+
+    return {
+      ...event,
+      revision_status: revision?.status ?? null,
+      revision_id: revision?.id ?? null,
+      revision_admin_feedback: revision?.admin_note ?? null,
+    };
+  });
+
+  const needsAction = eventRows.filter(
+    (event) =>
+      [
+        "draft",
+        "building",
+        "rejected",
+        "revision_draft",
+        "approved_unpaid",
+        "approved_awaiting_payment",
+      ].includes(event.status) ||
+      ["draft", "rejected"].includes(event.revision_status || ""),
   );
 
-  const pending = eventRows.filter((event) =>
-    ["submitted", "paid_awaiting_approval", "revision_submitted"].includes(
-      event.status,
-    ),
+  const pending = eventRows.filter(
+    (event) =>
+      ["submitted", "paid_awaiting_approval", "revision_submitted"].includes(
+        event.status,
+      ) || event.revision_status === "submitted",
   );
 
   const active = eventRows.filter((event) =>
@@ -340,7 +395,15 @@ function EventSection({
 
 function DashboardEventCard({ event }: { event: DashboardEvent }) {
   const canEdit = EDITABLE_STATUSES.includes(event.status);
-  const canRevise = PUBLIC_STATUSES.includes(event.status);
+
+  const hasDraftRevision = event.revision_status === "draft";
+  const hasSubmittedRevision = event.revision_status === "submitted";
+  const hasRejectedRevision = event.revision_status === "rejected";
+
+  const canRevise =
+    PUBLIC_STATUSES.includes(event.status) &&
+    !event.revision_status;
+
   const canDiscard = ["draft", "building"].includes(event.status);
   const canRequestRemoval = PUBLIC_STATUSES.includes(event.status);
 
@@ -414,12 +477,28 @@ function DashboardEventCard({ event }: { event: DashboardEvent }) {
             </p>
           </div>
 
-          {event.rejection_reason || event.revision_admin_note ? (
+          {hasSubmittedRevision ? (
+            <div className="mt-4 rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4 text-sm leading-6 text-purple-100">
+              <p className="font-semibold">Revision awaiting approval</p>
+
+              <p className="mt-1 text-purple-100/75">
+                HypeKnight is reviewing your submitted changes. Your currently
+                approved event remains public, and you cannot start another
+                revision until this request is reviewed.
+              </p>
+            </div>
+          ) : null}
+
+          {event.rejection_reason ||
+          event.revision_admin_feedback ||
+          event.revision_admin_note ? (
             <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm leading-6 text-red-100">
               <p className="font-semibold">Administrator feedback</p>
 
               <p className="mt-1 text-red-100/75">
-                {event.revision_admin_note || event.rejection_reason}
+                {event.revision_admin_feedback ||
+                  event.revision_admin_note ||
+                  event.rejection_reason}
               </p>
             </div>
           ) : null}
@@ -477,6 +556,35 @@ function DashboardEventCard({ event }: { event: DashboardEvent }) {
                   ? "Continue Revision"
                   : "Continue / Edit"}
               </Link>
+            ) : null}
+
+            {hasDraftRevision ? (
+              <Link
+                href={`/dashboard/events/${event.id}/edit`}
+                className="rounded-2xl bg-accent px-4 py-3 text-center font-semibold text-black hover:opacity-90"
+              >
+                Continue Revision
+              </Link>
+            ) : null}
+
+            {hasRejectedRevision ? (
+              <Link
+                href={`/dashboard/events/${event.id}/edit`}
+                className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-center font-semibold text-yellow-100 hover:border-yellow-500/40"
+              >
+                Correct Revision
+              </Link>
+            ) : null}
+
+            {hasSubmittedRevision ? (
+              <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 px-4 py-3 text-center">
+                <p className="font-semibold text-purple-100">
+                  Revision Awaiting Approval
+                </p>
+                <p className="mt-1 text-xs text-purple-100/60">
+                  Another revision cannot be started yet.
+                </p>
+              </div>
             ) : null}
 
             {canRevise ? (

@@ -1103,6 +1103,21 @@ function EventTableRow({
           {event.venue_name || 'Venue not listed'}
         </p>
 
+        {event.hasSubmittedRevision ? (
+          <div className="mt-2 rounded-xl border border-purple-500/20 bg-purple-500/10 px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-purple-200">
+              Pending Revision
+            </p>
+
+            {event.proposedRevisionName &&
+            event.proposedRevisionName !== event.name ? (
+              <p className="mt-1 truncate text-xs text-purple-100/70">
+                Proposed: {event.proposedRevisionName}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="mt-2 flex flex-wrap gap-2">
           <UrgencyBadge urgency={event.urgency} />
 
@@ -1172,7 +1187,9 @@ function EventTableRow({
           href={`/admin/events/${event.id}`}
           className="rounded-xl bg-accent px-3 py-2 text-center text-sm font-semibold text-black hover:opacity-90"
         >
-          Review
+          {event.hasSubmittedRevision
+            ? 'Review Revision'
+            : 'Review'}
         </Link>
 
         {canViewPublic ? (
@@ -1197,7 +1214,7 @@ function MobileEventCard({
     REVIEW_STATUSES.includes(event.status);
 
   const needsRevision =
-    event.status === 'revision_submitted';
+    event.hasSubmittedRevision;
 
   const canViewPublic =
     Boolean(event.slug) &&
@@ -1217,6 +1234,11 @@ function MobileEventCard({
       <div className="p-5">
         <div className="flex flex-wrap gap-2">
           <StatusBadge status={event.status} />
+
+          {event.hasSubmittedRevision ? (
+            <MiniChip label="Pending Revision" />
+          ) : null}
+
           <PaymentBadge event={event} />
           <UrgencyBadge urgency={event.urgency} />
         </div>
@@ -1224,6 +1246,20 @@ function MobileEventCard({
         <h3 className="mt-4 text-2xl font-black text-white">
           {event.name}
         </h3>
+
+        {event.hasSubmittedRevision &&
+        event.proposedRevisionName &&
+        event.proposedRevisionName !== event.name ? (
+          <div className="mt-3 rounded-2xl border border-purple-500/20 bg-purple-500/10 p-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-purple-200">
+              Proposed Revision
+            </p>
+
+            <p className="mt-1 font-semibold text-purple-100">
+              {event.proposedRevisionName}
+            </p>
+          </div>
+        ) : null}
 
         <p className="mt-2 text-sm text-white/60">
           {event.venue_name || 'Venue not listed'} ·{' '}
@@ -1267,7 +1303,9 @@ function MobileEventCard({
             href={`/admin/events/${event.id}`}
             className="rounded-2xl bg-accent px-4 py-3 text-center font-semibold text-black"
           >
-            Open Review
+            {event.hasSubmittedRevision
+              ? 'Review Revision'
+              : 'Open Review'}
           </Link>
 
           {canViewPublic ? (

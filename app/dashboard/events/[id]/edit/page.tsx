@@ -11,10 +11,18 @@ import { Chip, InfoCard, Panel, SectionHeader } from '@/components/ui';
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{
+    saved?: string;
+  }>;
 };
 
-export default async function EventRevisionEditPage({ params }: Props) {
+export default async function EventRevisionEditPage({
+  params,
+  searchParams,
+}: Props) {
   const { id } = await params;
+  const query = searchParams ? await searchParams : {};
+  const revisionSaved = query.saved === '1';
   const supabase = await createClient();
 
   const {
@@ -311,38 +319,69 @@ export default async function EventRevisionEditPage({ params }: Props) {
         </section>
       </form>
 
-      <form
-        action={submitEventRevision}
-        className="rounded-[2rem] border border-accent/20 bg-accent/10 p-5 sm:rounded-[2.5rem] sm:p-8"
-      >
-        <input type="hidden" name="event_id" value={displayEvent.id} />
+      {revisionSaved ? (
+        <>
+          <section className="rounded-[2rem] border border-green-500/20 bg-green-500/10 p-5 sm:rounded-[2.5rem] sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-green-200">
+              Revision Draft Saved
+            </p>
 
-        <SectionHeader
-          eyebrow="Submit Revision"
-          title="Ready for HypeKnight to review?"
-          text="Tell us what changed so admin can review the update faster."
-        />
+            <h2 className="mt-2 text-2xl font-black text-white">
+              Your latest revision changes are saved.
+            </h2>
 
-        <label className="mt-6 block">
-          <span className="text-sm font-semibold text-white/70">
-            Final Revision Note
-          </span>
-          <textarea
-            name="revision_reason"
-            rows={4}
-            defaultValue={displayEvent.revision_reason || ''}
-            placeholder="Tell HypeKnight what was changed."
-            className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+            <p className="mt-3 text-sm leading-6 text-green-100/70">
+              Review the saved information above. When everything is correct,
+              you can now submit this revision to HypeKnight for approval.
+            </p>
+          </section>
+
+          <form
+            action={submitEventRevision}
+            className="rounded-[2rem] border border-accent/20 bg-accent/10 p-5 sm:rounded-[2.5rem] sm:p-8"
+          >
+            <input
+              type="hidden"
+              name="event_id"
+              value={displayEvent.id}
+            />
+
+            <SectionHeader
+              eyebrow="Submit Revision"
+              title="Ready for HypeKnight to review?"
+              text="This submits the revision draft you just saved."
+            />
+
+            <label className="mt-6 block">
+              <span className="text-sm font-semibold text-white/70">
+                Final Revision Note
+              </span>
+              <textarea
+                name="revision_reason"
+                rows={4}
+                defaultValue={displayEvent.revision_reason || ''}
+                placeholder="Tell HypeKnight what was changed."
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50"
+              />
+            </label>
+
+            <button
+              type="submit"
+              className="mt-6 w-full rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90"
+            >
+              Submit Revision for Approval
+            </button>
+          </form>
+        </>
+      ) : (
+        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:rounded-[2.5rem] sm:p-8">
+          <SectionHeader
+            eyebrow="Submission Locked"
+            title="Save your revision before submitting."
+            text="HypeKnight only submits the latest saved revision. Save the draft above first so none of your changes are missed."
           />
-        </label>
-
-        <button
-          type="submit"
-          className="mt-6 w-full rounded-2xl bg-accent px-6 py-4 font-semibold text-black hover:opacity-90"
-        >
-          Submit Revision for Approval
-        </button>
-      </form>
+        </section>
+      )}
     </section>
   );
 }

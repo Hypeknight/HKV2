@@ -41,7 +41,7 @@ export default async function EventReviewPage({ params, searchParams }: Props) {
   const paid = event.is_paid || event.payment_status === 'paid' || event.payment_override || Number(order?.total ?? event.payment_amount ?? 0) <= 0;
 
   return <section className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
-    <Link href={`/dashboard/events/${id}/edit/step-3`} className="text-sm text-white/60 hover:text-accent">← Back to Enhance</Link>
+    <Link href="/dashboard/events" className="text-sm text-white/60 hover:text-accent">My Events</Link>
     <header className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-6 sm:p-10"><p className="text-xs uppercase tracking-[0.3em] text-accent">4 of 4 · Review</p><h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">See the night before you submit it.</h1><p className="mt-4 max-w-3xl text-sm leading-6 text-white/65">Review the public event identity, discovery timing, and order. Payment and coupon handling happen from this order, while admin moderation remains intact.</p></header>
     {query.submitted ? <Notice>Event submitted successfully.</Notice> : null}
     {query.paid ? <Notice>Payment reconciled successfully.</Notice> : null}
