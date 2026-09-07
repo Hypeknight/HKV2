@@ -2147,9 +2147,20 @@ export async function createExtendedDiscoveryDraftOrder(
   }
 
   if (pendingOrder) {
-    throw new Error(
-      'An Extended Discovery checkout is already in progress for this event.'
-    );
+    return {
+      orderId: pendingOrder.id,
+      eventId: event.id,
+      currentTotalDays:
+        includedDays + currentExtraDays,
+      targetTotalDays:
+        selectedOption.package.totalDays,
+      targetExtraDays:
+        selectedOption.package.extraDays,
+      upgradePrice:
+        selectedOption.upgradePrice,
+      targetDiscoveryStartAt:
+        selectedOption.targetDiscoveryStartAt,
+    };
   }
 
   const { data: existingDraft, error: draftError } =

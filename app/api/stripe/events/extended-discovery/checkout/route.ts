@@ -108,10 +108,74 @@ export async function POST(req: Request) {
   }
 
   if (order.status === 'pending') {
+    if (!order.stripe_checkout_session_id) {
+      return NextResponse.json(
+        {
+          error:
+            'This checkout is pending but has no Stripe session. Please try again.',
+        },
+        { status: 409 }
+      );
+    }
+
+    const { stripe } =
+      await getStripeForCurrentMode();
+
+    const existingSession =
+      await stripe.checkout.sessions.retrieve(
+        order.stripe_checkout_session_id
+      );
+
+    if (
+      existingSession.status === 'open' &&
+      existingSession.url
+    ) {
+      return NextResponse.json({
+        order_id: order.id,
+        checkout_url: existingSession.url,
+        resumed: true,
+      });
+    }
+
+    if (existingSession.status === 'complete') {
+      const siteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        process.env.RENDER_EXTERNAL_URL ||
+        new URL(req.url).origin;
+
+      return NextResponse.json({
+        order_id: order.id,
+        checkout_url:
+          `${siteUrl}/dashboard/events/${order.event_id}` +
+          `/extended-discovery/success` +
+          `?session_id=${existingSession.id}`,
+        resumed: true,
+      });
+    }
+
+    if (existingSession.status === 'expired') {
+      await admin
+        .from('event_orders')
+        .update({
+          status: 'void',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', order.id)
+        .eq('status', 'pending');
+
+      return NextResponse.json(
+        {
+          error:
+            'Your previous Stripe checkout expired. Click Upgrade again to start a new checkout.',
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       {
         error:
-          'Checkout is already in progress for this Extended Discovery order.',
+          'The existing Stripe checkout could not be resumed.',
       },
       { status: 409 }
     );
@@ -323,17 +387,9 @@ export async function POST(req: Request) {
   }
 
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL;
-
-  if (!siteUrl) {
-    return NextResponse.json(
-      {
-        error:
-          'Missing NEXT_PUBLIC_SITE_URL.',
-      },
-      { status: 500 }
-    );
-  }
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    new URL(req.url).origin;
 
   const { stripe, mode } =
     await getStripeForCurrentMode();

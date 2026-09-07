@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { startEventRevision } from "@/app/dashboard/events/actions";
 import PublicEventLinkCard from "@/components/events/PublicEventLinkCard";
+import ExtendedDiscoveryUpgradeControl from "@/components/events/ExtendedDiscoveryUpgradeControl";
+import { getExtendedDiscoveryUpgradeOptions } from "@/lib/commerce/event-order";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -161,6 +163,15 @@ export default async function EventCommandCenterPage({ params }: Props) {
   const includedDays = Number(event.included_promo_days || 14);
   const extraDays = Number(event.extra_promo_days || 0);
   const totalDiscoveryDays = includedDays + extraDays;
+
+  const extendedDiscoveryOptions =
+    event.event_start_at
+      ? getExtendedDiscoveryUpgradeOptions({
+          eventStartAt: event.event_start_at,
+          includedDays,
+          extraDays,
+        })
+      : [];
 
   return (
     <main className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
@@ -521,19 +532,10 @@ export default async function EventCommandCenterPage({ params }: Props) {
             </p>
 
             <div className="mt-5 space-y-3">
-              <GrowCard
-                label="Extended Discovery"
-                promise="More time"
-                detail={
-                  extraDays > 0
-                    ? `${extraDays} additional Discovery days are attached to this event.`
-                    : `${includedDays} days of Discovery are already included. Extended Discovery purchasing is not open yet.`
-                }
-                status={
-                  extraDays > 0
-                    ? `${totalDiscoveryDays} total days`
-                    : "Coming next"
-                }
+              <ExtendedDiscoveryUpgradeControl
+                eventId={event.id}
+                currentTotalDays={totalDiscoveryDays}
+                options={extendedDiscoveryOptions}
               />
 
               <GrowCard
