@@ -2304,3 +2304,81 @@ export async function createExtendedDiscoveryDraftOrder(
       selectedOption.targetDiscoveryStartAt,
   };
 }
+
+export async function createFeaturedDraftOrder(
+  formData: FormData
+) {
+  const { supabase, user } = await requireUser();
+
+  const eventId = cleanText(formData, 'event_id');
+
+  const inventoryIds = formData
+    .getAll('inventory_id')
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  if (!eventId) {
+    throw new Error('Missing event id.');
+  }
+
+  if (!inventoryIds.length) {
+    throw new Error('Choose at least one Featured date.');
+  }
+
+  const uniqueInventoryIds = Array.from(
+    new Set(inventoryIds)
+  );
+
+  const { data, error } = await supabase.rpc(
+    'create_featured_draft_order',
+    {
+      p_event_id: eventId,
+      p_inventory_ids: uniqueInventoryIds,
+    }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const result = Array.isArray(data)
+    ? data[0]
+    : data;
+
+  if (!result?.order_id) {
+    throw new Error(
+      'HypeKnight could not create the Featured order.'
+    );
+  }
+
+  const subtotal = Number(result.subtotal || 0);
+  const total = Number(result.total || 0);
+  const reservationCount = Number(
+    result.reservation_count || 0
+  );
+
+  if (
+    !Number.isFinite(total) ||
+    total <= 0 ||
+    reservationCount <= 0
+  ) {
+    throw new Error(
+      'The Featured order returned an invalid total or reservation count.'
+    );
+  }
+
+  revalidatePath(`/dashboard/events/${eventId}`);
+
+  return {
+    orderId: String(result.order_id),
+    eventId,
+    subtotal,
+    total,
+    reservationCount,
+    expiresAt:
+      result.expires_at
+        ? String(result.expires_at)
+        : null,
+    ownerId: user.id,
+  };
+}
