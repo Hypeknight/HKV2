@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   discardDraftEvent,
   requestEventRemoval,
+  startEventRevision,
 } from "@/app/dashboard/events/actions";
 import {
   ButtonLink,
@@ -339,6 +340,7 @@ function EventSection({
 
 function DashboardEventCard({ event }: { event: DashboardEvent }) {
   const canEdit = EDITABLE_STATUSES.includes(event.status);
+  const canRevise = PUBLIC_STATUSES.includes(event.status);
   const canDiscard = ["draft", "building"].includes(event.status);
   const canRequestRemoval = PUBLIC_STATUSES.includes(event.status);
 
@@ -475,6 +477,19 @@ function DashboardEventCard({ event }: { event: DashboardEvent }) {
                   ? "Continue Revision"
                   : "Continue / Edit"}
               </Link>
+            ) : null}
+
+            {canRevise ? (
+              <form action={startEventRevision}>
+                <input type="hidden" name="event_id" value={event.id} />
+
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-accent px-4 py-3 text-center font-semibold text-black hover:opacity-90"
+                >
+                  Revise Event
+                </button>
+              </form>
             ) : null}
 
             {["approved_unpaid", "approved_awaiting_payment"].includes(

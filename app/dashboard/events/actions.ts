@@ -694,7 +694,10 @@ export async function submitEventRevision(formData: FormData) {
 
   const nowIso = new Date().toISOString();
 
-  const { error: revisionError } = await supabase
+  const {
+    data: submittedRevision,
+    error: revisionError,
+  } = await supabase
     .from('event_revisions')
     .update({
       status: 'submitted',
@@ -707,9 +710,19 @@ export async function submitEventRevision(formData: FormData) {
     })
     .eq('id', revision.id)
     .eq('created_by', user.id)
-    .eq('status', 'draft');
+    .eq('status', 'draft')
+    .select('id, status')
+    .maybeSingle();
 
-  if (revisionError) throw new Error(revisionError.message);
+  if (revisionError) {
+    throw new Error(revisionError.message);
+  }
+
+  if (!submittedRevision || submittedRevision.status !== 'submitted') {
+    throw new Error(
+      'The revision could not be submitted. The draft was not changed.'
+    );
+  }
 
   refreshOwnerEventPaths(eventId);
   redirect(`/dashboard/events/${eventId}/review?revision=submitted`);
