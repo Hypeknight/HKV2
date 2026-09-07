@@ -20,9 +20,13 @@ type ExtendedDiscoveryOrderItemMetadata = {
 };
 
 export async function reconcileExtendedDiscoveryCheckoutSession(
-  sessionId: string
+  sessionId: string,
+  stripeClient?: Stripe
 ) {
-  const { stripe } = await getStripeForCurrentMode();
+  const stripe =
+    stripeClient ||
+    (await getStripeForCurrentMode()).stripe;
+
   const admin = createAdminClient();
 
   const session = await stripe.checkout.sessions.retrieve(

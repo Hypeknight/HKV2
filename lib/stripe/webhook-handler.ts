@@ -1,7 +1,13 @@
 import Stripe from 'stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
+import {
+  reconcileExtendedDiscoveryCheckoutSession,
+} from '@/lib/stripe/reconcile-extended-discovery-checkout';
 
-export async function handleStripeWebhookEvent(event: Stripe.Event) {
+export async function handleStripeWebhookEvent(
+  event: Stripe.Event,
+  stripe?: Stripe
+) {
   const supabase = createAdminClient();
 
   let venueId: string | null = null;
@@ -23,6 +29,29 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
       graceEnd.setDate(graceEnd.getDate() + 7);
 
 const kind = session.metadata?.kind;
+
+if (kind === 'extended_discovery_payment') {
+  if (!stripe) {
+    throw new Error(
+      'Stripe client is required for Extended Discovery webhook reconciliation.'
+    );
+  }
+
+  await reconcileExtendedDiscoveryCheckoutSession(
+    session.id,
+    stripe
+  );
+
+  await supabase.from('stripe_webhook_events').upsert({
+    stripe_event_id: event.id,
+    event_type: event.type,
+    livemode: event.livemode,
+    processed: true,
+    error_message: null,
+  });
+
+  return;
+}
 
 if (kind === 'event_payment') {
   const eventId = session.metadata?.event_id;

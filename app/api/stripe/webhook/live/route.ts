@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     );
   }
 
-  await handleStripeWebhookEvent(event);
+  await handleStripeWebhookEvent(event, stripe);
 
   return NextResponse.json({ received: true, mode: 'live' });
 }
