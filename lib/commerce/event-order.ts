@@ -15,8 +15,113 @@ export type EventOrderLine = {
   metadata?: Record<string, unknown>;
 };
 
+export type ExtendedDiscoveryPackage = {
+  totalDays: 14 | 21 | 28 | 44 | 60;
+  extraDays: 0 | 7 | 14 | 30 | 46;
+  price: number;
+  included: boolean;
+};
+
+export type ExtendedDiscoveryUpgradeQuote = {
+  currentPackage: ExtendedDiscoveryPackage;
+  targetPackage: ExtendedDiscoveryPackage;
+  upgradePrice: number;
+};
+
+/**
+ * Business Model 1.0 provisional package pricing.
+ *
+ * These values are the current product defaults. They can later be moved
+ * into platform settings without changing the package/upgrade rules used
+ * by the application.
+ */
+export const EXTENDED_DISCOVERY_PACKAGES: readonly ExtendedDiscoveryPackage[] = [
+  {
+    totalDays: 14,
+    extraDays: 0,
+    price: 0,
+    included: true,
+  },
+  {
+    totalDays: 21,
+    extraDays: 7,
+    price: 9.99,
+    included: false,
+  },
+  {
+    totalDays: 28,
+    extraDays: 14,
+    price: 24.99,
+    included: false,
+  },
+  {
+    totalDays: 44,
+    extraDays: 30,
+    price: 59.99,
+    included: false,
+  },
+  {
+    totalDays: 60,
+    extraDays: 46,
+    price: 99.99,
+    included: false,
+  },
+] as const;
+
 export function money(value: number) {
   return Number(Number(value || 0).toFixed(2));
+}
+
+export function getExtendedDiscoveryPackage(
+  totalDays: number
+): ExtendedDiscoveryPackage | null {
+  return (
+    EXTENDED_DISCOVERY_PACKAGES.find(
+      (pkg) => pkg.totalDays === Number(totalDays)
+    ) || null
+  );
+}
+
+export function requireExtendedDiscoveryPackage(
+  totalDays: number
+): ExtendedDiscoveryPackage {
+  const pkg = getExtendedDiscoveryPackage(totalDays);
+
+  if (!pkg) {
+    throw new Error(
+      `Unsupported Extended Discovery package: ${totalDays} total days.`
+    );
+  }
+
+  return pkg;
+}
+
+export function quoteExtendedDiscoveryUpgrade({
+  currentTotalDays,
+  targetTotalDays,
+}: {
+  currentTotalDays: number;
+  targetTotalDays: number;
+}): ExtendedDiscoveryUpgradeQuote {
+  const currentPackage =
+    requireExtendedDiscoveryPackage(currentTotalDays);
+
+  const targetPackage =
+    requireExtendedDiscoveryPackage(targetTotalDays);
+
+  if (targetPackage.totalDays <= currentPackage.totalDays) {
+    throw new Error(
+      'Extended Discovery upgrades must increase the current Discovery Window.'
+    );
+  }
+
+  return {
+    currentPackage,
+    targetPackage,
+    upgradePrice: money(
+      targetPackage.price - currentPackage.price
+    ),
+  };
 }
 
 export function buildEventOrderLines({
@@ -46,6 +151,13 @@ export function buildEventOrderLines({
     },
   ];
 
+  /*
+   * Compatibility path for the V3.4 event builder.
+   *
+   * Do not use this per-day pricing model for new V3.5 Extended Discovery
+   * purchases. It remains temporarily so the existing builder continues
+   * working until Step 3 is migrated to the package model.
+   */
   if (extraPromoDays > 0) {
     lines.push({
       code: 'HYPEKNIGHT_EXTRA_PROMO_DAY',
@@ -66,7 +178,10 @@ export function buildEventOrderLines({
     });
   }
 
-  const subtotal = money(lines.reduce((sum, line) => sum + line.total, 0));
+  const subtotal = money(
+    lines.reduce((sum, line) => sum + line.total, 0)
+  );
+
   return { lines, subtotal };
 }
 
@@ -82,10 +197,22 @@ export function applyOrderDiscount({
   discountPercent?: number | null;
 }) {
   let discount = 0;
-  if (discountType === 'fixed') discount = Number(discountAmount || 0);
-  if (discountType === 'percent') {
-    discount = subtotal * (Number(discountPercent || 0) / 100);
+
+  if (discountType === 'fixed') {
+    discount = Number(discountAmount || 0);
   }
-  discount = money(Math.min(Math.max(discount, 0), subtotal));
-  return { discount, total: money(Math.max(subtotal - discount, 0)) };
+
+  if (discountType === 'percent') {
+    discount =
+      subtotal * (Number(discountPercent || 0) / 100);
+  }
+
+  discount = money(
+    Math.min(Math.max(discount, 0), subtotal)
+  );
+
+  return {
+    discount,
+    total: money(Math.max(subtotal - discount, 0)),
+  };
 }
