@@ -323,9 +323,10 @@ export default async function DashboardPage() {
                 status="V3.5"
               />
               <BusinessTool
+                href="/dashboard/entertainment-profile"
                 title="Entertainment Profile"
-                text="Your event history and the signal patterns HypeKnight learns over time."
-                status="V3.5"
+                text="Your event history, market footprint, and measurable HypeKnight activity over time."
+                status="Available"
               />
               <BusinessTool
                 href="/dashboard/billing"
