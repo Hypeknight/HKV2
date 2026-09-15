@@ -102,7 +102,7 @@ export default async function HomePage() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-base leading-7 text-white/58 sm:text-lg sm:leading-8">
-                Find the event, venue, music, crowd, and vibe that fit your night — then let HypeKnight get smarter from the choices people actually make.
+                Find events, venues, music, and vibes that fit the night you want.
               </p>
 
               <div className="mt-7 max-w-5xl">
@@ -243,7 +243,7 @@ export default async function HomePage() {
             <p className="hk-kicker">Know the move?</p>
             <h2 className="mt-3 text-3xl font-black tracking-tight text-white">Help build the map.</h2>
             <p className="mt-3 text-sm leading-6 text-white/55">
-              Promoters and venues can put real local experiences into discovery and begin building measurable demand history.
+              Post your event for free, reach people deciding where to go, and keep using the ticket link you already have.
             </p>
             <div className="mt-6 grid gap-2">
               <Link href="/dashboard/events/new/step-1" className="rounded-2xl bg-accent px-5 py-3 text-center text-sm font-black text-black hover:brightness-110">
