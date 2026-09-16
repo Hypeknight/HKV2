@@ -10,24 +10,6 @@ const discoveryFeatures = [
   'Event type, location, and date',
 ];
 
-const ambassadorResponsibilities = [
-  'Introduce HypeKnight to Atlanta venues, promoters, and organizers',
-  'Help identify and share upcoming local events',
-  'Create Atlanta-focused social media content',
-  'Provide feedback while the platform is in beta',
-  'Support local launch campaigns and community outreach',
-  'Represent HypeKnight professionally within the Atlanta market',
-];
-
-const ambassadorBenefits = [
-  'Founding Ambassador recognition',
-  'Personal referral and coupon opportunities',
-  'Commission eligibility on qualifying purchases',
-  'Early access to selected features',
-  'Priority consideration for city leadership roles',
-  'Opportunities to host future Hype Report segments',
-];
-
 export default function AtlantaPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -55,12 +37,6 @@ export default function AtlantaPage() {
               Explore HypeKnight
             </Link>
 
-            <a
-              href="#ambassador"
-              className="rounded-xl border border-white/20 px-6 py-3 font-semibold transition hover:bg-white/10"
-            >
-              Founding Ambassador Program
-            </a>
           </div>
         </div>
       </section>
@@ -144,59 +120,6 @@ export default function AtlantaPage() {
                 <p className="mt-3 leading-7 text-slate-400">{item.text}</p>
               </article>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <section
-        id="ambassador"
-        className="mx-auto max-w-6xl scroll-mt-24 px-6 py-16"
-      >
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-violet-300">
-          Founding Ambassador Program
-        </p>
-
-        <h2 className="mt-3 text-3xl font-bold">
-          Help introduce HypeKnight to Atlanta.
-        </h2>
-
-        <p className="mt-5 max-w-4xl leading-7 text-slate-300">
-          Founding Ambassadors are early community representatives who help
-          HypeKnight build relationships, gather feedback, share events, and
-          create local awareness.
-        </p>
-
-        <div className="mt-10 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-7">
-            <h3 className="text-xl font-semibold">The role</h3>
-
-            <ul className="mt-5 space-y-3 text-slate-300">
-              {ambassadorResponsibilities.map((item) => (
-                <li key={item} className="flex gap-3">
-                  <span className="text-violet-300">⚔</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-7">
-            <h3 className="text-xl font-semibold">The opportunity</h3>
-
-            <ul className="mt-5 space-y-3 text-slate-200">
-              {ambassadorBenefits.map((item) => (
-                <li key={item} className="flex gap-3">
-                  <span className="text-violet-300">✓</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-
-            <p className="mt-6 text-sm leading-6 text-slate-400">
-              Commission eligibility, payout requirements, promotional
-              discounts, and program terms are governed by the official
-              HypeKnight Ambassador Program terms.
-            </p>
           </div>
         </div>
       </section>

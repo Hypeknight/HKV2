@@ -4,16 +4,16 @@ export default function PrivacyPage() {
       <p>Last updated: June 16, 2026</p>
 
       <h2>1. Information We Collect</h2>
-      <p>We may collect account information, contact information, location preferences, event activity, ambassador application details, coupon activity, and messages submitted through forms.</p>
+      <p>We may collect account information, contact information, location preferences, event activity, coupon activity, and messages submitted through forms. We may also retain information previously provided through legacy HypeKnight programs, including Ambassador applications.</p>
 
       <h2>2. How We Use Information</h2>
-      <p>We use information to operate HypeKnight, manage accounts, review events, process ambassador applications, track coupons, respond to users, and improve the platform.</p>
+      <p>We use information to operate HypeKnight, manage accounts, review events, administer applicable transactions and coupons, respond to users, improve the platform, and maintain records associated with prior platform programs where appropriate.</p>
 
-      <h2>3. Ambassador Information</h2>
-      <p>Ambassador applicants may provide legal name, contact information, city, state, social handles, promotion plans, and payout readiness information.</p>
+      <h2>3. Legacy Ambassador Information</h2>
+      <p>HypeKnight previously accepted Ambassador applications that could include legal name, contact information, city, state, social handles, promotion plans, and payout readiness information. The Ambassador Program is not currently offered, but information previously submitted may be retained as appropriate for recordkeeping, legal, security, or program administration purposes.</p>
 
       <h2>4. Payment and Tax Information</h2>
-      <p>HypeKnight may request payout information before issuing ambassador payments. Sensitive tax documents should be handled carefully and only collected when necessary.</p>
+      <p>HypeKnight may retain or process payout information when needed to address legitimate obligations associated with prior programs or other applicable payments. Sensitive tax documents should be handled carefully and collected only when necessary.</p>
 
       <h2>5. Sharing</h2>
       <p>We do not sell personal information. We may share information with service providers needed to operate payments, hosting, email, analytics, security, or legal compliance.</p>

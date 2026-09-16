@@ -147,7 +147,7 @@ export default async function DashboardProfilePage() {
             <Input
               name="phone"
               label="Phone Number"
-              helper="Optional. Useful for future event owner, venue, or ambassador tools."
+              helper="Optional. Useful for future event owner or venue tools."
               defaultValue={profile?.phone || ''}
             />
           </div>
@@ -208,7 +208,7 @@ export default async function DashboardProfilePage() {
           <SectionHeader
             eyebrow="Save Changes"
             title="Ready to update your profile?"
-            text="Role access is managed separately by HypeKnight approval. You cannot self-assign admin, ambassador, DJ, or venue owner permissions here."
+            text="Role access is managed separately by HypeKnight approval. You cannot self-assign admin, DJ, or venue owner permissions here."
           />
 
           <button

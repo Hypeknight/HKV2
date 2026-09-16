@@ -3,6 +3,16 @@ export default function PayoutPolicyPage() {
     <LegalPage title="HypeKnight Payout Policy">
       <p>Last updated: June 16, 2026</p>
 
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <p className="font-bold text-white">Legacy program document</p>
+        <p className="mt-2">
+          This policy describes payout rules associated with the legacy
+          HypeKnight Ambassador Program. The program is not currently offered,
+          and this document remains available for historical and reference
+          purposes.
+        </p>
+      </div>
+
       <h2>1. Payout Eligibility</h2>
       <p>Ambassador commission must be marked eligible and approved before payout.</p>
 

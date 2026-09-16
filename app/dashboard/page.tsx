@@ -17,7 +17,6 @@ export default async function DashboardPage() {
     { data: profile },
     { data: events },
     { data: venues },
-    { data: ambassadorProfile },
     { data: savedRows },
     { data: rsvpRows },
   ] = await Promise.all([
@@ -32,7 +31,6 @@ export default async function DashboardPage() {
       .select('id,name,slug,city,state,status')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: false }),
-    supabase.from('ambassador_profiles').select('status').eq('user_id', user.id).maybeSingle(),
     supabase.from('event_saves').select('id,event_id').eq('user_id', user.id),
     supabase.from('event_rsvps').select('event_id,status').eq('user_id', user.id),
   ]);
@@ -375,7 +373,7 @@ export default async function DashboardPage() {
             <p className="hk-kicker">Creator & partner access</p>
             <h2 className="mt-2 text-2xl font-black text-white">Other workspaces.</h2>
             <p className="mt-2 max-w-2xl text-sm text-white/45">
-              Venue, ambassador, and administration tools remain available when your account has access to them.
+              Venue and administration tools remain available when your account has access to them.
             </p>
           </div>
 
@@ -402,12 +400,6 @@ export default async function DashboardPage() {
                 ? `${venueRows.length} connected venue${venueRows.length === 1 ? '' : 's'}`
                 : 'Venue tools'
             }
-          />
-          <Workspace
-            href={ambassadorProfile?.status === 'active' ? '/ambassadors/dashboard' : '/dashboard/ambassador/apply'}
-            title="Ambassador"
-            available
-            text={ambassadorProfile?.status === 'active' ? 'Active ambassador workspace' : 'Program & application'}
           />
           <Workspace
             href="/admin"

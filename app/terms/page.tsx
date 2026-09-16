@@ -7,13 +7,13 @@ export default function TermsPage() {
       <p>By accessing or using HypeKnight, you agree to these Terms of Service.</p>
 
       <h2>2. Platform Purpose</h2>
-      <p>HypeKnight helps users discover events and allows event owners, promoters, venues, ambassadors, and approved users to submit or promote event-related content.</p>
+      <p>HypeKnight helps users discover events and allows event owners, promoters, venues, and approved users to submit or manage event-related content.</p>
 
       <h2>3. User Accounts</h2>
       <p>Users are responsible for the accuracy of their account information and activity connected to their account.</p>
 
       <h2>4. Event Listings</h2>
-      <p>Event submissions may require review, payment, approval, or moderation before becoming publicly visible.</p>
+      <p>Event submissions may require review, approval, or moderation before becoming publicly visible. Payment is not required to submit an event or for an approved event to receive its public HypeKnight page. Optional paid enhancements are governed by their applicable terms and availability.</p>
 
       <h2>5. Payments, Coupons, and Refunds</h2>
       <p>Payments, coupon use, revisions, removals, and refunds are subject to HypeKnight review and applicable policies.</p>

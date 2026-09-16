@@ -3,6 +3,15 @@ export default function CommissionPolicyPage() {
     <LegalPage title="HypeKnight Commission Policy">
       <p>Last updated: June 16, 2026</p>
 
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <p className="font-bold text-white">Legacy program document</p>
+        <p className="mt-2">
+          This policy describes the legacy HypeKnight Ambassador Program and
+          is not an offer of a current commission program. It remains
+          available for historical and reference purposes.
+        </p>
+      </div>
+
       <h2>1. Commission Basis</h2>
       <p>Ambassadors may earn 30% of HypeKnight profit from eligible sales made with their approved coupon code.</p>
 

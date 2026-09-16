@@ -3,6 +3,15 @@ export default function AmbassadorAgreementPage() {
     <LegalPage title="HypeKnight Ambassador Program Agreement">
       <p>Last updated: June 16, 2026</p>
 
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <p className="font-bold text-white">Legacy program document</p>
+        <p className="mt-2">
+          The HypeKnight Ambassador Program described in this document is not
+          currently offered. This document remains available for historical
+          and reference purposes.
+        </p>
+      </div>
+
       <h2>1. Ambassador Status</h2>
       <p>Ambassadors are independent contractors and are not employees, partners, agents, or representatives of HypeKnight.</p>
 

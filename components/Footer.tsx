@@ -29,14 +29,12 @@ export default function Footer() {
           <FooterGroup title="For operators" links={[
             ['/promote', 'Promote'],
             ['/pricing', 'Pricing'],
-            ['/ambassadors', 'Ambassadors'],
             ['/contact', 'Contact'],
           ]} />
           <FooterGroup title="Company" links={[
             ['/about', 'About'],
             ['/privacy', 'Privacy'],
             ['/terms', 'Terms'],
-            ['/commission-policy', 'Commission policy'],
           ]} />
         </div>
 

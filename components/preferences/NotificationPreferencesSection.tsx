@@ -25,12 +25,6 @@ const OPTIONS = [
     icon: '👥',
     description: 'Notify me when friends RSVP or show interest.',
   },
-  {
-    value: 'ambassador_events',
-    label: 'Ambassador Promotions',
-    icon: '🎟️',
-    description: 'Notify me about ambassador-backed events and offers.',
-  },
 ];
 
 type Props = {
