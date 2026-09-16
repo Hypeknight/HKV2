@@ -120,8 +120,16 @@ export default async function EventCommandCenterPage({ params }: Props) {
     signalRows.map((row) => [row.signal_type, Number(row.signal_count || 0)])
   );
 
+  const uniqueActorCounts = new Map(
+    signalRows.map((row) => [
+      row.signal_type,
+      Number(row.unique_actor_count || 0),
+    ])
+  );
+
   const performance = {
     views: signalCounts.get("event_view") || 0,
+    uniqueReach: uniqueActorCounts.get("event_view") || 0,
     saves: signalCounts.get("event_saved") || 0,
     shares: signalCounts.get("event_shared") || 0,
     ticketClicks: signalCounts.get("ticket_outbound") || 0,
@@ -479,7 +487,13 @@ export default async function EventCommandCenterPage({ params }: Props) {
               <PerformanceMetric
                 label="Event Views"
                 value={performance.views}
-                detail="Recorded event-page views"
+                detail="Total recorded event-page views, including repeat visits"
+              />
+
+              <PerformanceMetric
+                label="Unique Reach"
+                value={performance.uniqueReach}
+                detail="Distinct identifiable accounts or browsers that viewed this event"
               />
 
               <PerformanceMetric
