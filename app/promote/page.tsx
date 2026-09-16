@@ -23,8 +23,14 @@ export default function PromotePage() {
           <p className="mt-4 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
             Posting an event on HypeKnight is free. Once approved, your event
             gets a public page immediately and an included Discovery Window
-            before the event. When you want more reach, you can choose paid
+            before the event. When you want more exposure, you can choose paid
             enhancements without paying just to be listed.
+          </p>
+
+          <p className="mt-4 max-w-3xl text-sm font-semibold text-white">
+            <span className="text-accent">Why HypeKnight:</span>{' '}
+            Post for free. Keep your existing ticket link. Get discovered by
+            people deciding where to go.
           </p>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
