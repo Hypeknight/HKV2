@@ -1,9 +1,5 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 type CitySignal = {
   city: string;
   state?: string | null;
@@ -16,9 +12,15 @@ type CitySignal = {
 };
 
 export async function analyzeDiscoverySignals(signals: CitySignal[]) {
-  if (!process.env.OPENAI_API_KEY) {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
     throw new Error('Missing OPENAI_API_KEY');
   }
+
+  const openai = new OpenAI({
+    apiKey,
+  });
 
   const response = await openai.responses.create({
     model: 'gpt-4.1-mini',
