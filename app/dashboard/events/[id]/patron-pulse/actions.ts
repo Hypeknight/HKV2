@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { requirePatronPulseCapability } from '@/lib/patron-pulse/service';
 import { resolvePatronPulseSettings } from '@/lib/patron-pulse/resolve-settings';
 
 async function requireEventOwner(eventId: string) {
@@ -115,11 +114,6 @@ export async function createPatronPulseSession(
     );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability: 'guest-check-in',
-  });
 
   const { data: existing, error: existingError } =
     await supabase
@@ -362,16 +356,6 @@ export async function createPatronPulse(
     );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability:
-      pulseType === 'dj_request'
-        ? 'song-requests'
-        : pulseType === 'challenge'
-          ? 'challenges'
-          : 'live-polls',
-  });
 
   const requiresOptions = [
     'poll',
@@ -613,11 +597,6 @@ export async function createPatronPulseAnnouncement(
     );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability: 'announcements',
-  });
 
   const nowIso = new Date().toISOString();
 

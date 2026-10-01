@@ -47,11 +47,6 @@ export async function checkIntoPatronPulse(
     throw new Error('Missing event information.');
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability: 'guest-check-in',
-  });
 
   const pulse = await loadPublicPatronPulse({
     supabase,
@@ -122,11 +117,6 @@ export async function submitPatronPulseResponse(
     throw new Error('Missing pulse information.');
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability: 'live-polls',
-  });
 
   const { data: pulse, error: pulseError } =
     await supabase
