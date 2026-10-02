@@ -2,17 +2,14 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { resolveEffectiveSystemTier } from '@/lib/systems/resolve-effective-tier';
 import PatronPulseAutoRefresh from '@/components/patron-pulse/PatronPulseAutoRefresh';
 import PulseResultsPanel, { type PatronPulseResultSummary } from '@/components/patron-pulse/PulseResultsPanel';
 import PatronPulseActivityTimeline, { type PatronPulseActivityItem } from '@/components/patron-pulse/PatronPulseActivityTimeline';
 import {
   createPatronPulse,
   createPatronPulseAnnouncement,
-  createPatronPulseSession,
   updatePatronPulseAnnouncementStatus,
   updatePatronPulseSessionSettings,
-  updatePatronPulseSessionStatus,
   updatePatronPulseStatus,
 } from './actions';
 
@@ -81,13 +78,6 @@ export default async function PatronPulseOwnerPage({
   if (!isOwner && !isAdmin) {
     redirect('/dashboard/events');
   }
-
-  const entitlement =
-    await resolveEffectiveSystemTier({
-      supabase,
-      eventId: event.id,
-      systemSlug: 'patron-pulse',
-    });
 
   const { data: session, error: sessionError } =
     await supabase
@@ -278,8 +268,7 @@ export default async function PatronPulseOwnerPage({
       };
     });
 
-  const canUsePulse =
-    entitlement.effectiveTierId !== null;
+  const canUsePulse = true;
 
   return (
     <section className="mx-auto max-w-[1500px] space-y-8 px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
@@ -318,20 +307,7 @@ export default async function PatronPulseOwnerPage({
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Metric
-            label="Effective Tier"
-            value={
-              entitlement.effectiveTierName ||
-              'No Access'
-            }
-          />
 
-          <Metric
-            label="Access Source"
-            value={formatLabel(
-              entitlement.entitlementSource
-            )}
-          />
 
           <Metric
             label="Session"
@@ -354,18 +330,8 @@ export default async function PatronPulseOwnerPage({
         </div>
       </section>
 
-      {!canUsePulse ? (
-        <section className="rounded-[2rem] border border-yellow-500/20 bg-yellow-500/10 p-6">
-          <h2 className="text-2xl font-black text-yellow-100">
-            Patron Pulse is not enabled for this event.
-          </h2>
+      {!session ? (
 
-          <p className="mt-3 text-sm leading-7 text-yellow-100/65">
-            The event needs a venue entitlement, qualified event purchase,
-            or administrative grant before a Pulse session can be created.
-          </p>
-        </section>
-      ) : !session ? (
         <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
           <p className="text-xs uppercase tracking-[0.25em] text-accent">
             Setup
@@ -374,33 +340,6 @@ export default async function PatronPulseOwnerPage({
           <h2 className="mt-2 text-3xl font-black text-white">
             Create the event’s Pulse session.
           </h2>
-
-          <form
-            action={createPatronPulseSession}
-            className="mt-6 grid gap-4"
-          >
-            <input
-              type="hidden"
-              name="event_id"
-              value={event.id}
-            />
-
-            <label>
-              <span className={labelClass}>
-                Session Title
-              </span>
-
-              <input
-                name="title"
-                defaultValue="Live Event Experience"
-                className={fieldClass}
-              />
-            </label>
-
-            <button className={primaryButtonClass}>
-              Create Patron Pulse Session
-            </button>
-          </form>
         </section>
       ) : (
         <>
@@ -467,49 +406,6 @@ export default async function PatronPulseOwnerPage({
               </form>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {session.status !== 'open' ? (
-                  <SessionAction
-                    eventId={event.id}
-                    sessionId={session.id}
-                    status="open"
-                    label={
-                      session.status === 'cancelled'
-                        ? 'Restore and Open Session'
-                        : session.status === 'closed'
-                          ? 'Reopen Session'
-                          : 'Open Session'
-                    }
-                    primary
-                  />
-                ) : (
-                  <SessionAction
-                    eventId={event.id}
-                    sessionId={session.id}
-                    status="paused"
-                    label="Pause Session"
-                  />
-                )}
-
-                {session.status === 'paused' ? (
-                  <SessionAction
-                    eventId={event.id}
-                    sessionId={session.id}
-                    status="open"
-                    label="Resume Session"
-                    primary
-                  />
-                ) : null}
-
-                {!['closed', 'cancelled'].includes(
-                  session.status
-                ) ? (
-                  <SessionAction
-                    eventId={event.id}
-                    sessionId={session.id}
-                    status="closed"
-                    label="Close Session"
-                  />
-                ) : null}
               </div>
             </Panel>
 
@@ -997,51 +893,6 @@ function Toggle({
   );
 }
 
-function SessionAction({
-  eventId,
-  sessionId,
-  status,
-  label,
-  primary = false,
-}: {
-  eventId: string;
-  sessionId: string;
-  status: string;
-  label: string;
-  primary?: boolean;
-}) {
-  return (
-    <form action={updatePatronPulseSessionStatus}>
-      <input
-        type="hidden"
-        name="event_id"
-        value={eventId}
-      />
-
-      <input
-        type="hidden"
-        name="session_id"
-        value={sessionId}
-      />
-
-      <input
-        type="hidden"
-        name="status"
-        value={status}
-      />
-
-      <button
-        className={
-          primary
-            ? primaryButtonClass
-            : secondaryButtonClass
-        }
-      >
-        {label}
-      </button>
-    </form>
-  );
-}
 
 function PulseAction({
   eventId,

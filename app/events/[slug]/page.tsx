@@ -12,6 +12,11 @@ import PatronPulseGuestPanel from '@/components/patron-pulse/PatronPulseGuestPan
 import { getEventShareMetadata } from '@/lib/metadata/event-metadata';
 import { loadPublicPatronPulse } from '@/lib/patron-pulse/service';
 import {
+  getActivePresenceVerification,
+  resolvePresenceParticipant,
+} from '@/lib/presence/service';
+import { cookies } from 'next/headers';
+import {
   recordRecentEventView,
   reportEvent,
   toggleEventSave,
@@ -169,6 +174,30 @@ export default async function EventDetailPage({ params }: Props) {
     eventId: event.id,
     userId: user?.id || null,
   });
+
+  const cookieStore = await cookies();
+  const participantToken =
+    cookieStore.get('hk_presence_participant')?.value ?? null;
+
+  const presenceParticipant = participantToken
+    ? await resolvePresenceParticipant({
+        participantToken,
+        userId: user?.id ?? null,
+      })
+    : null;
+
+  const eventPresenceVerification = presenceParticipant
+    ? await getActivePresenceVerification({
+        participantId: presenceParticipant.id,
+        contextType: 'event',
+        eventId: event.id,
+      })
+    : null;
+
+  const hasVerifiedEventPresence =
+    eventPresenceVerification?.verification_level === 'presence_supported' ||
+    eventPresenceVerification?.verification_level === 'verified';
+
 
   const { data: profile } = user
     ? await supabase
@@ -725,7 +754,10 @@ export default async function EventDetailPage({ params }: Props) {
           viewerResponses={
             patronPulse.viewerResponses
           }
-        />
+
+      participantToken={participantToken}
+      hasVerifiedEventPresence={hasVerifiedEventPresence}
+    />
 
         <section>
           <Panel
