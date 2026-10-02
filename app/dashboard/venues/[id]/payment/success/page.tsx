@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { reconcileVenueCheckoutSession } from '@/lib/stripe/reconcile-venue-checkout';
+import { requireVenueManagement } from '@/lib/venues/require-management';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -23,11 +24,12 @@ export default async function VenuePaymentSuccessPage({
 
   if (!user) redirect('/auth/login');
 
+  await requireVenueManagement(id);
   const { data: venue, error } = await supabase
     .from('venues')
     .select('*')
     .eq('id', id)
-    .eq('owner_id', user.id)
+
     .single();
 
   if (error || !venue) notFound();
