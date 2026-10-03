@@ -57,7 +57,12 @@ export default async function VenueDetailPage({ params }: Props) {
 
   const isOwner = !!user && venue.owner_id === user.id;
   const isAdmin = viewerRole === 'admin';
-  const canView = (venue.status === 'active' && venue.is_visible) || isOwner || isAdmin;
+  // BM1: Venue Core is a network entity, not a paid activation.
+  // Claim, verification, management, and payment are independent concerns.
+  // Closed venues may remain public as historical entities.
+  const isPublicVenue = venue.status !== 'archived';
+
+  const canView = isPublicVenue || isOwner || isAdmin;
 
   if (!canView) notFound();
 
@@ -734,8 +739,13 @@ export default async function PublicVenuePage({ params }: Props) {
   const isOwner = !!user && venue.owner_id === user.id;
   const isAdmin = viewerRole === 'admin';
 
-  const canView =
-    (venue.status === 'active' && venue.is_visible === true) ||
+  // BM1: Venue Core is a network entity, not a paid activation.
+// Claim, management, verification, and payment are independent concerns.
+// Closed venues may remain public as historical entities.
+const isPublicVenue = venue.status !== 'archived';
+
+const canView =
+    isPublicVenue ||
     isOwner ||
     isAdmin;
 
