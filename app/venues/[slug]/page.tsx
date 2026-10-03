@@ -885,10 +885,10 @@ const canRequestMusic =
               ) : null}
 
               <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <HeroStat label="Status" value={venue.status === 'active' ? 'Open on HypeKnight' : venue.status} />
+                <HeroStat label="Venue Core" value="Basic Profile" />
                 <HeroStat label="City" value={`${venue.city}, ${venue.state}`} />
-                <HeroStat label="Featured" value={venue.is_featured ? 'Yes' : 'No'} />
-                <HeroStat label="Live Features" value={hasAnyLiveFeature ? 'Enabled' : 'Basic Profile'} />
+
+                <HeroStat label="Live Features" value={hasAnyLiveFeature ? 'Enabled' : 'Not active'} />
               </div>
             </div>
           </div>
@@ -1265,7 +1265,7 @@ const canRequestMusic =
 <QuickRow
   label="Music Review"
   value={musicRequestsModerationMode}
-/>    
+/>
             </div>
           </div>
 
