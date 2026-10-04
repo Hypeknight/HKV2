@@ -10,23 +10,58 @@ export default async function DashboardVenuesPage() {
 
   if (!user) redirect('/auth/login');
 
-  const { data: venues, error } = await supabase
-    .from('venues')
-    .select(`
-      id,
-      name,
-      slug,
-      city,
-      state,
-      status,
-      created_at,
-      updated_at
-    `)
-    .eq('owner_id', user.id)
-    .order('updated_at', { ascending: false });
+  // BM1: venue_managers is the canonical venue-specific management
+  // relationship. venues.owner_id remains a temporary compatibility
+  // fallback for legitimate legacy owners during migration.
+  const { data: managerRows, error: managerError } = await supabase
+    .from('venue_managers')
+    .select('venue_id')
+    .eq('user_id', user.id)
+    .eq('status', 'active');
 
-  if (error) {
-    throw new Error(error.message);
+  if (managerError && managerError.code !== '42P01') {
+    throw new Error(managerError.message);
+  }
+
+  const { data: legacyVenues, error: legacyError } = await supabase
+    .from('venues')
+    .select('id')
+    .eq('owner_id', user.id);
+
+  if (legacyError) {
+    throw new Error(legacyError.message);
+  }
+
+  const venueIds = Array.from(
+    new Set([
+      ...(managerRows ?? []).map((row: any) => String(row.venue_id)),
+      ...(legacyVenues ?? []).map((row: any) => String(row.id)),
+    ]),
+  );
+
+  let venues: any[] = [];
+
+  if (venueIds.length > 0) {
+    const { data, error } = await supabase
+      .from('venues')
+      .select(`
+        id,
+        name,
+        slug,
+        city,
+        state,
+        status,
+        created_at,
+        updated_at
+      `)
+      .in('id', venueIds)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    venues = data ?? [];
   }
 
   return (

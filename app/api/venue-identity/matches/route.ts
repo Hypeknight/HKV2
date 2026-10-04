@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizePhysicalAddress } from '@/lib/events/address';
+import { resolveVenueAuthority } from '@/lib/venues/authority';
 
 export async function GET(req: Request) {
   const supabase = await createClient();
@@ -30,6 +31,10 @@ export async function GET(req: Request) {
     }) === target
   );
 
+  const authority = match
+    ? await resolveVenueAuthority(supabase, String(match.id), user.id)
+    : null;
+
   return NextResponse.json({
     match: match ? {
       id: match.id,
@@ -38,7 +43,9 @@ export async function GET(req: Request) {
       city: match.city,
       state: match.state,
       slug: match.slug,
-      ownedByCurrentUser: match.owner_id === user.id,
+      // Compatibility response name retained for the current event builder.
+      // Semantics are BM1 management authority, not legacy venues.owner_id.
+      ownedByCurrentUser: authority?.canManage === true,
     } : null,
   });
 }
