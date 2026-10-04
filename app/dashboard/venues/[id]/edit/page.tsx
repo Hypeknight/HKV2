@@ -85,14 +85,7 @@ export default async function EditVenueLandingPage({ params }: Props) {
           href={`/dashboard/venues/${venue.id}/edit/hours`}
           buttonLabel="Edit Hours"
         />
-
-        <SectionCard
-          title="Step 3"
-          text="Choose package, billing, lock-in, and enabled services."
-          href={`/dashboard/venues/${venue.id}/edit/step-3`}
-          buttonLabel="Edit Step 3"
-        />
-        <SectionCard
+<SectionCard
           title="Music Queue"
           text="Review, sort, and manage submitted music requests."
           href={`/dashboard/venues/${venue.id}/music-requests`}
@@ -101,7 +94,7 @@ export default async function EditVenueLandingPage({ params }: Props) {
         
         <SectionCard
           title="Review"
-          text="Review everything before payment activation and final venue go-live setup."
+          text="Review your Venue Core profile, operating information, and public presentation."
           href={`/dashboard/venues/${venue.id}/review`}
           buttonLabel="Open Review"
         />

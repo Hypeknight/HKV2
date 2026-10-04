@@ -436,5 +436,5 @@ export async function updateVenueHours(formData: FormData) {
 
   if (insertError) throw new Error(insertError.message);
 
-  redirect(`/dashboard/venues/${venueId}/edit/step-3`);
+  redirect(`/dashboard/venues/${venueId}/review`);
 }
