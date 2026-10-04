@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { requireVenueAuthority } from '@/lib/venues/authority';
 
 function slugify(value: string) {
   return value
@@ -75,9 +76,12 @@ export async function createVenueStep1(formData: FormData) {
 }
 
 export async function updateVenueStep1(formData: FormData) {
-  const { supabase, user } = await requireVenueOwnerOrAdmin();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
+  await requireVenueAuthority(supabase, venueId, user.id);
   const name = String(formData.get('name') || '').trim();
   const address = String(formData.get('address') || '').trim();
   const city = String(formData.get('city') || '').trim();
@@ -91,7 +95,6 @@ export async function updateVenueStep1(formData: FormData) {
     .from('venues')
     .select('id, slug, status')
     .eq('id', venueId)
-    .eq('owner_id', user.id)
     .single();
 
   if (venueError || !venue) throw new Error(venueError?.message || 'Venue not found');
@@ -115,8 +118,7 @@ export async function updateVenueStep1(formData: FormData) {
       cover_image_url: coverImageUrl || null,
       is_visible: isVisible,
     })
-    .eq('id', venueId)
-    .eq('owner_id', user.id);
+    .eq('id', venueId);
 
   if (error) throw new Error(error.message);
 
@@ -124,9 +126,12 @@ export async function updateVenueStep1(formData: FormData) {
 }
 
 export async function updateVenueStep2(formData: FormData) {
-  const { supabase, user } = await requireVenueOwnerOrAdmin();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
+  await requireVenueAuthority(supabase, venueId, user.id);
   const description = String(formData.get('description') || '').trim();
   const specialMessage = String(formData.get('special_message') || '').trim();
   const dressCode = String(formData.get('dress_code') || '').trim();
@@ -143,8 +148,7 @@ export async function updateVenueStep2(formData: FormData) {
       description: description || null,
       special_message: specialMessage || null,
     })
-    .eq('id', venueId)
-    .eq('owner_id', user.id);
+    .eq('id', venueId);
 
   if (venueError) throw new Error(venueError.message);
 
@@ -178,9 +182,12 @@ export async function updateVenueStep2(formData: FormData) {
 }
 
 export async function updateVenueStep3(formData: FormData) {
-  const { supabase, user } = await requireVenueOwnerOrAdmin();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
+  await requireVenueAuthority(supabase, venueId, user.id);
   const planCode = String(formData.get('plan_code') || 'entertainer_3m');
   const billingMode = String(formData.get('billing_mode') || 'monthly');
   const lockIn = String(formData.get('lock_in') || '') === 'yes';
@@ -193,7 +200,6 @@ export async function updateVenueStep3(formData: FormData) {
     .from('venues')
     .select('id, owner_id')
     .eq('id', venueId)
-    .eq('owner_id', user.id)
     .single();
 
   if (venueError || !venue) {
@@ -383,8 +389,7 @@ export async function updateVenueStep3(formData: FormData) {
       updated_at: new Date().toISOString(),
       status: 'draft',
     })
-    .eq('id', venueId)
-    .eq('owner_id', user.id);
+    .eq('id', venueId);
 
   if (venueUpdateError) {
     throw new Error(venueUpdateError.message);
@@ -394,15 +399,17 @@ export async function updateVenueStep3(formData: FormData) {
 }
 
 export async function updateVenueHours(formData: FormData) {
-  const { supabase, user } = await requireVenueOwnerOrAdmin();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
+  await requireVenueAuthority(supabase, venueId, user.id);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
     .select('id, owner_id')
     .eq('id', venueId)
-    .eq('owner_id', user.id)
     .single();
 
   if (venueError || !venue) {
