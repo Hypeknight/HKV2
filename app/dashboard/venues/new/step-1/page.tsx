@@ -29,8 +29,7 @@ export default async function NewVenueStep1Page() {
         </p>
         <h1 className="mt-3 text-4xl font-bold text-white">Step 1: Basic Venue Info</h1>
         <p className="mt-3 max-w-2xl text-white/70">
-          Start your venue as a draft. It will not go public until payment activates
-          the subscription and visibility is enabled.
+          Start your venue profile with the basics. HypeKnight Venue Core is free; payment is not required for your venue identity or basic public profile.
         </p>
       </div>
 

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { requireVenueManagement } from '@/lib/venues/require-management';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -26,11 +27,12 @@ export default async function VenueReviewPage({ params }: Props) {
 
   if (!user) redirect('/auth/login');
 
+  await requireVenueManagement(id);
   const { data: venue, error: venueError } = await supabase
     .from('venues')
     .select('*')
     .eq('id', id)
-    .eq('owner_id', user.id)
+
     .single();
 
   if (venueError || !venue) notFound();
@@ -53,38 +55,6 @@ export default async function VenueReviewPage({ params }: Props) {
     .eq('venue_id', id)
     .order('day_of_week', { ascending: true });
 
-  const { data: subscription } = await supabase
-    .from('venue_subscriptions')
-    .select('*')
-    .eq('venue_id', id)
-    .maybeSingle();
-
-  const { data: plan } = subscription?.plan_definition_id
-    ? await supabase
-        .from('venue_plan_definitions')
-        .select('*')
-        .eq('id', subscription.plan_definition_id)
-        .maybeSingle()
-    : { data: null };
-
-  const { data: subscriptionFeatures } = subscription
-    ? await supabase
-        .from('venue_subscription_features')
-        .select('*')
-        .eq('venue_subscription_id', subscription.id)
-        .maybeSingle()
-    : { data: null };
-
-  const { data: usage } = subscription
-    ? await supabase
-        .from('venue_subscription_usage')
-        .select('*')
-        .eq('venue_subscription_id', subscription.id)
-        .maybeSingle()
-    : { data: null };
-
-  const paymentReady = !!subscription && !!plan;
-
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -92,7 +62,7 @@ export default async function VenueReviewPage({ params }: Props) {
           <p className="text-sm uppercase tracking-[0.35em] text-accent">Venue Review</p>
           <h1 className="mt-3 text-4xl font-bold text-white">{venue.name}</h1>
           <p className="mt-3 max-w-3xl text-white/70">
-            Review your venue details, package, and payment setup before activation.
+            Review your Venue Core details, operating information, and public presentation.
           </p>
         </div>
 
@@ -185,31 +155,6 @@ export default async function VenueReviewPage({ params }: Props) {
           </Panel>
 
           <Panel
-            title="Step 3 — Package + Services"
-            actionHref={`/dashboard/venues/${venue.id}/edit/step-3`}
-            actionLabel="Edit Step 3"
-          >
-            <Grid>
-              <Info label="Plan Name" value={plan?.name} />
-              <Info label="Tier" value={plan?.tier} />
-              <Info
-                label="Duration"
-                value={plan?.duration_months ? `${plan.duration_months} months` : '—'}
-              />
-              <Info label="Billing Mode" value={subscription?.billing_mode} />
-              <Info label="Lock-In" value={subscription?.lock_in ? 'Yes' : 'No'} />
-              <Info label="Subscription Status" value={subscription?.subscription_status} />
-              <Info label="Current Period Price" value={money(subscription?.current_period_price)} />
-              <Info label="Monthly Price" value={money(subscription?.monthly_price)} />
-              <Info label="Prepaid Total" value={money(subscription?.prepaid_total)} />
-              <Info
-                label="Included Event Posts"
-                value={String(usage?.included_event_posts ?? 0)}
-              />
-            </Grid>
-          </Panel>
-
-          <Panel
             title="Live Interaction Setup"
             actionHref={`/dashboard/venues/${venue.id}/interactions`}
             actionLabel="Manage Interactions"
@@ -245,107 +190,11 @@ export default async function VenueReviewPage({ params }: Props) {
               />
             </Grid>
 
-            <Grid className="mt-6">
-              <Info
-                label="Subscription Comments Feature"
-                value={subscriptionFeatures?.comments_enabled ? 'Yes' : 'No'}
-              />
-              <Info
-                label="Subscription DJ Requests"
-                value={subscriptionFeatures?.dj_requests_enabled ? 'Yes' : 'No'}
-              />
-              <Info
-                label="Linkd’N Mode"
-                value={subscriptionFeatures?.linkdn_mode}
-              />
-              <Info
-                label="Drink Menu Feature"
-                value={subscriptionFeatures?.drink_menu_enabled ? 'Yes' : 'No'}
-              />
-              <Info
-                label="RSVP Feature"
-                value={subscriptionFeatures?.rsvp_enabled ? 'Yes' : 'No'}
-              />
-              <Info
-                label="Table Service Feature"
-                value={subscriptionFeatures?.table_service_enabled ? 'Yes' : 'No'}
-              />
-            </Grid>
+
           </Panel>
         </div>
 
-        <aside className="space-y-8">
-          <div className="rounded-[2rem] border border-accent/20 bg-accent/10 p-8">
-            <p className="text-sm uppercase tracking-[0.35em] text-accent">Activation Status</p>
-            <h2 className="mt-3 text-2xl font-bold text-white">Payment required before go-live</h2>
-            <p className="mt-4 text-white/75">
-              Your venue remains in draft/review state until checkout is completed or an admin activates it.
-            </p>
 
-            <div className="mt-6 grid gap-3">
-              <QuickRow label="Venue Status" value={venue.status || 'draft'} />
-              <QuickRow
-                label="Subscription"
-                value={subscription?.subscription_status || 'draft'}
-              />
-              <QuickRow
-                label="Public Visibility"
-                value={venue.is_visible ? 'Visible' : 'Hidden'}
-              />
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-            <h2 className="text-2xl font-bold text-white">Price Summary</h2>
-
-            <div className="mt-6 space-y-4">
-              <QuickRow label="Plan" value={plan?.name || '—'} />
-              <QuickRow label="Billing Mode" value={subscription?.billing_mode || '—'} />
-              <QuickRow
-                label="Current Period Price"
-                value={money(subscription?.current_period_price)}
-              />
-              <QuickRow label="Monthly Price" value={money(subscription?.monthly_price)} />
-              <QuickRow label="Prepaid Total" value={money(subscription?.prepaid_total)} />
-              <QuickRow
-                label="Next Billing Amount"
-                value={money(subscription?.next_billing_amount)}
-              />
-            </div>
-
-            <div className="mt-8 space-y-3">
-              {paymentReady ? (
-                <Link
-                  href={`/dashboard/venues/${venue.id}/payment`}
-                  className="block rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"
-                >
-                  Proceed to Payment
-                </Link>
-              ) : (
-                <button
-                  disabled
-                  className="block w-full rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-white/50"
-                >
-                  Payment Not Ready Yet
-                </button>
-              )}
-
-              <p className="text-sm text-white/60">
-                Payment portal is the next stage after this review step.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-            <h2 className="text-2xl font-bold text-white">Before activation</h2>
-            <div className="mt-5 space-y-3 text-white/75">
-              <p>• Review all venue details</p>
-              <p>• Confirm package and included services</p>
-              <p>• Complete payment</p>
-              <p>• Venue becomes eligible for public activation</p>
-            </div>
-          </div>
-        </aside>
       </div>
     </section>
   );

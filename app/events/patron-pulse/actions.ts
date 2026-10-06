@@ -3,13 +3,17 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { loadPublicPatronPulse } from '@/lib/patron-pulse/service';
 import {
-  loadPublicPatronPulse,
-  requirePatronPulseCapability,
-} from '@/lib/patron-pulse/service';
+  getActivePresenceVerification,
+  hasParticipationPresence,
+  resolvePresenceParticipant,
+} from '@/lib/presence/service';
 import { recordSignal } from '@/lib/signals/server';
 
-async function requireUser() {
+async function getParticipantContext(
+  participantToken: string
+) {
   const supabase = await createClient();
 
   const {
@@ -21,11 +25,12 @@ async function requireUser() {
     throw new Error(error.message);
   }
 
-  if (!user) {
-    redirect('/auth/login');
-  }
+  const participant = await resolvePresenceParticipant({
+    participantToken,
+    userId: user?.id || null,
+  });
 
-  return { supabase, user };
+  return { supabase, user, participant };
 }
 
 function text(
@@ -38,25 +43,37 @@ function text(
 export async function checkIntoPatronPulse(
   formData: FormData
 ) {
-  const { supabase, user } = await requireUser();
-
   const eventId = text(formData, 'event_id');
   const slug = text(formData, 'slug');
+  const participantToken = text(
+    formData,
+    'participant_token'
+  );
 
-  if (!eventId || !slug) {
-    throw new Error('Missing event information.');
+  if (!eventId || !slug || !participantToken) {
+    throw new Error(
+      'Check in at the event before participating in Patron Pulse.'
+    );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
+  const { supabase, participant } =
+    await getParticipantContext(participantToken);
+
+  const allowed = await hasParticipationPresence({
+    participantId: participant.id,
     eventId,
-    capability: 'guest-check-in',
   });
+
+  if (!allowed) {
+    throw new Error(
+      'Verified event presence is required to participate in Patron Pulse.'
+    );
+  }
 
   const pulse = await loadPublicPatronPulse({
     supabase,
     eventId,
-    userId: user.id,
+    userId: participant.user_id || null,
   });
 
   if (!pulse.session) {
@@ -65,31 +82,52 @@ export async function checkIntoPatronPulse(
     );
   }
 
+  const verification =
+    await getActivePresenceVerification({
+      participantId: participant.id,
+      contextType: 'event',
+      eventId,
+    });
+
   const nowIso = new Date().toISOString();
 
-  const { error } = await supabase
-    .from('patron_pulse_checkins')
-    .upsert(
-      {
-        session_id: pulse.session.id,
-        event_id: eventId,
-        user_id: user.id,
-        status: 'checked_in',
-        source: 'event_page',
-        last_active_at: nowIso,
-        left_at: null,
-      },
-      {
-        onConflict: 'session_id,user_id',
-      }
-    );
+  const payload = {
+    session_id: pulse.session.id,
+    event_id: eventId,
+    participant_id: participant.id,
+    presence_verification_id: verification?.id || null,
+    user_id: participant.user_id || null,
+    status: 'checked_in',
+    source: 'event_presence',
+    last_active_at: nowIso,
+    left_at: null,
+  };
 
-  if (error) {
-    throw new Error(error.message);
+  const { data: existing, error: existingError } =
+    await supabase
+      .from('patron_pulse_checkins')
+      .select('id')
+      .eq('session_id', pulse.session.id)
+      .eq('participant_id', participant.id)
+      .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
   }
 
-  // SIGNAL BRIDGE: Patron Pulse check-in is declared presence evidence. It is
-  // stronger than a normal event view, but is not labeled physically verified.
+  const result = existing
+    ? await supabase
+        .from('patron_pulse_checkins')
+        .update(payload)
+        .eq('id', existing.id)
+    : await supabase
+        .from('patron_pulse_checkins')
+        .insert(payload);
+
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+
   await recordSignal(supabase, {
     signalType: 'patron_pulse_checkin',
     subjectType: 'event',
@@ -98,7 +136,15 @@ export async function checkIntoPatronPulse(
     source: 'patron_pulse',
     surface: 'event_detail',
     sessionId: pulse.session.id,
-    verificationLevel: 'declared',
+    verificationLevel:
+      verification?.verification_level === 'verified'
+        ? 'verified'
+        : 'presence_supported',
+    metadata: {
+      participant_id: participant.id,
+      presence_method: verification?.method || null,
+      presence_verification_id: verification?.id || null,
+    },
   });
 
   revalidatePath(`/events/${slug}`);
@@ -107,26 +153,51 @@ export async function checkIntoPatronPulse(
 export async function submitPatronPulseResponse(
   formData: FormData
 ) {
-  const { supabase, user } = await requireUser();
-
   const eventId = text(formData, 'event_id');
   const slug = text(formData, 'slug');
   const pulseId = text(formData, 'pulse_id');
+  const participantToken = text(
+    formData,
+    'participant_token'
+  );
   const optionId = text(formData, 'option_id');
   const textResponse = text(
     formData,
     'text_response'
   );
 
-  if (!eventId || !slug || !pulseId) {
-    throw new Error('Missing pulse information.');
+  if (
+    !eventId ||
+    !slug ||
+    !pulseId ||
+    !participantToken
+  ) {
+    throw new Error(
+      'Check in at the event before responding to Patron Pulse.'
+    );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
+  const { supabase, participant } =
+    await getParticipantContext(participantToken);
+
+  const allowed = await hasParticipationPresence({
+    participantId: participant.id,
     eventId,
-    capability: 'live-polls',
   });
+
+  if (!allowed) {
+    throw new Error(
+      'Verified event presence is required to respond to Patron Pulse.'
+    );
+  }
+
+  const verification =
+    await getActivePresenceVerification({
+      participantId: participant.id,
+      contextType: 'event',
+      eventId,
+    });
+
 
   const { data: pulse, error: pulseError } =
     await supabase
@@ -175,21 +246,38 @@ export async function submitPatronPulseResponse(
     pulse_id: pulse.id,
     session_id: pulse.session_id,
     event_id: eventId,
-    user_id: user.id,
+    participant_id: participant.id,
+    presence_verification_id: verification?.id || null,
+    user_id: participant.user_id || null,
     option_id: optionId || null,
     text_response: textResponse || null,
     source: 'event_page',
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
-    .from('patron_pulse_responses')
-    .upsert(responsePayload, {
-      onConflict: 'pulse_id,user_id',
-    });
+  const { data: existingResponse, error: existingResponseError } =
+    await supabase
+      .from('patron_pulse_responses')
+      .select('id')
+      .eq('pulse_id', pulse.id)
+      .eq('participant_id', participant.id)
+      .maybeSingle();
 
-  if (error) {
-    throw new Error(error.message);
+  if (existingResponseError) {
+    throw new Error(existingResponseError.message);
+  }
+
+  const responseResult = existingResponse
+    ? await supabase
+        .from('patron_pulse_responses')
+        .update(responsePayload)
+        .eq('id', existingResponse.id)
+    : await supabase
+        .from('patron_pulse_responses')
+        .insert(responsePayload);
+
+  if (responseResult.error) {
+    throw new Error(responseResult.error.message);
   }
 
   await supabase
@@ -198,7 +286,7 @@ export async function submitPatronPulseResponse(
       last_active_at: new Date().toISOString(),
     })
     .eq('session_id', pulse.session_id)
-    .eq('user_id', user.id);
+    .eq('participant_id', participant.id);
 
   // SIGNAL BRIDGE: store only response identifiers/context here. The full text
   // response remains in patron_pulse_responses so signals avoid duplicating PII.
@@ -210,11 +298,17 @@ export async function submitPatronPulseResponse(
     source: 'patron_pulse',
     surface: 'event_detail',
     sessionId: pulse.session_id,
-    verificationLevel: 'declared',
+    verificationLevel:
+      verification?.verification_level === 'verified'
+        ? 'verified'
+        : 'presence_supported',
     metadata: {
       pulse_type: pulse.pulse_type,
       option_id: optionId || null,
       has_text_response: Boolean(textResponse),
+      participant_id: participant.id,
+      presence_method: verification?.method || null,
+      presence_verification_id: verification?.id || null,
     },
   });
 

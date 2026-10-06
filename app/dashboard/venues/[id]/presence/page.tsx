@@ -5,6 +5,7 @@ import {
   createVenuePresenceSession,
   closeVenuePresenceSession,
 } from '@/app/dashboard/venues/presence/actions';
+import { requireVenueManagement } from '@/lib/venues/require-management';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -26,12 +27,10 @@ export default async function VenuePresencePage({ params }: Props) {
     .eq('id', user.id)
     .maybeSingle();
 
-  const isAdmin = profile?.app_role === 'admin';
 
   const venueQuery = supabase.from('venues').select('*').eq('id', id);
-  const { data: venue, error: venueError } = isAdmin
-    ? await venueQuery.single()
-    : await venueQuery.eq('owner_id', user.id).single();
+  await requireVenueManagement(id);
+  const { data: venue, error: venueError } = await venueQuery.single();
 
   if (venueError || !venue) notFound();
 

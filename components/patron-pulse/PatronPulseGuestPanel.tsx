@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import PatronPulseAutoRefresh from '@/components/patron-pulse/PatronPulseAutoRefresh';
 import {
-  checkIntoPatronPulse,
   submitPatronPulseResponse,
 } from '@/app/events/patron-pulse/actions';
 
@@ -63,6 +62,8 @@ type Props = {
   } | null;
   pulses: PulseRecord[];
   announcements: AnnouncementRecord[];
+  participantToken: string | null;
+  hasVerifiedEventPresence: boolean;
   viewerCheckin: {
     id: string;
     status: string;
@@ -81,6 +82,8 @@ export default function PatronPulseGuestPanel({
   pulses,
   announcements,
   viewerCheckin,
+  participantToken,
+  hasVerifiedEventPresence,
   viewerResponses,
 }: Props) {
   if (!session) {
@@ -111,8 +114,8 @@ export default function PatronPulseGuestPanel({
     );
   }
 
-  const isCheckedIn =
-    viewerCheckin?.status === 'checked_in';
+  const isCheckedIn = hasVerifiedEventPresence;
+  void participantToken;
 
   const responseByPulse = new Map(
     viewerResponses.map((response) => [
@@ -161,58 +164,42 @@ export default function PatronPulseGuestPanel({
           </div>
         </div>
 
-        {!userId ? (
-          <div className="mt-6 rounded-2xl border border-accent/20 bg-black/20 p-5">
-            <h3 className="text-xl font-black text-white">
-              Sign in to participate.
-            </h3>
+        {!isCheckedIn ? (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+              <h3 className="text-xl font-black text-white">
+                Check in at the event to participate.
+              </h3>
 
-            <p className="mt-2 text-sm leading-6 text-white/60">
-              You can view public updates, but check-in and pulse
-              responses require a HypeKnight account.
-            </p>
+              <p className="mt-2 text-sm leading-6 text-white/60">
+                Patron Pulse participation requires verified Event Presence.
+                Scan the official HypeKnight event QR while the event is live.
+                A HypeKnight account is not required.
+              </p>
 
-            <Link
-              href={`/auth/login?redirect=${encodeURIComponent(
-                `/events/${eventSlug}`
-              )}`}
-              className="mt-5 inline-flex rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90"
-            >
-              Sign In to Join
-            </Link>
-          </div>
-        ) : session.check_in_enabled &&
-          !isCheckedIn ? (
-          <form
-            action={checkIntoPatronPulse}
-            className="mt-6 rounded-2xl border border-accent/20 bg-black/20 p-5"
-          >
-            <input
-              type="hidden"
-              name="event_id"
-              value={eventId}
-            />
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
 
-            <input
-              type="hidden"
-              name="slug"
-              value={eventSlug}
-            />
 
-            <h3 className="text-xl font-black text-white">
-              Check in to the experience.
-            </h3>
+                <p className="font-semibold text-white">
 
-            <p className="mt-2 text-sm leading-6 text-white/60">
-              Checking in lets the event know you are participating
-              and unlocks available live pulses.
-            </p>
 
-            <button className="mt-5 rounded-2xl bg-accent px-5 py-3 font-semibold text-black hover:opacity-90">
-              Check In
-            </button>
-          </form>
-        ) : isCheckedIn ? (
+                  Scan the official HypeKnight Event QR at the event.
+
+
+                </p>
+
+
+                <p className="mt-2 text-sm leading-6 text-white/60">
+
+
+                  The official QR verifies Event Presence and unlocks live Patron Pulse participation. No HypeKnight account is required.
+
+
+                </p>
+
+
+              </div>
+            </div>
+          ) : isCheckedIn ? (
           <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-green-500/20 bg-green-500/10 p-4">
             <span className="text-lg">✓</span>
 

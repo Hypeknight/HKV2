@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { updateVenueStep2 } from '@/app/dashboard/venues/actions';
+import { requireVenueManagement } from '@/lib/venues/require-management';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -17,11 +18,12 @@ export default async function VenueStep2Page({ params }: Props) {
 
   if (!user) redirect('/auth/login');
 
+  await requireVenueManagement(id);
+
   const { data: venue, error: venueError } = await supabase
     .from('venues')
     .select('id, owner_id, name, slug, description, special_message, status')
     .eq('id', id)
-    .eq('owner_id', user.id)
     .single();
 
   if (venueError || !venue) notFound();

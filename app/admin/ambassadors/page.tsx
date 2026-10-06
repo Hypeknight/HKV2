@@ -12,10 +12,12 @@ import {
   disableCouponRequest,
 } from './actions';
 import { createAdminClient } from '@/lib/supabase/admin';
-const adminSupabase = createAdminClient();
+
+export const dynamic = 'force-dynamic';
 
 export default async function AdminAmbassadorsPage() {
   const supabase = await createClient();
+  const adminSupabase = createAdminClient();
 
   const {
     data: { user },

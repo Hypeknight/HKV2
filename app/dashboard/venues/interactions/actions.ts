@@ -2,46 +2,26 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { requireVenueAuthority } from '@/lib/venues/authority';
 
-async function requireVenueOwnerOrAdminForVenue(venueId: string) {
+
+export async function updateVenueInteractionSettings(formData: FormData) {
+  const venueId = String(formData.get('venue_id') || '');
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
 
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
-    .single();
-
-  if (profileError || !profile) redirect('/dashboard');
-
-  const isAdmin = profile.app_role === 'admin';
+  await requireVenueAuthority(venueId);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
-    .select('id, owner_id, slug')
+    .select('id, slug')
     .eq('id', venueId)
     .single();
 
   if (venueError || !venue) {
     throw new Error(venueError?.message || 'Venue not found');
   }
-
-  if (!isAdmin && venue.owner_id !== user.id) {
-    redirect('/dashboard');
-  }
-
-  return { supabase, user, venue, isAdmin };
-}
-
-export async function updateVenueInteractionSettings(formData: FormData) {
-  const venueId = String(formData.get('venue_id') || '');
-  const { supabase, venue } = await requireVenueOwnerOrAdminForVenue(venueId);
 
   const commentsEnabled = String(formData.get('comments_enabled') || '') === 'yes';
   const commentRetentionHours = Number(formData.get('comment_retention_hours') || 24);
@@ -91,7 +71,20 @@ export async function moderateVenueComment(formData: FormData) {
   const status = String(formData.get('status') || 'live');
   const hiddenReason = String(formData.get('hidden_reason') || '').trim();
 
-  const { supabase, user, venue } = await requireVenueOwnerOrAdminForVenue(venueId);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
+  await requireVenueAuthority(venueId);
+
+  const { data: venue, error: venueError } = await supabase
+    .from('venues')
+    .select('id, slug')
+    .eq('id', venueId)
+    .single();
+
+  if (venueError || !venue) {
+    throw new Error(venueError?.message || 'Venue not found');
+  }
 
   const payload: Record<string, unknown> = {
     status,
@@ -123,7 +116,21 @@ export async function pinVenueComment(formData: FormData) {
   const commentId = String(formData.get('comment_id') || '');
   const isPinned = String(formData.get('is_pinned') || '') === 'yes';
 
-  const { supabase, venue } = await requireVenueOwnerOrAdminForVenue(venueId);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
+
+  await requireVenueAuthority(venueId);
+
+  const { data: venue, error: venueError } = await supabase
+    .from('venues')
+    .select('id, slug')
+    .eq('id', venueId)
+    .single();
+
+  if (venueError || !venue) {
+    throw new Error(venueError?.message || 'Venue not found');
+  }
 
   const { error } = await supabase
     .from('venue_comments')

@@ -1,9 +1,10 @@
 'use server';
 
+import { rotateEventPresenceCredential } from '@/lib/presence/credentials';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { requirePatronPulseCapability } from '@/lib/patron-pulse/service';
 import { resolvePatronPulseSettings } from '@/lib/patron-pulse/resolve-settings';
 
 async function requireEventOwner(eventId: string) {
@@ -88,6 +89,19 @@ function refresh(eventId: string, slug?: string | null) {
   }
 }
 
+/**
+ * BM1 COMPATIBILITY NOTE
+ *
+ * patron_pulse_sessions remains the internal persistence/runtime container
+ * for existing Patron Pulse relationships.
+ *
+ * Organizer-facing Patron Pulse availability is NOT authorized by manually
+ * opening/closing this session. Event lifecycle and verified Event Presence
+ * are the participation authorities.
+ *
+ * Retained temporarily for compatibility with existing data/workflows while
+ * the runtime is moved to automatic ensure semantics.
+ */
 export async function createPatronPulseSession(
   formData: FormData
 ) {
@@ -115,11 +129,6 @@ export async function createPatronPulseSession(
     );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability: 'guest-check-in',
-  });
 
   const { data: existing, error: existingError } =
     await supabase
@@ -362,16 +371,6 @@ export async function createPatronPulse(
     );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability:
-      pulseType === 'dj_request'
-        ? 'song-requests'
-        : pulseType === 'challenge'
-          ? 'challenges'
-          : 'live-polls',
-  });
 
   const requiresOptions = [
     'poll',
@@ -613,11 +612,6 @@ export async function createPatronPulseAnnouncement(
     );
   }
 
-  await requirePatronPulseCapability({
-    supabase,
-    eventId,
-    capability: 'announcements',
-  });
 
   const nowIso = new Date().toISOString();
 
@@ -711,4 +705,37 @@ export async function updatePatronPulseAnnouncementStatus(
   }
 
   refresh(eventId, event.slug);
+}
+
+/**
+ * Issue the official static Event Presence credential used by the
+ * organizer's Patron Pulse check-in QR.
+ *
+ * Authorization is inherited from requireEventOwner(), so only an
+ * event owner or HypeKnight admin may issue the credential.
+ *
+ * IMPORTANT:
+ * rotateEventPresenceCredential() returns the new raw credential only here.
+ * The database stores only its SHA-256 hash.
+ */
+export async function issueOfficialEventPresenceCredential(eventId: string) {
+  const { event } = await requireEventOwner(eventId);
+
+  const issued = await rotateEventPresenceCredential({
+    eventId: event.id,
+    metadata: {
+      source: 'official_event_qr',
+      eventSlug: event.slug,
+    },
+  });
+
+  return {
+    credential: issued.credential,
+    credentialId: issued.record.id,
+    credentialType: issued.record.credential_type,
+    eventId: event.id,
+    eventSlug: event.slug,
+    validFrom: issued.record.valid_from,
+    expiresAt: issued.record.expires_at,
+  };
 }

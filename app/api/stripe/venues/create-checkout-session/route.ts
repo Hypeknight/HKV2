@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveVenueAuthority } from '@/lib/venues/authority';
 import { getStripeForCurrentMode } from '@/lib/stripe/server';
 
 export async function POST(req: Request) {
   const supabase = await createClient();
-  const { stripe, mode } = await getStripeForCurrentMode();
 
   const {
     data: { user },
@@ -21,11 +21,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing venue_id' }, { status: 400 });
   }
 
+  const authority = await resolveVenueAuthority(venueId);
+  if (!authority.canManage) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { data: venue, error: venueError } = await supabase
     .from('venues')
-    .select('id, name, owner_id')
+    .select('id, name')
     .eq('id', venueId)
-    .eq('owner_id', user.id)
     .single();
 
   if (venueError || !venue) {
@@ -56,6 +60,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
   }
 
+  const { stripe, mode } = await getStripeForCurrentMode();
   const session = await stripe.checkout.sessions.create({
     mode: subscription.billing_mode === 'monthly' ? 'subscription' : 'payment',
     success_url: `${siteUrl}/dashboard/venues/${venueId}/payment/success?session_id={CHECKOUT_SESSION_ID}`,

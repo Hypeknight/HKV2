@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -29,6 +30,7 @@ export async function createVenue(formData: FormData) {
   const state = String(formData.get('state') || '');
 
   const payload = {
+    id: randomUUID(),
     owner_id: user.id,
     name,
     slug: slugify(name),
@@ -46,6 +48,7 @@ export async function createVenue(formData: FormData) {
   const { error } = await supabase.from('venues').insert(payload);
   if (error) redirect(`/admin/venues/new?error=${encodeURIComponent(error.message)}`);
 
+  // 0028 creates the authenticated active manager in this venue transaction.
   revalidatePath('/venues');
   redirect('/admin?created=venue');
 }

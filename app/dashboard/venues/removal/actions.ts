@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { requireVenueAuthority } from '@/lib/venues/authority';
 
 export async function requestVenueRemoval(formData: FormData) {
   const supabase = await createClient();
@@ -13,6 +14,7 @@ export async function requestVenueRemoval(formData: FormData) {
   if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
+  await requireVenueAuthority(venueId);
   const reason = String(formData.get('removal_reason') || '').trim();
   const refundRequested = String(formData.get('refund_requested') || '') === 'yes';
 
@@ -20,7 +22,6 @@ export async function requestVenueRemoval(formData: FormData) {
     .from('venues')
     .select('id, slug')
     .eq('id', venueId)
-    .eq('owner_id', user.id)
     .single();
 
   if (venueError || !venue) {

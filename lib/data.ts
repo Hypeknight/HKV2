@@ -1,3 +1,5 @@
+import { getManagedVenueIds } from '@/lib/venues/authority';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import type { Event, Profile, Venue } from '@/lib/types';
 
@@ -118,14 +120,19 @@ export async function getProfile() {
   return data as Profile | null;
 }
 
+// Compatibility export name. Returns the authenticated user's managed venues.
 export async function getOwnedVenues(userId: string) {
   const supabase = await createServerClient();
-  const { data, error } = await supabase
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user || user.id !== userId) return [];
+  const venueIds = await getManagedVenueIds();
+  if (!venueIds.length) return [];
+  const { data, error } = await createAdminClient()
     .from('venues')
     .select('*')
-    .eq('owner_id', userId)
+    .in('id', venueIds)
     .order('updated_at', { ascending: false });
-
   if (error) throw error;
   return (data ?? []) as Venue[];
 }
@@ -204,26 +211,5 @@ export async function getMyVenues() {
 
   if (!user) return [];
 
-  const { data, error } = await supabase
-    .from('venues')
-    .select(`
-      id,
-      name,
-      slug,
-      city,
-      state,
-      status,
-      created_at,
-      updated_at
-    `)
-    .eq('owner_id', user.id)
-    .order('updated_at', { ascending: false });
-
-  if (error) {
-    console.error('Error loading user venues:', error.message);
-    return [];
-  }
-
-  return data ?? [];
+  return getOwnedVenues(user.id);
 }
-

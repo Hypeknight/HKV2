@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getOwnedVenues } from '@/lib/data';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { signOutAction } from './actions';
@@ -26,11 +27,7 @@ export default async function DashboardPage() {
       .select('id,name,slug,status,event_start_at,city,state,created_at')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: false }),
-    supabase
-      .from('venues')
-      .select('id,name,slug,city,state,status')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: false }),
+    getOwnedVenues(user.id).then((data) => ({ data })),
     supabase.from('event_saves').select('id,event_id').eq('user_id', user.id),
     supabase.from('event_rsvps').select('event_id,status').eq('user_id', user.id),
   ]);
