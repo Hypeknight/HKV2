@@ -11,7 +11,7 @@ export async function updateVenueInteractionSettings(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
 
-  await requireVenueAuthority(supabase, venueId, user.id);
+  await requireVenueAuthority(venueId);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
@@ -74,7 +74,7 @@ export async function moderateVenueComment(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
-  await requireVenueAuthority(supabase, venueId, user.id);
+  await requireVenueAuthority(venueId);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
@@ -120,7 +120,7 @@ export async function pinVenueComment(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
 
-  await requireVenueAuthority(supabase, venueId, user.id);
+  await requireVenueAuthority(venueId);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')

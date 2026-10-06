@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getManagedVenueIds } from '@/lib/venues/authority';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -15,46 +17,13 @@ export default async function VenueConnectionsPage() {
 
   if (!user) redirect('/auth/login');
 
-  /*
-   * BM1 venue authority:
-   * - venue_managers is the canonical venue-specific relationship.
-   * - venues.owner_id remains a temporary compatibility fallback.
-   *
-   * Build the set of venue IDs this user may manage, then retrieve
-   * connection requests for those venues. Action handlers independently
-   * re-check authority before changing anything.
-   */
-
-  const { data: managerRows, error: managerError } = await supabase
-    .from('venue_managers')
-    .select('venue_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active');
-
-  // During migration, a database without venue_managers must not break
-  // legitimate legacy owners. Unexpected DB errors still fail closed.
-  if (managerError && managerError.code !== '42P01') {
-    throw managerError;
-  }
-
-  const { data: legacyVenues, error: legacyError } = await supabase
-    .from('venues')
-    .select('id')
-    .eq('owner_id', user.id);
-
-  if (legacyError) throw legacyError;
-
-  const venueIds = Array.from(
-    new Set([
-      ...(managerRows ?? []).map((row: any) => String(row.venue_id)),
-      ...(legacyVenues ?? []).map((row: any) => String(row.id)),
-    ])
-  );
+  const venueIds = await getManagedVenueIds();
+  const admin = createAdminClient();
 
   let requests: any[] = [];
 
   if (venueIds.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from('venue_event_connection_requests')
       .select(
         'id,status,created_at,event:events(id,name,venue_name,address,city,state,event_start_at),venue:venues(id,name,address,city,state)'

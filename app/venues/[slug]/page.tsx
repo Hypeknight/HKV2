@@ -700,6 +700,7 @@ function DisabledCard({ title, text }: { title: string; text: string }) {
   */
 
 import Link from 'next/link';
+import { resolveVenueAuthority } from '@/lib/venues/authority';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import TrackView from '@/components/analytics/TrackView';
@@ -716,18 +717,6 @@ export default async function PublicVenuePage({ params }: Props) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  let viewerRole: string | null = null;
-
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('app_role')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    viewerRole = profile?.app_role || 'user';
-  }
-
   const { data: venue, error } = await supabase
     .from('venues')
     .select('*')
@@ -736,8 +725,9 @@ export default async function PublicVenuePage({ params }: Props) {
 
   if (error || !venue) notFound();
 
-  const isOwner = !!user && venue.owner_id === user.id;
-  const isAdmin = viewerRole === 'admin';
+  const authority = await resolveVenueAuthority(String(venue.id));
+  const canManage = authority.canManage;
+  const isAdmin = authority.source === 'admin';
 
   // BM1: Venue Core is a network entity, not a paid activation.
 // Claim, management, verification, and payment are independent concerns.
@@ -746,7 +736,7 @@ const isPublicVenue = venue.status !== 'archived';
 
 const canView =
     isPublicVenue ||
-    isOwner ||
+    canManage ||
     isAdmin;
 
   if (!canView) notFound();
@@ -820,7 +810,7 @@ const musicRequestsModerationMode =
   interactionSettings?.music_requests_moderation_mode || 'manual';
 
 const userHasPresence = !!activePresence;
-const canBypassAccess = isOwner || isAdmin;
+const canBypassAccess = canManage || isAdmin;
 
 const canPostComment =
   commentsEnabled &&
@@ -1303,12 +1293,12 @@ const canRequestMusic =
             </div>
           </div>
 
-          {(isOwner || isAdmin) ? (
+          {(canManage || isAdmin) ? (
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
               <h2 className="text-2xl font-bold text-white">Management</h2>
 
               <div className="mt-5 space-y-3">
-                {isOwner ? (
+                {canManage ? (
                   <Link
                     href={`/dashboard/venues/${venue.id}/review`}
                     className="block rounded-2xl bg-accent px-5 py-3 text-center font-semibold text-black hover:opacity-90"

@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { resolveVenueAuthority } from '@/lib/venues/authority';
 import { recordSignal } from '@/lib/signals/server';
 
 const BLOCKED_WORDS = [
@@ -389,20 +390,7 @@ export async function ownerUpdateVenueMusicRequestStatus(formData: FormData) {
     throw new Error(requestError?.message || 'Music request not found');
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('app_role')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  const isAdmin = profile?.app_role === 'admin';
-
-  const { data: venueOwner } = await supabase
-    .from('venues')
-    .select('id')
-    .eq('id', request.venue_id)
-    .eq('owner_id', user.id)
-    .maybeSingle();
+  const authority = await resolveVenueAuthority(String(request.venue_id));
 
   const { data: djAssignment } = await supabase
     .from('venue_dj_assignments')
@@ -412,7 +400,7 @@ export async function ownerUpdateVenueMusicRequestStatus(formData: FormData) {
     .eq('status', 'active')
     .maybeSingle();
 
-  const canManage = isAdmin || !!venueOwner || !!djAssignment;
+  const canManage = authority.canManage || !!djAssignment;
 
   if (!canManage) {
     redirect(`/venues/${venueSlug}?music_error=unauthorized`);

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { slugify } from '@/lib/utils';
 
 async function requireEditor() {
@@ -43,9 +44,13 @@ export async function createVenue(formData: FormData) {
     status: String(formData.get('status') || 'draft')
   };
 
-  const { error } = await supabase.from('venues').insert(payload);
+  const { data: venue, error } = await supabase.from('venues').insert(payload).select('id').single();
   if (error) redirect(`/admin/venues/new?error=${encodeURIComponent(error.message)}`);
 
+  const { error: managerError } = await createAdminClient()
+    .from('venue_managers')
+    .insert({ venue_id: venue.id, user_id: user.id, role: 'owner', status: 'active' });
+  if (managerError) throw new Error(managerError.message);
   revalidatePath('/venues');
   redirect('/admin?created=venue');
 }

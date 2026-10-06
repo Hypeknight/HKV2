@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizePhysicalAddress } from '@/lib/events/address';
 import { resolveVenueAuthority } from '@/lib/venues/authority';
 
@@ -40,9 +41,9 @@ export async function GET(req: Request) {
    * supplies the relationship from the physical place to the canonical
    * venue entities associated with it.
    */
-  const { data: locations, error: locationError } = await supabase
+  const { data: locations, error: locationError } = await createAdminClient()
     .from('venue_locations')
-    .select('id,address,city,state,normalized_address')
+    .select('id,address_line_1,city,state,normalized_address')
     .eq('city', city)
     .eq('state', state)
     .limit(50);
@@ -58,7 +59,7 @@ export async function GET(req: Request) {
     const candidateNormalized =
       candidate.normalized_address ||
       normalizePhysicalAddress({
-        address: String(candidate.address || ''),
+        address: String(candidate.address_line_1 || ''),
         city: String(candidate.city || ''),
         state: String(candidate.state || ''),
       });
@@ -90,11 +91,7 @@ export async function GET(req: Request) {
 
   const venues = await Promise.all(
     (venueRows ?? []).map(async (venue: any) => {
-      const authority = await resolveVenueAuthority(
-        supabase,
-        String(venue.id),
-        user.id,
-      );
+      const authority = await resolveVenueAuthority(String(venue.id));
 
       return {
         id: venue.id,
@@ -114,7 +111,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     location: {
       id: location.id,
-      address: location.address,
+      address: location.address_line_1,
       city: location.city,
       state: location.state,
     },

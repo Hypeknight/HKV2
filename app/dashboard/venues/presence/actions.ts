@@ -22,7 +22,7 @@ export async function createVenuePresenceSession(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
-  await requireVenueAuthority(supabase, venueId, user.id);
+  await requireVenueAuthority(venueId);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
@@ -62,7 +62,7 @@ export async function closeVenuePresenceSession(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
 
-  await requireVenueAuthority(supabase, venueId, user.id);
+  await requireVenueAuthority(venueId);
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')

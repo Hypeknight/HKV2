@@ -10,14 +10,10 @@ export async function requireVenueManagement(venueId: string) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login');
+    redirect('/auth/login');
   }
 
-  const authority = await requireVenueAuthority(
-    supabase,
-    venueId,
-    user.id,
-  );
+  const authority = await requireVenueAuthority(venueId);
 
   return {
     supabase,

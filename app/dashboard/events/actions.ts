@@ -484,6 +484,7 @@ export async function updateEventStep1(formData: FormData) {
 }*/
 
 'use server';
+import { resolveVenueAuthority } from '@/lib/venues/authority';
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -915,7 +916,8 @@ async function connectMatchingVenue({
     return;
   }
 
-  if (venue.owner_id === userId) {
+  const authority = await resolveVenueAuthority(String(venue.id));
+  if (authority.canManage) {
     await admin.from('events').update({
       venue_id: venue.id,
       address_normalized: normalized,

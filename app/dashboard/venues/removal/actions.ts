@@ -14,7 +14,7 @@ export async function requestVenueRemoval(formData: FormData) {
   if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
-  await requireVenueAuthority(supabase, venueId, user.id);
+  await requireVenueAuthority(venueId);
   const reason = String(formData.get('removal_reason') || '').trim();
   const refundRequested = String(formData.get('refund_requested') || '') === 'yes';
 

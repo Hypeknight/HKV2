@@ -31,13 +31,9 @@ async function resolveRequest(
   if (!request) throw new Error('Connection request not found.');
 
   // BM1: authority belongs to the venue-specific management relationship.
-  // Legacy owner_id remains a compatibility fallback inside the resolver.
+  // Legacy owner_id is compatibility storage only; it grants no authority.
   // Payment/subscription state never grants management authority.
-  await requireVenueAuthority(
-    supabase,
-    String(request.venue_id),
-    user.id
-  );
+  await requireVenueAuthority(String(request.venue_id));
 
   const now = new Date().toISOString();
 

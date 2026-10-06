@@ -1,11 +1,8 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import 'server-only';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-export type VenueAuthoritySource =
-  | 'venue_manager'
-  | 'legacy_owner'
-  | 'admin'
-  | 'none';
-
+export type VenueAuthoritySource = 'venue_manager' | 'admin' | 'none';
 export type VenueAuthority = {
   canManage: boolean;
   source: VenueAuthoritySource;
@@ -13,95 +10,62 @@ export type VenueAuthority = {
 };
 
 /**
- * BM1 venue authority.
- *
- * Authority order:
- *   1. Active venue-specific manager relationship
- *   2. Legacy venues.owner_id compatibility fallback
- *   3. HypeKnight administrator
- *
- * Subscription/payment state never determines management authority.
+ * Server-only BM1 authority. The user ID always comes from auth.getUser(),
+ * never from action input. 0026 backfilled owners into venue_managers;
+ * owner_id is compatibility/history only. Payment and global venue_owner
+ * roles do not grant authority. Database errors fail closed.
  */
-export async function resolveVenueAuthority(
-  supabase: SupabaseClient,
-  venueId: string,
-  userId: string,
-): Promise<VenueAuthority> {
-  if (!venueId || !userId) {
-    return { canManage: false, source: 'none', role: null };
+export async function resolveVenueAuthority(venueId: string): Promise<VenueAuthority> {
+  const denied: VenueAuthority = { canManage: false, source: 'none', role: null };
+  if (!venueId) return denied;
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (!user) return denied;
+  if (authError) throw authError;
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('app_role')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (profile?.app_role === 'admin') {
+    return { canManage: true, source: 'admin', role: 'admin' };
   }
 
-  const { data: manager, error: managerError } = await supabase
+  // 0026 restricts this table to service_role. This lookup grants no write client.
+  const { data: manager, error: managerError } = await createAdminClient()
     .from('venue_managers')
     .select('role,status')
     .eq('venue_id', venueId)
-    .eq('user_id', userId)
+    .eq('user_id', user.id)
     .eq('status', 'active')
     .maybeSingle();
-
-  // During the migration window, absence of the new relationship must not
-  // break legitimate legacy owners. Unexpected DB errors still fail closed.
-  if (managerError && managerError.code !== '42P01') {
-    throw managerError;
-  }
-
+  if (managerError) throw managerError;
   if (manager) {
-    return {
-      canManage: true,
-      source: 'venue_manager',
-      role: typeof manager.role === 'string' ? manager.role : 'manager',
-    };
+    return { canManage: true, source: 'venue_manager', role: manager.role };
   }
-
-  const { data: venue, error: venueError } = await supabase
-    .from('venues')
-    .select('owner_id')
-    .eq('id', venueId)
-    .maybeSingle();
-
-  if (venueError) throw venueError;
-
-  if (venue?.owner_id === userId) {
-    return {
-      canManage: true,
-      source: 'legacy_owner',
-      role: 'owner',
-    };
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (profileError) throw profileError;
-
-  if (profile?.role === 'admin') {
-    return {
-      canManage: true,
-      source: 'admin',
-      role: 'admin',
-    };
-  }
-
-  return {
-    canManage: false,
-    source: 'none',
-    role: null,
-  };
+  return denied;
 }
 
-export async function requireVenueAuthority(
-  supabase: SupabaseClient,
-  venueId: string,
-  userId: string,
-): Promise<VenueAuthority> {
-  const authority = await resolveVenueAuthority(supabase, venueId, userId);
-
+export async function requireVenueAuthority(venueId: string): Promise<VenueAuthority> {
+  const authority = await resolveVenueAuthority(venueId);
   if (!authority.canManage) {
     throw new Error('You are not authorized to manage this venue.');
   }
-
   return authority;
+}
+
+/** Current user's active venue IDs. No owner fallback or caller-supplied user ID. */
+export async function getManagedVenueIds(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (!user) return [];
+  if (authError) throw authError;
+  const { data, error } = await createAdminClient()
+    .from('venue_managers')
+    .select('venue_id')
+    .eq('user_id', user.id)
+    .eq('status', 'active');
+  if (error) throw error;
+  return Array.from(new Set((data ?? []).map((row) => String(row.venue_id))));
 }
