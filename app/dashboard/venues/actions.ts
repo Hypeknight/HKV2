@@ -1,8 +1,8 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { requireVenueAuthority } from '@/lib/venues/authority';
 
 function slugify(value: string) {
@@ -52,9 +52,11 @@ export async function createVenueStep1(formData: FormData) {
   const baseSlug = slugify(`${name} ${city} ${state}`);
   const slug = `${baseSlug}-${Date.now()}`;
 
-  const { data, error } = await supabase
+  const venueId = randomUUID();
+  const { error } = await supabase
     .from('venues')
     .insert({
+      id: venueId,
       owner_id: user.id,
       name,
       slug,
@@ -67,19 +69,13 @@ export async function createVenueStep1(formData: FormData) {
       is_visible: isVisible,
       status: 'draft',
       is_featured: false,
-    })
-    .select('id')
-    .single();
+    });
 
   if (error) throw new Error(error.message);
 
-  // Existing vetted creation authority; private manager storage requires service_role.
-  const { error: managerError } = await createAdminClient()
-    .from('venue_managers')
-    .insert({ venue_id: data.id, user_id: user.id, role: 'owner', status: 'active' });
-  if (managerError) throw new Error(managerError.message);
+  // 0028 creates the authenticated active manager in this venue transaction.
 
-  redirect(`/dashboard/venues/${data.id}/edit/step-2`);
+  redirect(`/dashboard/venues/${venueId}/edit/step-2`);
 }
 
 export async function updateVenueStep1(formData: FormData) {
@@ -88,7 +84,7 @@ export async function updateVenueStep1(formData: FormData) {
   if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
-  await requireVenueAuthority(venueId);
+  const authority = await requireVenueAuthority(venueId);
   const name = String(formData.get('name') || '').trim();
   const address = String(formData.get('address') || '').trim();
   const city = String(formData.get('city') || '').trim();
@@ -100,16 +96,30 @@ export async function updateVenueStep1(formData: FormData) {
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
-    .select('id, slug, status')
+    .select('id, slug, status, name, address, city, state')
     .eq('id', venueId)
     .single();
 
   if (venueError || !venue) throw new Error(venueError?.message || 'Venue not found');
 
-  if (!['draft', 'pending_payment', 'hidden'].includes(venue.status)) {
-    redirect('/dashboard/venues');
+  if (authority.source !== 'admin') {
+    const proposals = { name, address, city, state };
+    const corrections = Object.entries(proposals)
+      .filter(([field, value]) => value !== String(venue[field as keyof typeof proposals] || ''))
+      .map(([field, value]) => ({ venue_id: venueId, submitted_by: user.id,
+        field_name: field, proposed_value: value,
+        reason: 'Proposed through venue information editor', status: 'pending' }));
+    if (corrections.length) {
+      const { error } = await supabase.from('venue_corrections').insert(corrections);
+      if (error) throw new Error(error.message);
+    }
+    const { error } = await supabase.from('venues').update({
+      website_url: websiteUrl || null, instagram_url: instagramUrl || null,
+      cover_image_url: coverImageUrl || null,
+    }).eq('id', venueId);
+    if (error) throw new Error(error.message);
+    redirect(corrections.length ? '/dashboard/venues/claims?correction_submitted=1' : '/dashboard/venues/' + venueId + '/edit/step-2');
   }
-
   const slug = venue.slug || `${slugify(`${name} ${city} ${state}`)}-${Date.now()}`;
 
   const { error } = await supabase
@@ -388,18 +398,6 @@ export async function updateVenueStep3(formData: FormData) {
 
   if (interactionResult.error) {
     throw new Error(interactionResult.error.message);
-  }
-
-  const { error: venueUpdateError } = await supabase
-    .from('venues')
-    .update({
-      updated_at: new Date().toISOString(),
-      status: 'draft',
-    })
-    .eq('id', venueId);
-
-  if (venueUpdateError) {
-    throw new Error(venueUpdateError.message);
   }
 
   redirect(`/dashboard/venues/${venueId}/review`);

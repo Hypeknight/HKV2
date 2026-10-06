@@ -38,14 +38,14 @@ export default async function VenuePaymentSuccessPage({
 
   if (query.session_id) {
     try {
-      await reconcileVenueCheckoutSession(query.session_id);
+      await reconcileVenueCheckoutSession(query.session_id, id);
       paymentMessage =
-        'Payment was verified with Stripe and this venue has been activated.';
+        'Payment was verified with Stripe and the subscription payment has been recorded.';
     } catch (error) {
       paymentMessage =
         error instanceof Error
-          ? `Payment returned from Stripe, but activation failed: ${error.message}`
-          : 'Payment returned from Stripe, but activation failed.';
+          ? `Payment returned from Stripe, but reconciliation failed: ${error.message}`
+          : 'Payment returned from Stripe, but reconciliation failed.';
     }
   } else {
     paymentMessage =

@@ -1,10 +1,11 @@
+import 'server-only';
+import { requireVenueAuthority } from '@/lib/venues/authority';
 // lib/stripe/reconcile-venue-checkout.ts
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getStripeForCurrentMode } from '@/lib/stripe/server';
 
-export async function reconcileVenueCheckoutSession(sessionId: string) {
+export async function reconcileVenueCheckoutSession(sessionId: string, expectedVenueId: string) {
   const { stripe } = await getStripeForCurrentMode();
-  const supabase = createAdminClient();
 
   const session = await stripe.checkout.sessions.retrieve(sessionId);
 
@@ -22,6 +23,9 @@ export async function reconcileVenueCheckoutSession(sessionId: string) {
     throw new Error(`Stripe session payment is not complete: ${session.payment_status}`);
   }
 
+  if (venueId !== expectedVenueId) throw new Error('Stripe session belongs to another venue');
+  await requireVenueAuthority(venueId);
+  const supabase = createAdminClient();
   const now = new Date();
 const nowIso = now.toISOString();
 
@@ -57,17 +61,6 @@ last_payment_amount: Number((session.amount_total || 0) / 100),
     .eq('venue_id', venueId);
 
   if (subscriptionError) throw new Error(subscriptionError.message);
-
-  const { error: venueError } = await supabase
-    .from('venues')
-    .update({
-      status: 'active',
-      is_visible: true,
-      updated_at: now,
-    })
-    .eq('id', venueId);
-
-  if (venueError) throw new Error(venueError.message);
 
   await supabase.from('venue_billing_events').insert({
     venue_id: venueId,

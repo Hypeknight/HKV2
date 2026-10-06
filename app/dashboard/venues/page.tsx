@@ -15,6 +15,7 @@ export default async function DashboardVenuesPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <Link href="/dashboard/venues/claims" className="text-accent">Venue claims and corrections</Link>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.35em] text-accent">

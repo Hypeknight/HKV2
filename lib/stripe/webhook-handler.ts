@@ -191,17 +191,6 @@ if (kind === 'event_payment') {
 
       if (subscriptionError) throw new Error(subscriptionError.message);
 
-      const { error: venueError } = await supabase
-        .from('venues')
-        .update({
-          status: 'active',
-          is_visible: true,
-          updated_at: now,
-        })
-        .eq('id', venueId);
-
-      if (venueError) throw new Error(venueError.message);
-
       const { error: billingError } = await supabase
         .from('venue_billing_events')
         .insert({

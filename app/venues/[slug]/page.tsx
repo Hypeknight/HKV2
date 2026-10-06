@@ -1293,6 +1293,7 @@ const canRequestMusic =
             </div>
           </div>
 
+          {!canManage && user ? <Link href={'/dashboard/venues/claims?venue_id=' + venue.id} className="block rounded-2xl border border-white/10 p-5 text-center text-accent">Claim management of this venue</Link> : null}
           {(canManage || isAdmin) ? (
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
               <h2 className="text-2xl font-bold text-white">Management</h2>

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { slugify } from '@/lib/utils';
 
 async function requireEditor() {
@@ -30,6 +30,7 @@ export async function createVenue(formData: FormData) {
   const state = String(formData.get('state') || '');
 
   const payload = {
+    id: randomUUID(),
     owner_id: user.id,
     name,
     slug: slugify(name),
@@ -44,13 +45,10 @@ export async function createVenue(formData: FormData) {
     status: String(formData.get('status') || 'draft')
   };
 
-  const { data: venue, error } = await supabase.from('venues').insert(payload).select('id').single();
+  const { error } = await supabase.from('venues').insert(payload);
   if (error) redirect(`/admin/venues/new?error=${encodeURIComponent(error.message)}`);
 
-  const { error: managerError } = await createAdminClient()
-    .from('venue_managers')
-    .insert({ venue_id: venue.id, user_id: user.id, role: 'owner', status: 'active' });
-  if (managerError) throw new Error(managerError.message);
+  // 0028 creates the authenticated active manager in this venue transaction.
   revalidatePath('/venues');
   redirect('/admin?created=venue');
 }

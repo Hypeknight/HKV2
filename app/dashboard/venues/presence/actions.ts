@@ -103,49 +103,16 @@ export async function joinVenuePresenceSession(formData: FormData) {
   const venueId = String(formData.get('venue_id') || '');
   const sessionCode = String(formData.get('session_code') || '').trim().toUpperCase();
 
-  const { data: session, error: sessionError } = await supabase
-    .from('venue_presence_sessions')
-    .select('*')
-    .eq('venue_id', venueId)
-    .eq('session_code', sessionCode)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  if (sessionError || !session) {
-    redirect(`/venues/${venueSlug}?presence_error=invalid_code`);
+  const { data: checkinId, error } = await supabase.rpc('join_venue_presence_session', {
+    p_venue_id: venueId, p_session_code: sessionCode,
+  });
+  if (error || !checkinId) {
+    redirect('/venues/' + venueSlug + '?presence_error=invalid_code');
   }
-
-  const expiresAt = session.ends_at
-    ? session.ends_at
-    : new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
-
-  const { data: existing } = await supabase
-    .from('venue_presence_checkins')
-    .select('id')
-    .eq('venue_presence_session_id', session.id)
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  const result = existing
-    ? await supabase
-        .from('venue_presence_checkins')
-        .update({
-          status: 'active',
-          expires_at: expiresAt,
-        })
-        .eq('id', existing.id)
-    : await supabase.from('venue_presence_checkins').insert({
-        venue_presence_session_id: session.id,
-        venue_id: venueId,
-        user_id: user.id,
-        status: 'active',
-        expires_at: expiresAt,
-      });
-
-  if (result.error) {
-    throw new Error(result.error.message);
-  }
-
+  const { data: checkin, error: checkinError } = await supabase
+    .from('venue_presence_checkins').select('venue_presence_session_id')
+    .eq('id', checkinId).eq('user_id', user.id).single();
+  if (checkinError || !checkin) throw new Error(checkinError?.message || 'Presence checkin not found');
   // SIGNAL BRIDGE: a rotating venue presence session/code gives stronger
   // contextual evidence than an ordinary button click, but it is intentionally
   // not labeled physically verified.
@@ -156,7 +123,7 @@ export async function joinVenuePresenceSession(formData: FormData) {
     venueId,
     source: 'venue_presence',
     surface: 'venue_detail',
-    sessionId: session.id,
+    sessionId: checkin.venue_presence_session_id,
     verificationLevel: 'presence_supported',
     metadata: { join_method: 'session_code' },
   });
