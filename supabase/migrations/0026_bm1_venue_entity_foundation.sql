@@ -114,8 +114,136 @@ create index if not exists venues_location_id_idx
 create index if not exists venues_claim_state_idx
   on public.venues(claim_state);
 
+
 create index if not exists venues_entity_state_idx
   on public.venues(entity_state);
+
+-- ---------------------------------------------------------------------------
+-- Existing venue -> physical location backfill
+--
+-- Production preflight confirmed that every existing venue has address, city,
+-- and state data and that no current venues collide on normalized location.
+--
+-- Legacy venues.address is mixed-format: some rows contain only the street
+-- address while others already include city/state. Preserve venues.address
+-- exactly as historical/source data; derive a street-only location address
+-- for the new location entity.
+-- ---------------------------------------------------------------------------
+
+with venue_location_source as (
+  select
+    v.id as venue_id,
+    trim(v.city) as city,
+    upper(trim(v.state)) as state,
+
+    -- Preserve legacy address unless it ends with this row's own
+    -- canonical ", City, ST" suffix. This avoids guessing when legacy
+    -- formatting is unfamiliar.
+    case
+      when lower(
+        right(
+          trim(v.address),
+          length(trim(v.city)) + length(trim(v.state)) + 4
+        )
+      ) = lower(', ' || trim(v.city) || ', ' || trim(v.state))
+      then trim(
+        left(
+          trim(v.address),
+          length(trim(v.address))
+            - length(trim(v.city))
+            - length(trim(v.state))
+            - 4
+        )
+      )
+      else trim(v.address)
+    end as street_address
+
+  from public.venues v
+  where nullif(trim(v.address), '') is not null
+    and nullif(trim(v.city), '') is not null
+    and nullif(trim(v.state), '') is not null
+),
+normalized_source as (
+  select
+    venue_id,
+    street_address,
+    city,
+    state,
+    concat_ws(
+      '|',
+
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(
+                  regexp_replace(
+                    regexp_replace(
+                      regexp_replace(
+                        lower(btrim(street_address)),
+                        '\mstreet\M', 'st', 'g'
+                      ),
+                      '\mavenue\M', 'ave', 'g'
+                    ),
+                    '\mboulevard\M', 'blvd', 'g'
+                  ),
+                  '\mroad\M', 'rd', 'g'
+                ),
+                '\mdrive\M', 'dr', 'g'
+              ),
+              '\mlane\M', 'ln', 'g'
+            ),
+            '\mcourt\M', 'ct', 'g'
+          ),
+          '\mhighway\M', 'hwy', 'g'
+        ),
+        '[^a-z0-9# -]', '', 'g'
+      ),
+
+      regexp_replace(
+        lower(btrim(city)),
+        '[^a-z0-9# -]',
+        '',
+        'g'
+      ),
+
+      upper(
+        regexp_replace(
+          lower(btrim(state)),
+          '[^a-z0-9# -]',
+          '',
+          'g'
+        )
+      )
+    ) as normalized_address
+
+  from venue_location_source
+),
+inserted_locations as (
+  insert into public.venue_locations (
+    address_line_1,
+    city,
+    state,
+    normalized_address
+  )
+  select distinct
+    street_address,
+    city,
+    state,
+    normalized_address
+  from normalized_source
+  where nullif(street_address, '') is not null
+  on conflict do nothing
+  returning id
+)
+update public.venues v
+set location_id = l.id
+from normalized_source s
+join public.venue_locations l
+  on lower(l.normalized_address) = lower(s.normalized_address)
+where v.id = s.venue_id
+  and v.location_id is null;
 
 
 create table if not exists public.venue_claims (
@@ -201,8 +329,41 @@ create table if not exists public.venue_managers (
 create index if not exists venue_managers_user_idx
   on public.venue_managers(user_id, status);
 
+
 create index if not exists venue_managers_venue_idx
   on public.venue_managers(venue_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Legacy venue ownership -> BM1 venue-specific management authority.
+--
+-- owner_id remains in place as migration compatibility data. New application
+-- authority should resolve through venue_managers.
+-- ---------------------------------------------------------------------------
+
+insert into public.venue_managers (
+  venue_id,
+  user_id,
+  role,
+  status,
+  verified_at
+)
+select
+  v.id,
+  v.owner_id,
+  'owner',
+  'active',
+  now()
+from public.venues v
+where v.owner_id is not null
+on conflict (venue_id, user_id) do nothing;
+
+-- Existing legacy-owned venues represent an established management
+-- relationship. Reflect that relationship in claim state without fabricating
+-- a separate historical claim request.
+update public.venues
+set claim_state = 'claimed'
+where owner_id is not null
+  and claim_state = 'unclaimed';
 
 
 create table if not exists public.venue_corrections (
