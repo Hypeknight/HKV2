@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getManagedVenueIds } from '@/lib/venues/authority';
+import { getManagedVenueIds, requireVenueAuthority } from '@/lib/venues/authority';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -8,7 +8,7 @@ import {
   declineVenueConnection,
 } from './actions';
 
-export default async function VenueConnectionsPage() {
+export default async function VenueConnectionsPage({ searchParams }: { searchParams?: Promise<{ venue_id?: string }> }) {
   const supabase = await createClient();
 
   const {
@@ -17,7 +17,14 @@ export default async function VenueConnectionsPage() {
 
   if (!user) redirect('/auth/login');
 
-  const venueIds = await getManagedVenueIds();
+  const query = searchParams ? await searchParams : {};
+  let venueIds: string[];
+  if (query.venue_id) {
+    await requireVenueAuthority(query.venue_id);
+    venueIds = [query.venue_id];
+  } else {
+    venueIds = await getManagedVenueIds();
+  }
   const admin = createAdminClient();
 
   let requests: any[] = [];

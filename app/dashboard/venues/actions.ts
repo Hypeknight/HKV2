@@ -84,7 +84,7 @@ export async function updateVenueStep1(formData: FormData) {
   if (!user) redirect('/auth/login');
 
   const venueId = String(formData.get('venue_id') || '');
-  const authority = await requireVenueAuthority(venueId);
+  await requireVenueAuthority(venueId);
   const name = String(formData.get('name') || '').trim();
   const address = String(formData.get('address') || '').trim();
   const city = String(formData.get('city') || '').trim();
@@ -92,7 +92,6 @@ export async function updateVenueStep1(formData: FormData) {
   const websiteUrl = String(formData.get('website_url') || '').trim();
   const instagramUrl = String(formData.get('instagram_url') || '').trim();
   const coverImageUrl = String(formData.get('cover_image_url') || '').trim();
-  const isVisible = String(formData.get('is_visible') || '') === 'yes';
 
   const { data: venue, error: venueError } = await supabase
     .from('venues')
@@ -102,44 +101,22 @@ export async function updateVenueStep1(formData: FormData) {
 
   if (venueError || !venue) throw new Error(venueError?.message || 'Venue not found');
 
-  if (authority.source !== 'admin') {
-    const proposals = { name, address, city, state };
-    const corrections = Object.entries(proposals)
-      .filter(([field, value]) => value !== String(venue[field as keyof typeof proposals] || ''))
-      .map(([field, value]) => ({ venue_id: venueId, submitted_by: user.id,
-        field_name: field, proposed_value: value,
-        reason: 'Proposed through venue information editor', status: 'pending' }));
-    if (corrections.length) {
-      const { error } = await supabase.from('venue_corrections').insert(corrections);
-      if (error) throw new Error(error.message);
-    }
-    const { error } = await supabase.from('venues').update({
-      website_url: websiteUrl || null, instagram_url: instagramUrl || null,
-      cover_image_url: coverImageUrl || null,
-    }).eq('id', venueId);
+  const proposals = { name, address, city, state };
+  const corrections = Object.entries(proposals)
+    .filter(([field, value]) => value !== String(venue[field as keyof typeof proposals] || ''))
+    .map(([field, value]) => ({ venue_id: venueId, submitted_by: user.id,
+      field_name: field, proposed_value: value,
+      reason: 'Proposed through venue information editor', status: 'pending' }));
+  if (corrections.length) {
+    const { error } = await supabase.from('venue_corrections').insert(corrections);
     if (error) throw new Error(error.message);
-    redirect(corrections.length ? '/dashboard/venues/claims?correction_submitted=1' : '/dashboard/venues/' + venueId + '/edit/step-2');
   }
-  const slug = venue.slug || `${slugify(`${name} ${city} ${state}`)}-${Date.now()}`;
-
-  const { error } = await supabase
-    .from('venues')
-    .update({
-      name,
-      slug,
-      address,
-      city,
-      state,
-      website_url: websiteUrl || null,
-      instagram_url: instagramUrl || null,
-      cover_image_url: coverImageUrl || null,
-      is_visible: isVisible,
-    })
-    .eq('id', venueId);
-
+  const { error } = await supabase.from('venues').update({
+    website_url: websiteUrl || null, instagram_url: instagramUrl || null,
+    cover_image_url: coverImageUrl || null,
+  }).eq('id', venueId);
   if (error) throw new Error(error.message);
-
-  redirect(`/dashboard/venues/${venueId}/edit/step-2`);
+  redirect(corrections.length ? '/dashboard/venues/claims?correction_submitted=1' : '/dashboard/venues/' + venueId + '/edit/step-2');
 }
 
 export async function updateVenueStep2(formData: FormData) {

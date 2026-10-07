@@ -56,15 +56,15 @@ export default async function VenuePresencePage({ params }: Props) {
           <p className="text-sm uppercase tracking-[0.35em] text-accent">Presence</p>
           <h1 className="mt-3 text-4xl font-bold text-white">{venue.name}</h1>
           <p className="mt-3 max-w-2xl text-white/70">
-            Create and manage live venue sessions for future QR / in-venue verification.
+            Create and manage venue sessions and check-ins using the existing Presence workflow.
           </p>
         </div>
 
         <Link
-          href={`/dashboard/venues/${venue.id}/edit`}
+          href={`/dashboard/venues/${venue.id}`}
           className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-white hover:border-accent/40"
         >
-          Back to Venue Manager
+          Back to Command Center
         </Link>
       </div>
 
@@ -75,6 +75,9 @@ export default async function VenuePresencePage({ params }: Props) {
           >
             Open QR Page
           </Link>
+          <Link href={`/dashboard/venues/${venue.id}/interactions`} className="text-accent">Interaction settings</Link>
+          <Link href={`/dashboard/venues/${venue.id}/moderation`} className="text-accent">Comment moderation</Link>
+          <Link href={`/dashboard/venues/${venue.id}/music-requests`} className="text-accent">Music queue</Link>
         </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">

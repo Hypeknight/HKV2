@@ -45,7 +45,7 @@ export default async function VenuePaymentPage({ params }: Props) {
         <p className="text-sm uppercase tracking-[0.35em] text-accent">Venue Payment</p>
         <h1 className="mt-3 text-4xl font-bold text-white">{venue.name}</h1>
         <p className="mt-3 text-white/70">
-          Complete payment to activate this venue on HypeKnight.
+          Payment settles optional venue commerce. It does not create, activate, verify or transfer the venue identity.
         </p>
 
         <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-6">

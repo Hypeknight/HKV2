@@ -75,6 +75,7 @@ async function resolveRequest(
   }
 
   revalidatePath('/dashboard/venues/connections');
+  revalidatePath('/dashboard/venues/' + request.venue_id + '/events');
   revalidatePath(`/dashboard/events/${request.event_id}/review`);
 }
 

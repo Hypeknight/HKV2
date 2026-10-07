@@ -28,15 +28,13 @@ export default async function EditVenueStep1Page({ params }: Props) {
 
   if (error || !venue) notFound();
 
-  if (!['draft', 'pending_payment', 'hidden'].includes(venue.status)) {
-    redirect('/dashboard/venues');
-  }
 
   return (
     <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="mb-8">
         <p className="text-sm uppercase tracking-[0.35em] text-accent">Edit Venue</p>
-        <h1 className="mt-3 text-4xl font-bold text-white">Step 1: Basic Venue Info</h1>
+        <h1 className="mt-3 text-4xl font-bold text-white">Basic Venue Information</h1>
+        <p className="mt-3 text-white/70">Ordinary links and images update directly. Name and location changes are submitted for review for every actor; visibility remains an administrative moderation decision.</p>
       </div>
 
       <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
@@ -141,18 +139,6 @@ export default async function EditVenueStep1Page({ params }: Props) {
             />
           </div>
 
-          <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-white">
-            <input
-              type="checkbox"
-              name="is_visible"
-              value="yes"
-              defaultChecked={venue.is_visible || false}
-              className="mt-1"
-            />
-            <span className="text-sm text-white/80">
-              Make this venue visible when active
-            </span>
-          </label>
 
           <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-between">
             <Link
