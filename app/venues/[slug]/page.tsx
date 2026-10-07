@@ -732,7 +732,7 @@ export default async function PublicVenuePage({ params }: Props) {
   // BM1: Venue Core is a network entity, not a paid activation.
 // Claim, management, verification, and payment are independent concerns.
 // Closed venues may remain public as historical entities.
-const isPublicVenue = venue.status !== 'archived';
+const isPublicVenue = venue.is_visible === true && venue.status !== 'archived';
 
 const canView =
     isPublicVenue ||

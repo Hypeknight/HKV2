@@ -484,11 +484,11 @@ export async function updateEventStep1(formData: FormData) {
 }*/
 
 'use server';
-import { resolveVenueAuthority } from '@/lib/venues/authority';
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { requireVenueAuthority } from '@/lib/venues/authority';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPlatformSettings } from '@/lib/settings';
 import { transitionEventStatus } from '@/lib/events/transition';
@@ -878,75 +878,6 @@ function parseLocalDateTime(date: string, time: string) {
   return value;
 }
 
-async function connectMatchingVenue({
-  eventId,
-  userId,
-  address,
-  city,
-  state,
-}: {
-  eventId: string;
-  userId: string;
-  address: string;
-  city: string;
-  state: string;
-}) {
-  const admin = createAdminClient();
-  const normalized = normalizePhysicalAddress({ address, city, state });
-  const { data: venues } = await admin
-    .from('venues')
-    .select('id, owner_id, address, city, state')
-    .eq('city', city)
-    .eq('state', state)
-    .limit(50);
-
-  const venue = (venues || []).find((row: any) =>
-    normalizePhysicalAddress({
-      address: String(row.address || ''),
-      city: String(row.city || ''),
-      state: String(row.state || ''),
-    }) === normalized
-  );
-
-  if (!venue) {
-    await admin.from('events').update({
-      address_normalized: normalized,
-      venue_connection_status: 'unmatched',
-    }).eq('id', eventId);
-    return;
-  }
-
-  const authority = await resolveVenueAuthority(String(venue.id));
-  if (authority.canManage) {
-    await admin.from('events').update({
-      venue_id: venue.id,
-      address_normalized: normalized,
-      venue_connection_status: 'approved',
-    }).eq('id', eventId);
-    return;
-  }
-
-  await admin.from('events').update({
-    address_normalized: normalized,
-    venue_connection_status: 'pending',
-  }).eq('id', eventId);
-
-  await admin.from('venue_event_connection_requests').upsert({
-    event_id: eventId,
-    venue_id: venue.id,
-    requested_by: userId,
-    venue_owner_id: venue.owner_id,
-    status: 'pending',
-    event_address_normalized: normalized,
-    venue_address_normalized: normalizePhysicalAddress({
-      address: String(venue.address || ''),
-      city: String(venue.city || ''),
-      state: String(venue.state || ''),
-    }),
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'event_id,venue_id' });
-}
-
 async function connectInitialSource({ eventId, userId, sourceUrl }: { eventId: string; userId: string; sourceUrl: string }) {
   if (!sourceUrl) return;
   const admin = createAdminClient();
@@ -976,10 +907,19 @@ export async function createEventStep1(formData: FormData) {
     .single();
 
   const eventName = cleanText(formData, 'name');
-  const venueName = cleanText(formData, 'venue_name');
-  const address = cleanText(formData, 'address');
-  const city = cleanText(formData, 'city');
-  const state = cleanText(formData, 'state').toUpperCase();
+  const venueId = cleanText(formData, 'venue_id') || null;
+  let managedVenue: { name: string; address: string | null; city: string; state: string } | null = null;
+  if (venueId) {
+    await requireVenueAuthority(venueId);
+    const { data: venue, error: venueError } = await supabase.from('venues')
+      .select('name, address, city, state').eq('id', venueId).single();
+    if (venueError || !venue) throw new Error('The selected venue is unavailable.');
+    managedVenue = venue;
+  }
+  const venueName = managedVenue?.name ?? cleanText(formData, 'venue_name');
+  const address = managedVenue ? managedVenue.address || '' : cleanText(formData, 'address');
+  const city = managedVenue?.city ?? cleanText(formData, 'city');
+  const state = (managedVenue?.state ?? cleanText(formData, 'state')).toUpperCase();
   const startDate = cleanText(formData, 'start_date');
   const startTime = cleanText(formData, 'start_time');
   const endDate = cleanText(formData, 'end_date');
@@ -1021,6 +961,7 @@ export async function createEventStep1(formData: FormData) {
     slug,
     flyer_url: flyerUrl || null,
     venue_name: venueName,
+    venue_id: venueId,
     address,
     address_normalized: addressNormalized,
     city,
@@ -1032,7 +973,7 @@ export async function createEventStep1(formData: FormData) {
     promotion_end_at: lifecycle.promotionEndAt,
     discovery_start_at: lifecycle.discoveryStartAt,
     discovery_end_at: lifecycle.discoveryEndAt,
-    venue_connection_status: 'unmatched',
+    venue_connection_status: venueId ? 'approved' : 'unmatched',
     status: 'building',
     is_public: false,
     is_approved: false,
@@ -1050,9 +991,6 @@ export async function createEventStep1(formData: FormData) {
 
   if (error || !data) throw new Error(error?.message || 'Could not create event.');
 
-  if (venueName && settings.venue_matching_enabled !== false) {
-    await connectMatchingVenue({ eventId: data.id, userId: user.id, address, city, state });
-  }
   if (sourceUrl) await connectInitialSource({ eventId: data.id, userId: user.id, sourceUrl });
 
   redirect(`/dashboard/events/${data.id}/edit/step-2`);
