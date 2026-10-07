@@ -4,11 +4,17 @@ import EventFlyerUpload from '@/components/events/EventFlyerUpload';
 import PotentialEventMatches from '@/components/events/PotentialEventMatches';
 import VenueAddressMatch from '@/components/events/VenueAddressMatch';
 import { US_STATES } from '@/lib/states';
+import { getOwnedVenues } from '@/lib/data';
+import { createClient } from '@/lib/supabase/server';
+import ManagedVenueSelect from '@/components/events/ManagedVenueSelect';
 
-type Props = { searchParams?: Promise<{ source?: string }> };
+type Props = { searchParams?: Promise<{ source?: string; venue_id?: string }> };
 
 export default async function NewEventStep1Page({ searchParams }: Props) {
   const query = searchParams ? await searchParams : {};
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const managedVenues = user ? await getOwnedVenues(user.id) : [];
   const sourceMode = query.source === '1';
   return (
     <section className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
@@ -30,6 +36,18 @@ export default async function NewEventStep1Page({ searchParams }: Props) {
           </div>
           <div className="mt-5"><EventFlyerUpload /></div>
         </section>
+
+        {managedVenues.length > 0 ? (
+          <section className="rounded-[2rem] border border-accent/30 bg-accent/10 p-6">
+            <h2 className="text-2xl font-black text-white">Managed venue (optional)</h2>
+            <p className="mt-2 max-w-2xl text-sm text-white/70">Select a venue you actively manage to attach the event to that existing venue identity. Leave this blank to create an event at any organizer-provided location.</p>
+            <label className="mt-5 block">
+              <span className="text-sm font-bold text-white">Venue identity</span>
+              <ManagedVenueSelect venues={managedVenues.map(({ id, name, address, city, state }) => ({ id, name, address, city, state }))} selectedVenueId={query.venue_id} />
+            </label>
+            <p className="mt-3 text-xs text-white/60">An address match alone never selects or creates a venue identity.</p>
+          </section>
+        ) : null}
 
         <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
           <h2 className="text-2xl font-black text-white">Physical location</h2>

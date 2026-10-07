@@ -65,6 +65,7 @@ export default async function DashboardVenuesPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-3">
+              <Link href={"/dashboard/events/new?venue_id=" + venue.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40">Create event</Link>
                   <Link
                     href={`/venues/${venue.slug}`}
                     className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-white hover:border-accent/40"
