@@ -15,13 +15,11 @@ export async function reviewVenueClaim(formData: FormData) {
   // 0028 binds the reviewer and atomically creates authority on approval.
   redirect('/admin/venue-claims?reviewed=1');
 }
+// Legacy action now directs administrators to the confirmed, venue-scoped lifecycle flow.
 export async function updateVenueManagerStatus(formData: FormData) {
   const { supabase } = await requireClaimUser(true);
   const id = String(formData.get('manager_id') || '');
-  const status = String(formData.get('status') || '');
-  if (!id || !['active','suspended','removed'].includes(status)) throw new Error('Invalid manager lifecycle action');
-  const { data, error } = await supabase.from('venue_managers')
-    .update({ status, updated_at: new Date().toISOString() }).eq('id', id).select('id').single();
+  const { data, error } = await supabase.from('venue_managers').select('venue_id').eq('id', id).single();
   if (error || !data) throw new Error(error?.message || 'Manager not found');
-  redirect('/admin/venue-claims?manager_updated=1');
+  redirect('/dashboard/venues/' + data.venue_id + '/management');
 }

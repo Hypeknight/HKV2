@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requireClaimUser } from '@/lib/venues/claims';
-import { reviewVenueClaim, updateVenueManagerStatus } from './actions';
+import { reviewVenueClaim } from './actions';
 
 export default async function AdminVenueClaimsPage() {
   const { supabase } = await requireClaimUser(true);
@@ -28,13 +28,10 @@ export default async function AdminVenueClaimsPage() {
       </div>)}
     </div>
     <div className="space-y-4"><h2 className="text-2xl font-bold">Manager relationships</h2>
-      {(managers.data || []).map((manager: any) => <form key={manager.id} action={updateVenueManagerStatus} className="space-y-3 rounded-2xl border border-white/10 p-5">
+      {(managers.data || []).map((manager: any) => <div key={manager.id} className="space-y-3 rounded-2xl border border-white/10 p-5">
         <p>{manager.venue?.name} · {manager.user_id} · {manager.role} · {manager.status}</p>
-        <input type="hidden" name="manager_id" value={manager.id} />
-        <select name="status" defaultValue={manager.status === 'invited' ? 'suspended' : manager.status} className="mr-3 rounded-xl bg-black p-3">
-          <option value="active">Active</option><option value="suspended">Suspended</option><option value="removed">Removed</option>
-        </select><button className="rounded-xl border border-white/20 p-3">Update authority</button>
-      </form>)}
+        <Link href={'/dashboard/venues/' + manager.venue?.id + '/management'} className="text-accent">Manage authority in Venue Command Center</Link>
+      </div>)}
     </div>
     <div className="space-y-4"><h2 className="text-2xl font-bold">Identity and location proposals</h2>
       <p>These proposals do not change the venue automatically. Review the continuing business identity and physical location before applying a canonical change.</p>

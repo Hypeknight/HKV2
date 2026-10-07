@@ -69,3 +69,14 @@ export async function getManagedVenueIds(): Promise<string[]> {
   if (error) throw error;
   return Array.from(new Set((data ?? []).map((row) => String(row.venue_id))));
 }
+
+/** Minimal venue-scoped roster; private lookup stays behind centralized authority. */
+export async function getVenueManagerRoster(venueId: string) {
+  const authority = await requireVenueAuthority(venueId);
+  const client = authority.source === 'admin' ? await createClient() : createAdminClient();
+  let query = client.from('venue_managers').select('id,user_id,role,status,updated_at').eq('venue_id', venueId);
+  if (authority.source !== 'admin') query = query.eq('status', 'active');
+  const { data, error } = await query.order('created_at');
+  if (error) throw new Error(error.message);
+  return data || [];
+}
