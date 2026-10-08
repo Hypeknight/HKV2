@@ -158,6 +158,7 @@ export default async function HomePage() {
 
         {personalizedEvents.length ? (
           <EventRail
+            signalSurface="homepage"
             eyebrow="For you"
             title="Your night, ranked around you."
             text="Because you are signed in, HypeKnight is using your saved nightlife preferences to prioritize what you see."
@@ -193,6 +194,7 @@ export default async function HomePage() {
         {cityCounts.length ? <ActiveMarkets cityCounts={cityCounts} /> : null}
 
         <EventRail
+            signalSurface="homepage"
           id="live"
           eyebrow="Here & Now"
           title="Live right now"
@@ -204,6 +206,7 @@ export default async function HomePage() {
         />
 
         <EventRail
+            signalSurface="homepage"
           id="soon"
           eyebrow="Next move"
           title="Starting soon"
@@ -215,6 +218,7 @@ export default async function HomePage() {
         />
 
         <EventRail
+            signalSurface="homepage"
           id="tonight"
           eyebrow="Tonight"
           title="Build your night"
@@ -257,6 +261,7 @@ export default async function HomePage() {
         </section>
 
         <EventRail
+            signalSurface="homepage"
           id="fresh"
           eyebrow="Fresh drops"
           title="Recently added"
@@ -268,6 +273,7 @@ export default async function HomePage() {
         />
 
         <EventRail
+            signalSurface="homepage"
           id="weekend"
           eyebrow="Plan ahead"
           title="This weekend"

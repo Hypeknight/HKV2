@@ -4,7 +4,7 @@ import { expandCitySearch } from '@/lib/city-aliases';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
 import { US_STATES, normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
-import { recordSignal } from '@/lib/signals/server';
+import DiscoverySearchForm from '@/components/discovery/DiscoverySearchForm';
 import {
   buildMarketRegistry,
   isLocationInMarket,
@@ -316,56 +316,6 @@ export default async function EventsPage({ searchParams }: Props) {
 
   const hasActiveFilters = activeFilterCount > 0;
 
-  // SIGNAL BRIDGE: reaching a filtered /events result page means a discovery
-  // choice was actually submitted. This captures Quick Search and filter usage
-  // without changing the current form or URL-based discovery architecture.
-  if (hasActiveFilters) {
-    // MARKET INTELLIGENCE V1.5:
-    // Resolve an explicit city filter first. If the free-text query itself is
-    // exactly a known market alias (for example "Kansas City" or "ATL"),
-    // it can also be treated as market intent. Arbitrary search text is never
-    // guessed into a city.
-    const market = searchMarket;
-
-    // These counts describe what THIS filtered result page returned. Current
-    // market supply is calculated separately in the admin intelligence layer.
-    const hypeknightResultCount = cards.filter(
-      (event) => event.source === 'hypeknight'
-    ).length;
-    const externalResultCount = cards.filter(
-      (event) => event.source === 'external'
-    ).length;
-
-    await recordSignal(supabase, {
-      signalType: 'search_performed',
-      subjectType: market ? 'market' : 'search',
-      subjectId:
-        market?.key || search || vibe || city || when || 'filtered_discovery',
-      city: market?.city || query.city || null,
-      state: market?.state || query.state || null,
-      source: 'events_index',
-      surface: 'discovery_results',
-      verificationLevel: 'observed',
-      metadata: {
-        query: query.q || null,
-        music: query.music || null,
-        event_type: query.event_type || null,
-        vibe: query.vibe || null,
-        amenity: query.amenity || null,
-        age: query.age || null,
-        when: query.when || null,
-        source_filter: query.source || null,
-        result_count: cards.length,
-        hypeknight_result_count: hypeknightResultCount,
-        external_result_count: externalResultCount,
-        market_key: market?.key || null,
-        market_id: market?.id || null,
-        searched_city: query.city || null,
-        searched_state: query.state || null,
-      },
-    });
-  }
-
   return (
     <>
       <TrackView
@@ -439,6 +389,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!when || when === 'live' ? (
           <EventRail
+            signalSurface="events_index"
             id="live"
             eyebrow="Here & Now"
             title="Live right now"
@@ -449,6 +400,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!when || when === 'soon' ? (
           <EventRail
+            signalSurface="events_index"
             id="soon"
             eyebrow="Next Up"
             title="Starting soon"
@@ -459,6 +411,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!when || when === 'tonight' ? (
           <EventRail
+            signalSurface="events_index"
             id="tonight"
             eyebrow="Tonight"
             title="Tonight’s events"
@@ -469,6 +422,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!hasActiveFilters ? (
           <EventRail
+            signalSurface="events_index"
             id="fresh"
             eyebrow="Fresh"
             title="Recently added"
@@ -479,6 +433,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!when || when === 'weekend' ? (
           <EventRail
+            signalSurface="events_index"
             id="weekend"
             eyebrow="Weekend"
             title="This weekend"
@@ -489,6 +444,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!when || when === 'tomorrow' ? (
           <EventRail
+            signalSurface="events_index"
             id="tomorrow"
             eyebrow="Tomorrow"
             title="Tomorrow’s move"
@@ -499,6 +455,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!when || when === 'week' ? (
           <EventRail
+            signalSurface="events_index"
             id="week"
             eyebrow="This Week"
             title="Coming up this week"
@@ -509,6 +466,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
         {!hasActiveFilters ? (
           <EventRail
+            signalSurface="events_index"
             id="next-week"
             eyebrow="Next Week"
             title="Next week’s lineup"
@@ -534,6 +492,7 @@ export default async function EventsPage({ searchParams }: Props) {
                 <EventCard
                   key={`${event.source_label}-${event.id}`}
                   event={event}
+                  impression={{ surface: 'events_index', placement: 'all_results' }}
                 />
               ))}
             </div>
@@ -613,7 +572,7 @@ function DiscoveryHero({
           </Link>
         </div>
 
-        <form className="mt-8 rounded-[1.75rem] border border-white/10 bg-black/40 p-4 backdrop-blur sm:p-5">
+        <DiscoverySearchForm className="mt-8 rounded-[1.75rem] border border-white/10 bg-black/40 p-4 backdrop-blur sm:p-5">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_170px_auto]">
             <FilterInput
               name="q"
@@ -747,7 +706,7 @@ function DiscoveryHero({
               Clear all filters
             </Link>
           ) : null}
-        </form>
+        </DiscoverySearchForm>
 
         <div className="mt-6 grid grid-cols-3 gap-3 sm:mt-8 xl:grid-cols-6">
           <MetricCard

@@ -1,41 +1,8 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { getAnonymousSessionId } from '@/lib/signals/browser';
+import { recordSearchSubmission } from '@/lib/signals/discovery-browser';
 import { LOCATION_STORAGE_KEY, type HypeKnightLocation } from '@/lib/location/types';
-
-function recordSearchSignal(form: HTMLFormElement) {
-  const data = new FormData(form);
-  const q = String(data.get('q') || '').trim();
-  const city = String(data.get('city') || '').trim();
-  const state = String(data.get('state') || '').trim();
-  const when = String(data.get('when') || '').trim();
-
-  const payload = JSON.stringify({
-    signalType: 'search_performed',
-    subjectType: 'search',
-    subjectId: q || city || when || 'homepage-discovery',
-    city: city || null,
-    state: state || null,
-    source: 'homepage',
-    surface: 'discovery_command_bar',
-    anonymousSessionId: getAnonymousSessionId(),
-    verificationLevel: 'declared',
-    metadata: { query: q || null, city: city || null, state: state || null, when: when || null },
-  });
-
-  if (navigator.sendBeacon) {
-    const sent = navigator.sendBeacon('/api/signals', new Blob([payload], { type: 'application/json' }));
-    if (sent) return;
-  }
-
-  void fetch('/api/signals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: payload,
-    keepalive: true,
-  }).catch(() => {});
-}
 
 export default function DiscoveryCommandBar({ compact = false }: { compact?: boolean }) {
   const [location, setLocation] = useState<HypeKnightLocation | null>(null);
@@ -54,7 +21,7 @@ export default function DiscoveryCommandBar({ compact = false }: { compact?: boo
   }, []);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    recordSearchSignal(event.currentTarget);
+    recordSearchSubmission(event.currentTarget, 'homepage');
   }
 
   return (

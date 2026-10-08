@@ -1,3 +1,4 @@
+import type { DiscoverySurface } from '@/lib/signals/discovery';
 import EventCard from './EventCard';
 import EmptyState from './EmptyState';
 import SectionHeader from './SectionHeader';
@@ -11,6 +12,7 @@ export default function EventRail({
   emptyText = 'No events are showing yet.',
   href,
   action,
+  signalSurface,
 }: {
   id?: string;
   eyebrow?: string;
@@ -20,6 +22,7 @@ export default function EventRail({
   emptyText?: string;
   href?: string;
   action?: string;
+  signalSurface?: DiscoverySurface;
 }) {
   return (
     <section id={id} className="scroll-mt-24">
@@ -39,10 +42,11 @@ export default function EventRail({
 
           <div className="relative">
             <div className="-mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-3 sm:mx-0 sm:mt-8 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-3">
-              {events.map((event) => (
+              {events.map((event, position) => (
                 <EventCard
                   key={`${event.source_label || event.source || 'event'}-${event.id}`}
                   event={event}
+                  impression={signalSurface ? { surface: signalSurface, placement: id || title, position } : undefined}
                   compact
                 />
               ))}

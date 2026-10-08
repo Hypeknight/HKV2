@@ -178,7 +178,7 @@ export default async function DashboardPage() {
           <div className="-mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 xl:grid-cols-3">
             {recommendations.map(({ event }: any, index: number) => (
               <div key={`${event.source_label}-${event.id}`} className="min-w-[82vw] sm:min-w-0">
-                <DiscoveryEventCard event={event} featured={index === 0} />
+                <DiscoveryEventCard event={event} impression={{ surface: 'dashboard_recommendations', placement: 'recommendations', position: index }} featured={index === 0} />
               </div>
             ))}
           </div>
