@@ -11,10 +11,7 @@ import { eventSourceLabel } from '@/lib/event-sources/providers';
 import PatronPulseGuestPanel from '@/components/patron-pulse/PatronPulseGuestPanel';
 import { getEventShareMetadata } from '@/lib/metadata/event-metadata';
 import { loadPublicPatronPulse } from '@/lib/patron-pulse/service';
-import {
-  getActivePresenceVerification,
-  resolvePresenceParticipant,
-} from '@/lib/presence/service';
+import { PRESENCE_PARTICIPANT_COOKIE, parseParticipantToken } from '@/lib/presence/participant-cookie';
 import { cookies } from 'next/headers';
 import {
   recordRecentEventView,
@@ -169,36 +166,10 @@ export default async function EventDetailPage({ params }: Props) {
   const viewerRsvpStatus =
     viewerRsvp?.status || null;
 
-  const patronPulse = await loadPublicPatronPulse({
-    supabase,
-    eventId: event.id,
-    userId: user?.id || null,
-  });
-
   const cookieStore = await cookies();
-  const participantToken =
-    cookieStore.get('hk_presence_participant')?.value ?? null;
-
-  const presenceParticipant = participantToken
-    ? await resolvePresenceParticipant({
-        participantToken,
-        userId: user?.id ?? null,
-      })
-    : null;
-
-  const eventPresenceVerification = presenceParticipant
-    ? await getActivePresenceVerification({
-        participantId: presenceParticipant.id,
-        contextType: 'event',
-        eventId: event.id,
-      })
-    : null;
-
-  const hasVerifiedEventPresence =
-    eventPresenceVerification?.verification_level === 'presence_supported' ||
-    eventPresenceVerification?.verification_level === 'verified';
-
-
+  const participantToken = parseParticipantToken(cookieStore.get(PRESENCE_PARTICIPANT_COOKIE)?.value);
+  const patronPulse = await loadPublicPatronPulse({ supabase, eventId: event.id, userId: user?.id || null, participantToken });
+  const hasVerifiedEventPresence = patronPulse.hasVerifiedEventPresence;
   const { data: profile } = user
     ? await supabase
         .from('profiles')
@@ -744,7 +715,6 @@ export default async function EventDetailPage({ params }: Props) {
           eventName={
             event.name || 'HypeKnight Event'
           }
-          userId={user?.id || null}
           session={patronPulse.session}
           pulses={patronPulse.pulses}
           announcements={patronPulse.announcements}
@@ -755,7 +725,6 @@ export default async function EventDetailPage({ params }: Props) {
             patronPulse.viewerResponses
           }
 
-      participantToken={participantToken}
       hasVerifiedEventPresence={hasVerifiedEventPresence}
     />
 

@@ -1,4 +1,5 @@
-import { randomBytes } from 'crypto';
+import 'server-only';
+import { randomUUID } from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export type PresenceContextType = 'event' | 'venue' | 'field';
@@ -39,7 +40,7 @@ type VerifyPresenceInput = {
 };
 
 function createParticipantToken() {
-  return randomBytes(32).toString('hex');
+  return randomUUID();
 }
 
 function normalizeEmail(email?: string | null) {
@@ -173,7 +174,7 @@ export async function verifyPresence(input: VerifyPresenceInput) {
       context_type: input.contextType,
       event_id: input.eventId ?? null,
       venue_id: input.venueId ?? null,
-      verification_method: input.method,
+      method: input.method,
       verification_level: input.verificationLevel,
       confidence,
       verified_at: new Date().toISOString(),
@@ -214,7 +215,8 @@ export async function getActivePresenceVerification({
     .from('presence_verifications')
     .select('*')
     .eq('participant_id', participantId)
-    .eq('context_type', contextType);
+    .eq('context_type', contextType)
+    .is('revoked_at', null);
 
   if (contextType === 'event') {
     query = query.eq('event_id', eventId!);
