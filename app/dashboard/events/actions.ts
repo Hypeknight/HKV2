@@ -1085,6 +1085,9 @@ export async function updateEventStep3(formData: FormData) {
   // Featured, Patron Pulse, and Linkd'N.
   const basePrice = 0;
   const includedPromoDays = Number(settings.included_promo_days || 14);
+  if (!Number.isInteger(extraPromoDays) || extraPromoDays + includedPromoDays > 60) {
+    throw new Error('Extended Discovery must remain within 60 total days.');
+  }
   const extraDayPrice = Number(settings.extra_promo_day_price || 2.5);
   const lifecycle = resolveEventLifecycle({
     eventStartAt: event.event_start_at,
@@ -1215,7 +1218,7 @@ export async function updateEventStep3(formData: FormData) {
   if (itemError) throw new Error(itemError.message);
 
   const linkdnSelected = selectedCodes.includes('LINKDN');
-  const { error } = await supabase.from('events').update({
+  const { error } = await admin.from('events').update({
     included_promo_days: includedPromoDays,
     extra_promo_days: extraPromoDays,
     extra_promo_price: Number((extraPromoDays * extraDayPrice).toFixed(2)),
@@ -1236,7 +1239,7 @@ export async function updateEventStep3(formData: FormData) {
     current_step: 3,
     is_public: false,
     updated_at: new Date().toISOString(),
-  }).eq('id', eventId).eq('owner_id', user.id);
+  }).eq('id', eventId).eq('owner_id', user.id).eq('status', event.status).select('id').single();
   if (error) throw new Error(error.message);
 
   refreshOwnerEventPaths(eventId);
@@ -1306,7 +1309,6 @@ export async function submitEventForModeration(formData: FormData) {
     updates: {
       isApproved: false,
       isPublic: false,
-      hiddenByAdmin: false,
     },
   });
 
@@ -1476,7 +1478,6 @@ export async function updateEventStep1(formData: FormData) {
       updates: {
         isApproved: false,
         isPublic: false,
-        hiddenByAdmin: false,
       },
     });
   }
@@ -1508,6 +1509,8 @@ export async function updateEventStep1(formData: FormData) {
       event_end_at: eventEndAt?.toISOString() || null,
       promotion_start_at: promotionStartAt,
       promotion_end_at: promotionEndAt,
+      discovery_start_at: lifecycle.discoveryStartAt,
+      discovery_end_at: lifecycle.discoveryEndAt,
       current_step: 1,
       is_public: false,
       updated_at: new Date().toISOString(),
