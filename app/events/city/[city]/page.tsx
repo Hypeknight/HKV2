@@ -191,6 +191,7 @@ await logDiscoverySearch({
               <DiscoveryEventCard
                 key={`${event.source_label}-${event.id}`}
                 event={event}
+                impression={{ surface: 'city_discovery', placement: 'city_results', position: index }}
                 featured={index < 3}
               />
             ))}

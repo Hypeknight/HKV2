@@ -1,3 +1,5 @@
+import DiscoveryImpression from '@/components/analytics/DiscoveryImpression';
+import type { DiscoverySurface } from '@/lib/signals/discovery';
 import Link from 'next/link';
 import EventStatusBadge from './EventStatusBadge';
 import EventTime from './EventTime';
@@ -5,9 +7,11 @@ import EventTime from './EventTime';
 export default function EventCard({
   event,
   compact = false,
+  impression,
 }: {
   event: any;
   compact?: boolean;
+  impression?: { surface: DiscoverySurface; placement: string; position?: number };
 }) {
   return (
     <Link
@@ -16,6 +20,7 @@ export default function EventCard({
         compact ? 'w-[80vw] sm:w-auto' : ''
       }`}
     >
+      {impression ? <DiscoveryImpression subjectId={event.id} inventorySource={event.source === 'external' || event.is_external ? 'external' : 'hypeknight'} {...impression} /> : null}
       <div className="relative aspect-[4/3] overflow-hidden bg-black/30 sm:aspect-[16/11]">
         {event.image_url ? (
           <img

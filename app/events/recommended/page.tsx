@@ -63,7 +63,7 @@ export default async function RecommendedEventsPage() {
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {topRecommendations.map(({ event, score }, index) => (
             <div key={`${event.source_label}-${event.id}`} className="space-y-3">
-              <DiscoveryEventCard event={event} featured={index < 3} />
+              <DiscoveryEventCard event={event} impression={{ surface: 'recommended_events', placement: 'recommendations', position: index }} featured={index < 3} />
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/55">
                 Match score: {score}
               </div>

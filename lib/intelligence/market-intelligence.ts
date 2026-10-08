@@ -55,6 +55,7 @@ export type MarketIntelligenceRow = CanonicalMarket & {
   zeroResultSearches7d: number;
   lowResultSearches7d: number;
   averageResultsPerSearch7d: number | null;
+  searchesWithObservedResults7d: number;
   hypeknightEvents: number;
   externalEvents: number;
   totalInventory: number;
@@ -116,6 +117,7 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
       zeroResultSearches7d: 0,
       lowResultSearches7d: 0,
       averageResultsPerSearch7d: null,
+      searchesWithObservedResults7d: 0,
       hypeknightEvents: 0,
       externalEvents: 0,
       totalInventory: 0,
@@ -160,6 +162,7 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
         const resultCount = numericMetadata(signal.metadata, 'result_count');
         if (resultCount !== null) {
           row.searchResultTotal += resultCount;
+          row.searchesWithObservedResults7d += 1;
           if (resultCount === 0) row.zeroResultSearches7d += 1;
           if (resultCount < 3) row.lowResultSearches7d += 1;
         }
@@ -216,8 +219,9 @@ export function buildMarketIntelligence(options: BuildOptions): MarketIntelligen
       row.hypeknightCoveragePercent = row.totalInventory
         ? round1((row.hypeknightEvents / row.totalInventory) * 100)
         : null;
-      row.averageResultsPerSearch7d = row.searches7d
-        ? round1(row.searchResultTotal / row.searches7d)
+      // Missing retrieval observations must not dilute the observed-result average.
+      row.averageResultsPerSearch7d = row.searchesWithObservedResults7d
+        ? round1(row.searchResultTotal / row.searchesWithObservedResults7d)
         : null;
       row.searchChangePercent = trendPercent(row.searches7d, row.previousSearches7d);
       row.peakDiscoveryHour = mode(row.discoveryHours);

@@ -1,3 +1,5 @@
+import DiscoveryImpression from '@/components/analytics/DiscoveryImpression';
+import type { DiscoverySurface } from '@/lib/signals/discovery';
 import Link from 'next/link';
 
 export type DiscoveryEventCardItem = {
@@ -20,9 +22,11 @@ export type DiscoveryEventCardItem = {
 export default function DiscoveryEventCard({
   event,
   featured = false,
+  impression,
 }: {
   event: DiscoveryEventCardItem;
   featured?: boolean;
+  impression?: { surface: DiscoverySurface; placement: string; position?: number };
 }) {
   const eventDate = event.event_start_at
     ? new Date(event.event_start_at)
@@ -46,10 +50,11 @@ export default function DiscoveryEventCard({
   return (
     <Link
       href={event.href}
-      className={`group block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-accent/40 hover:bg-white/[0.08] ${
+      className={`group relative block overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-accent/40 hover:bg-white/[0.08] ${
         featured ? 'shadow-[0_0_40px_rgba(255,255,255,0.06)]' : ''
       }`}
     >
+      {impression ? <DiscoveryImpression subjectId={event.id} inventorySource={event.is_external ? 'external' : 'hypeknight'} {...impression} /> : null}
       <div className="relative aspect-[16/10] bg-black/30">
         {event.image_url ? (
           <img

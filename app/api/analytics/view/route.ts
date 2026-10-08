@@ -36,17 +36,17 @@ export async function POST(req: Request) {
     // the current analytics page. The same observation is also normalized into
     // the signal stream so future intelligence does not depend on legacy tables.
     await recordSignal(supabase, {
-      signalType: payload.event_id
+      signalType: payload.event_id || payload.external_event_id
         ? 'event_view'
         : body.venue_id
           ? 'venue_view'
           : 'page_view',
-      subjectType: payload.event_id
+      subjectType: payload.event_id || payload.external_event_id
         ? 'event'
         : body.venue_id
           ? 'venue'
           : 'page',
-      subjectId: payload.event_id || body.venue_id || payload.path || payload.page_type,
+      subjectId: payload.event_id || payload.external_event_id || body.venue_id || payload.path || payload.page_type,
       eventId: payload.event_id,
       venueId: body.venue_id || null,
       city: payload.city,
