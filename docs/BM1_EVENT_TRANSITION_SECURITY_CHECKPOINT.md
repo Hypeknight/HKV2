@@ -2,7 +2,7 @@
 
 ## Recovered state
 
-Production Render service HKV2 is live at b208de6661347957d5ca0bec6a6e5a6327ac79f4, matching GitHub origin/main and the existing Codespace HEAD. Auto-deploy is disabled following a historical rollback; it was left unchanged. Supabase is healthy and migrations 0001–0028 are recorded. No production mutation, merge, deployment or environment change was performed during this checkpoint.
+Production Render service HKV2 is live at b208de6661347957d5ca0bec6a6e5a6327ac79f4, matching GitHub origin/main and the existing Codespace HEAD. Auto-deploy is disabled following a historical rollback; it was left unchanged. Supabase is healthy and migrations 0001–0028 are recorded. No deliberate production entity/authority/schema mutation, merge, deployment or environment change was performed. Ordinary navigation may emit existing view/click telemetry.
 
 The original /workspaces/HKV2 remains on feature/bm1-security-maintenance. Its unfinished package.json/package-lock.json upgrades (Next 15.5.27, Nodemailer 10.0.16, PostCSS 8.5.29 and override) are preserved, excluded from this change. This work uses /workspaces/HKV2-event-transition-security, branch feature/bm1-event-transition-security, based on origin/main. Generated supabase/.temp/ and tsconfig.tsbuildinfo are never staged.
 
@@ -20,7 +20,7 @@ The original /workspaces/HKV2 remains on feature/bm1-security-maintenance. Its u
 | Claims / corrections | Claim history and admin review queue load; material identity/location corrections require review. No claim/correction submitted. |
 | Presence | Workflow navigation loads; no session or check-in created. Expired April check-in appears under Active Check-ins: P2-A presentation/evidence gap. |
 | Analytics / Intelligence | Analytics labels record counts; Intelligence explicitly unavailable pending signal alignment. Counts are not unique guests or verified attendance. |
-| Public / hidden entities | Public homepage and external event page load. All four intentionally hidden test venues remain is_visible=false; listing empty and hidden detail returns 404. Canonical approved test event loads under admin; unauthenticated canonical-page check remains. |
+| Public / hidden entities | Public homepage and external event page load. All four intentionally hidden test venues remain is_visible=false; listing empty and hidden detail returns 404. Canonical approved test event loads under admin and an unauthenticated HTTP GET returns 200 with its title and without Admin View. |
 | Session persistence | Authenticated session survives all tested navigation. |
 
 Read-only smoke tests cannot establish every mutation path. Production manager lifecycle mutations were intentionally not exercised. Discovery AI's unpaid account is a known expected limitation and is not a gate blocker.
