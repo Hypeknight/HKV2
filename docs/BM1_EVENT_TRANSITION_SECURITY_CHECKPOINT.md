@@ -64,7 +64,7 @@ The row guard additionally protects paid provenance, staff picks and venue relat
 
 Authenticated Command Center denial now uses Next.js's handled 404 sentinel, preserving private venue existence and avoiding the previous uncaught authorization exception. Login redirection, active manager access and administrator override remain covered by the focused tests. Production still runs the old denial behavior until this isolated release is deployed.
 
-Production active non-admin manager smoke remains pending authentication with an existing authorized account. Read-only database inspection identified an active manager for Franks whose profile is not administrator; no authority or account was created for testing. Administrator smoke cannot substitute for this test.
+Production active non-admin manager smoke completed using the existing authorized account (see results below). Read-only database inspection identified an active manager for Franks whose profile is not administrator; no authority or account was created for testing. Administrator smoke cannot substitute for this test.
 
 Release sequence after review approval:
 1. Complete existing-account manager and non-manager baseline smoke; rerun exact migration hash/ACL/history preflight. Validate compatibility in a representative staging schema when available.
@@ -76,3 +76,11 @@ Release sequence after review approval:
 Rollback validation uses disposable PostgreSQL only: baseline exploit and transactional migration rollback are checked before application. Before a failed migration commits, rollback restores the original function/ACL and removes the trigger. After production commit, prefer a reviewed forward repair; restoring the vulnerable RPC/owner-write permissions would weaken security and requires explicit approval. A rollback to old application code while retaining the guard leaves Step 3 entitlement edits denied, so application rollback is not a complete availability recovery.
 
 The database fixture is synthetic and not a complete production schema clone. The 404 regression uses Next's real sentinel through the application test harness; production HTTP behavior awaits deployment. Known unpaid Discovery AI configuration is unchanged and is not a release blocker.
+
+## Authenticated non-admin production smoke — 2026-10-08 UTC
+
+The existing Franks manager signed in directly through the user-controlled production browser. Read-only database inspection confirmed platform role ambassador (not admin), and Management rendered the authenticated account's active owner relationship. Overview, Profile, Events, Presence, Analytics, Management and Intelligence all loaded successfully. Full document navigation retained the session, including recovery after a denied foreign venue page. Franks remained administratively hidden. Events exposed the canonical Builder link with the exact venue_id. Management exposed review-only material correction submission and no manager grant/change/revoke controls. No form, manager change, Presence session or event creation was submitted.
+
+The same account has no active manager relationship for Aura. Its Aura Command Center request remained denied, showing the existing generic server exception (digest 2286482654) without Command Center data. This is the pre-release baseline on b208de6; PR #4's handled 404 correction passes application regression tests but requires post-deployment HTTP smoke. The manager authentication blocker is cleared. No production database mutation, migration, merge or deployment was performed.
+
+Presence also renders an expired April check-in under Active Check-ins. This existing signal-presentation issue is recorded for the separate Signal Alignment review; it is not changed in this security PR.
