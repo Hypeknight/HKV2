@@ -1306,7 +1306,6 @@ export async function submitEventForModeration(formData: FormData) {
     updates: {
       isApproved: false,
       isPublic: false,
-      hiddenByAdmin: false,
     },
   });
 
@@ -1476,7 +1475,6 @@ export async function updateEventStep1(formData: FormData) {
       updates: {
         isApproved: false,
         isPublic: false,
-        hiddenByAdmin: false,
       },
     });
   }
