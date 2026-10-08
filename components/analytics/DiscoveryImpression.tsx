@@ -18,7 +18,7 @@ export default function DiscoveryImpression({ subjectId, inventorySource, surfac
         timer = null; sent = true;
         void sendDiscoveryObservation({ observationId: exposureObservationId(exposureKey(surface, placement, inventorySource, subjectId)),
           signalType: 'discovery_impression', surface, placement, subjectId, inventorySource,
-          metadata: { visible_fraction: 0.5, visible_ms: 1000, ...(position === undefined ? {} : { position }) } });
+          metadata: { exposure_class: 'organic', visible_fraction: 0.5, visible_ms: 1000, ...(position === undefined ? {} : { position }) } });
       }, 1000);
     };
     const observer = new IntersectionObserver(entries => {

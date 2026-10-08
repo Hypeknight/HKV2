@@ -32,6 +32,7 @@ export function parseDiscoveryObservation(value: unknown): DiscoveryObservation 
     if (typeof b.subjectId !== 'string' || !UUID_PATTERN.test(b.subjectId)) return null;
     if (b.inventorySource !== 'hypeknight' && b.inventorySource !== 'external') return null;
     if (!text(b.placement)) return null;
+    if ('exposure_class' in raw && raw.exposure_class !== 'organic') return null;
     if (raw.visible_fraction !== 0.5 || raw.visible_ms !== 1000) return null;
     metadata.visible_fraction = 0.5; metadata.visible_ms = 1000;
     metadata.exposure_class = 'organic';

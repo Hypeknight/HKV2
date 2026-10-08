@@ -24,7 +24,7 @@ test('requires observation identity and observed visibility threshold',()=>{
   for (const patch of [{observationId:'bad'},{subjectId:'bad'},{metadata:{}},{surface:'admin'},{inventorySource:'ticketmaster'}]) assert.equal(parse({...base,...patch}),null);
 });
 test('browser cannot promote evidence, actor or Featured attribution',()=>{
-  const result = parse({...base,actorId:'admin',verificationLevel:'verified',venueId:id,marketId:id,metadata:{...base.metadata,exposure_class:'featured',acquisition_source:'paid',verified:true}});
+  const result = parse({...base,actorId:'admin',verificationLevel:'verified',venueId:id,marketId:id,metadata:{...base.metadata,exposure_class:'organic',acquisition_source:'paid',verified:true}});
   assert.equal(result.metadata.exposure_class,'organic');
   assert.equal(result.actorId,undefined); assert.equal(result.venueId,undefined); assert.equal(result.marketId,undefined);
   assert.equal(result.metadata.verified,undefined); assert.equal(result.metadata.acquisition_source,undefined);
@@ -121,4 +121,9 @@ test('unobserved searches are never averaged as zero and explicit zero remains a
   assert.equal(row.averageResultsPerSearch7d,8);assert.equal(row.searchesWithObservedResults7d,1);assert.equal(row.searches7d,2);
   row=module.buildMarketIntelligence({now,signals:[signal(0)]})[0];
   assert.equal(row.averageResultsPerSearch7d,0);assert.equal(row.searchesWithObservedResults7d,1);assert.equal(row.zeroResultSearches7d,1);
+});
+
+test('explicit Featured or invalid exposure classes are rejected rather than relabeled organic',()=>{
+  for(const exposure_class of ['featured','paid',null,1]) assert.equal(parse({...base,metadata:{...base.metadata,exposure_class}}),null);
+  assert.ok(parse({...base,metadata:{...base.metadata,exposure_class:'organic'}}));
 });

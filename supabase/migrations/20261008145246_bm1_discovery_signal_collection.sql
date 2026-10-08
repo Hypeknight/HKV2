@@ -109,6 +109,7 @@ begin
   else
     if p_placement is null or nullif(trim(p_placement),'') is null or length(p_placement)>120 then raise exception 'Invalid placement'; end if;
     if p_inventory_source is null or p_inventory_source not in ('hypeknight','external') then raise exception 'Invalid inventory source'; end if;
+    if p_metadata ? 'exposure_class' and p_metadata->>'exposure_class' is distinct from 'organic' then raise exception 'Unsupported exposure class'; end if;
     if p_metadata->>'visible_fraction' is distinct from '0.5' or p_metadata->>'visible_ms' is distinct from '1000' then raise exception 'Invalid viewability'; end if;
     if p_inventory_source='hypeknight' then
       select to_jsonb(e) into v_row from public.events e where e.id::text=p_subject_id
@@ -129,7 +130,8 @@ begin
       v_metadata := v_metadata || jsonb_build_object('position',p_metadata->'position');
     end if;
   end if;
-  v_metadata := v_metadata || jsonb_build_object('acquisition_source','unknown','evidence_origin','browser_reported','contract_version','p2b1');
+  v_metadata := v_metadata || jsonb_build_object('placement',case when p_signal_type='search_performed' then 'search_form' else trim(p_placement) end,
+    'acquisition_source','unknown','evidence_origin','browser_reported','contract_version','p2b1');
   insert into public.signals(signal_type,actor_id,anonymous_session_id,subject_type,subject_id,event_id,
     city,state,source,surface,verification_level,metadata,observation_id)
   values(p_signal_type,auth.uid(),nullif(left(p_anonymous_session_id,128),''),v_subject_type,v_subject,v_event,

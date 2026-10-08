@@ -62,7 +62,7 @@ try:
  run(migration)
  run("set role authenticated; set request.jwt.claim.sub='00000000-0000-4000-8000-000000000010'; select "+call()+";")
  run('set role anon; select '+call()+';')
- assert run("select count(*) from signals where observation_id is not null")=='1'
+ assert run("select count(*) from signals where observation_id is not null and metadata->>'placement'='tonight'")=='1'
  result=run("select actor_id::text || '|' || event_id::text || '|' || venue_id::text || '|' || market_id::text || '|' || verification_level from signals where observation_id is not null")
  assert result=='00000000-0000-4000-8000-000000000010|00000000-0000-4000-8000-000000000040|00000000-0000-4000-8000-000000000030|00000000-0000-4000-8000-000000000020|observed',result
  print('PASS: authenticated actor binding; canonical venue/market; hidden venue does not invalidate public event; replay dedup')
@@ -75,7 +75,7 @@ try:
  assert run("select count(*) from signals where observation_id='00000000-0000-4000-8000-000000000063' and market_id is null and metadata->>'market_context'='unresolved'")=='1'
  assert run('select count(*) from markets')=='1'
  print('PASS: search intent fixed low-trust; unknown results/location remain unknown; no market creation')
- for expression in [call('64',subject='41'),call('65',kind='featured_impression'),call('66',kind='event_saved'),call('67',metadata='{"visible_fraction":0.1,"visible_ms":1000}')]:
+ for expression in [call('64',subject='41'),call('65',kind='featured_impression'),call('66',kind='event_saved'),call('67',metadata='{"visible_fraction":0.1,"visible_ms":1000}'),call('70',metadata='{"visible_fraction":0.5,"visible_ms":1000,"exposure_class":"featured"}')]:
   try:run('set role anon; select '+expression+';')
   except RuntimeError:pass
   else:raise AssertionError('Rejected observation accepted: '+expression)

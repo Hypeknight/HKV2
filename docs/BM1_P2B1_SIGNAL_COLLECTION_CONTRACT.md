@@ -21,7 +21,7 @@ The new /api/signals/discovery returns failure on collector/database errors; it 
 
 ## Featured is not styling or payment
 
-Existing DiscoveryEventCard.featured only adds a shadow to ranked cards. Those exposures remain organic. Featured purchase/inventory routes exist, but no public paid-placement renderer/placement reference was found in the audited Discovery surfaces. featured_impression is explicitly **not instrumented** and rejected by the new collector until actual delivery exists. Payment, inventory reservation, first-three rank and special_days.is_featured never manufacture Featured exposure. This gap is required before Featured delivery reporting; absence must not be presented as zero paid impressions.
+Existing DiscoveryEventCard.featured only adds a shadow to ranked cards. Those exposures remain organic. The collector persists the placement name, and explicitly Featured/paid exposure payloads are rejected rather than relabeled organic. Featured purchase/inventory routes exist, but no public paid-placement renderer/placement reference was found in the audited Discovery surfaces. featured_impression is explicitly **not instrumented** and rejected by the new collector until actual delivery exists. Payment, inventory reservation, first-three rank and special_days.is_featured never manufacture Featured exposure. This gap is required before Featured delivery reporting; absence must not be presented as zero paid impressions.
 
 ## Canonical definitions
 
@@ -70,7 +70,7 @@ Remaining: real Featured placement delivery, legacy action replay/trust hardenin
 
 - git diff --check: passed.
 - npx tsc --noEmit: passed.
-- node --test tests/signal-collection.test.cjs tests/venue-authority.test.cjs tests/venue-product-completion.test.cjs tests/venue-command-center.test.cjs: 63 passed (14 signal + 49 existing venue tests).
+- node --test tests/signal-collection.test.cjs tests/venue-authority.test.cjs tests/venue-product-completion.test.cjs tests/venue-command-center.test.cjs: 64 passed (15 signal + 49 existing venue tests).
 - python3 tests/signal-collection.test.py: 8 groups passed against a disposable PostgreSQL 17 container; real additive migration, BEGIN/ROLLBACK, legacy RPC/row preservation, actor binding, context normalization, external identity, public eligibility, unknown/ambiguous market, no direct raw writes, private function permissions and concurrent deduplication. Focused schema fixture, not a full Supabase reset or production preflight.
 - npm run build: passed using legitimate production public Supabase configuration; 101 pages generated. No service-role key used. Existing locked dependencies installed in this isolated worktree; no package/lockfile modifications.
 
