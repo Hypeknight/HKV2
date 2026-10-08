@@ -38,14 +38,14 @@ Events, event_status_history, event_revisions and profiles all have RLS enabled.
 - Owner submit/resume actions stop clearing hidden_by_admin. Valid hidden-event cancellation remains hidden.
 - Existing live RPC body, return type and atomic history insertion are preserved by an audited anchor patch. Existing applied migrations are untouched. No event data rewrite or new payment approval requirement.
 
-Live RPC preflight: md5(pg_get_functiondef(...)) = eb0e3f3269cc9c9276cbcedd7cbbe862; expected BEGIN/event-id anchor position 567. Re-read definition and ACL before deployment; any drift requires review. The migration fails if the anchor is absent or its guard already exists.
+Live RPC preflight: md5(pg_get_functiondef(...)) = eb0e3f3269cc9c9276cbcedd7cbbe862; expected BEGIN/event-id anchor position 567. Re-read definition and ACL before deployment; any drift requires review. The migration fails if the exact live function hash has changed, the anchor is absent, or its guard already exists.
 
 ## Validation
 
 - git diff --check: pass.
 - TypeScript npx tsc --noEmit: pass.
 - Venue authority/product completion/Command Center: 49 tests pass.
-- Isolated PostgreSQL 17: baseline exploit reproduced and rolled back, migration rollback checked, 40 authority/lifecycle assertions pass, including admin/service DELETE semantics.
+- Isolated PostgreSQL 17: baseline exploit reproduced and rolled back, migration rollback checked, 53 authority/lifecycle/Discovery/venue assertions pass, including admin/service DELETE semantics.
 - Next 15.5.15 production build: pass, all 100 static pages generated, using verified live public Supabase URL/anon configuration and production site URL. No service/Stripe/AI secrets were copied or invented. Build-time success does not validate dynamic third-party integrations.
 
 The SQL fixture reproduces the audited authority/RLS/RPC behavior but is not a full production database clone; unrelated constraints/triggers are omitted. Staging compatibility and the remaining non-admin manager runtime test are release limitations.
@@ -55,3 +55,24 @@ The SQL fixture reproduces the audited authority/RLS/RPC behavior but is not a f
 This is a feature-branch review checkpoint, not a production fix yet. Review the exact migration, action diff and tests. Confirm the production RPC preflight/ACL has not drifted and validate the migration in a representative non-production schema where available. Obtain explicit release approval before applying the new migration or triggering Render. Apply the reviewed migration transactionally, verify migration history/function ACL/guard and ownership controls, then merge only this scoped change and manually deploy its exact merge commit with Render auto-deploy left disabled. Perform read-only public/auth/session/Command Center smoke checks and report exact deployed commit. Do not test destructive exploit writes against production.
 
 P2-A may proceed as read-only evidence auditing while the release gate is pending. Broad P2-B instrumentation/dashboard changes remain blocked until the canonical matrix and implementation plan are reviewed.
+
+## PR #4 Security Release Gate review
+
+Reviewed against main b208de6661347957d5ca0bec6a6e5a6327ac79f4. This review remains isolated from PR #5 and the dependency-upgrade worktree. Production has not received this migration or application change.
+
+The row guard additionally protects paid provenance, staff picks and venue relationship verification. Owners cannot inflate free/extended Discovery days, create an overlong draft Discovery window, or directly change public-event date/location/windows outside the reviewed revision path. An approved venue connection requires active venue authority; pending organizer connections remain possible. Trusted venue rejection does not invalidate the event. The canonical Builder recalculates both Discovery and promotion dates. Its validated Step 3 pricing write uses the trusted server client only after authenticating and loading the owned editable event; the final update repeats owner and current-status predicates and rejects fractional or over-60-day selections. No payment creates event or venue approval.
+
+Authenticated Command Center denial now uses Next.js's handled 404 sentinel, preserving private venue existence and avoiding the previous uncaught authorization exception. Login redirection, active manager access and administrator override remain covered by the focused tests. Production still runs the old denial behavior until this isolated release is deployed.
+
+Production active non-admin manager smoke remains pending authentication with an existing authorized account. Read-only database inspection identified an active manager for Franks whose profile is not administrator; no authority or account was created for testing. Administrator smoke cannot substitute for this test.
+
+Release sequence after review approval:
+1. Complete existing-account manager and non-manager baseline smoke; rerun exact migration hash/ACL/history preflight. Validate compatibility in a representative staging schema when available.
+2. Record reviewed branch/merge commit, keep Render automatic deployment disabled, and arrange a short controlled interval for Builder pricing updates.
+3. Apply the single new migration transactionally using the migration runner; verify recorded history, RPC ACL, actor guard and trigger. A preflight failure aborts the entire transaction. No old migration is edited and no event data is rewritten.
+4. Merge only PR #4 and manually deploy its exact merge commit. Existing main's Step 3 user-client entitlement changes will be denied between migration and the new application release; minimize this interval and do not leave it unattended.
+5. Verify Render's exact deployed commit, then repeat read-only manager/non-manager/admin/session/public/venue/Discovery smoke. Do not exploit-write to production.
+
+Rollback validation uses disposable PostgreSQL only: baseline exploit and transactional migration rollback are checked before application. Before a failed migration commits, rollback restores the original function/ACL and removes the trigger. After production commit, prefer a reviewed forward repair; restoring the vulnerable RPC/owner-write permissions would weaken security and requires explicit approval. A rollback to old application code while retaining the guard leaves Step 3 entitlement edits denied, so application rollback is not a complete availability recovery.
+
+The database fixture is synthetic and not a complete production schema clone. The 404 regression uses Next's real sentinel through the application test harness; production HTTP behavior awaits deployment. Known unpaid Discovery AI configuration is unchanged and is not a release blocker.

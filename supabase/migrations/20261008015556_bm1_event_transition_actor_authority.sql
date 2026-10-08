@@ -15,7 +15,10 @@ declare
   v_privileged text[] := array[
     'is_paid','payment_override','approved_at','approved_by','rejected_at',
     'rejected_by','rejection_reason','removed_at','removed_by','hidden_by_admin',
-    'admin_featured','admin_notes','admin_refund_note','revision_admin_note'
+    'admin_featured','admin_notes','admin_refund_note','revision_admin_note',
+    'paid_at','payment_override_by','payment_override_reason',
+    'venue_relationship_verified','venue_relationship_verified_at','venue_relationship_verified_by',
+    'staff_pick'
   ];
 begin
   -- PostgREST role is selected from a validated JWT; user metadata is never authority.
@@ -40,7 +43,25 @@ begin
   if new.owner_id is distinct from v_uid then
     raise exception 'Event ownership required' using errcode='42501';
   end if;
+  if new.venue_id is not null and (
+    tg_op='INSERT' or new.venue_id is distinct from old.venue_id or
+    new.venue_connection_status is distinct from old.venue_connection_status
+  ) and new.venue_connection_status='approved'
+     and not bm1_private.can_manage_venue(new.venue_id) then
+    raise exception 'Venue authority required to approve a connection' using errcode='42501';
+  end if;
+  if (tg_op='INSERT' or new.discovery_start_at is distinct from old.discovery_start_at
+      or new.promotion_start_at is distinct from old.promotion_start_at
+      or new.event_start_at is distinct from old.event_start_at) and (
+    new.discovery_start_at < new.event_start_at - make_interval(days => least(60,coalesce(new.included_promo_days,14)+coalesce(new.extra_promo_days,0))) or
+    new.promotion_start_at < new.event_start_at - make_interval(days => least(60,coalesce(new.included_promo_days,14)+coalesce(new.extra_promo_days,0)))
+  ) then
+    raise exception 'Discovery window exceeds authorized days' using errcode='42501';
+  end if;
   if tg_op='INSERT' then
+    if coalesce(new.included_promo_days,14) <> 14 or coalesce(new.extra_promo_days,0) <> 0 then
+      raise exception 'Trusted commerce required for Discovery entitlements' using errcode='42501';
+    end if;
     if new.status not in ('draft','building') or new.status is null
        or new.is_approved is true or new.is_public is true
        or coalesce(v_new->>'payment_status','not_required') not in ('not_required','unpaid') then
@@ -57,6 +78,21 @@ begin
     raise exception 'Event ownership cannot be delegated' using errcode='42501';
   end if;
   v_old := to_jsonb(old);
+  if new.included_promo_days is distinct from old.included_promo_days
+     or new.extra_promo_days is distinct from old.extra_promo_days then
+    raise exception 'Trusted commerce required for Discovery entitlements' using errcode='42501';
+  end if;
+  -- Material date/location changes belong in the reviewed revision path.
+  -- Draft Builder recalculation remains available without granting more days.
+  if old.status not in ('draft','building','rejected') then
+    foreach v_key in array array['event_start_at','event_end_at','end_time_is_explicit',
+      'address','city','state','venue_id','promotion_start_at','promotion_end_at',
+      'discovery_start_at','discovery_end_at'] loop
+      if (v_new->v_key) is distinct from (v_old->v_key) then
+        raise exception 'Reviewed revision required for event field %',v_key using errcode='42501';
+      end if;
+    end loop;
+  end if;
   foreach v_key in array v_privileged || array['payment_status'] loop
     if (v_new->v_key) is distinct from (v_old->v_key) then
       raise exception 'Administrator or trusted service required for event field %',v_key using errcode='42501';
@@ -139,7 +175,8 @@ declare
   if p_event_id is null then$actor$;
 begin
   v_definition := pg_get_functiondef(v_signature);
-  if position(v_anchor in v_definition)=0
+  if md5(v_definition) <> 'eb0e3f3269cc9c9276cbcedd7cbbe862'
+     or position(v_anchor in v_definition)=0
      or position('Transition actor must match authenticated caller' in v_definition)>0 then
     raise exception 'Event transition RPC preflight failed: inspect current definition before applying';
   end if;

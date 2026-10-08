@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
+import { redirect, notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { requireVenueAuthority } from '@/lib/venues/authority';
+import { resolveVenueAuthority } from '@/lib/venues/authority';
 
 export async function requireVenueManagement(venueId: string) {
   const supabase = await createClient();
@@ -13,7 +13,8 @@ export async function requireVenueManagement(venueId: string) {
     redirect('/auth/login');
   }
 
-  const authority = await requireVenueAuthority(venueId);
+  const authority = await resolveVenueAuthority(venueId);
+  if (!authority.canManage) notFound();
 
   return {
     supabase,

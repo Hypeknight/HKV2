@@ -5,6 +5,7 @@ actor lookup/update/history behavior. It omits unrelated FK/market/timestamp tri
 from pathlib import Path
 import subprocess
 import json
+import re
 
 CONTAINER='hkv2-event-security-postgres'
 DB='hkv2_event_actor_test'
@@ -45,7 +46,7 @@ def rpc(event=EVENT,status='submitted',actor=OWNER,kind='owner',updates='{}',rea
 
 subprocess.run(['docker','exec',CONTAINER,'psql','-X','-U','postgres','-c','drop database if exists '+DB],check=True,capture_output=True)
 subprocess.run(['docker','exec',CONTAINER,'psql','-X','-U','postgres','-c','create database '+DB],check=True,capture_output=True)
-fields={'is_approved':'boolean default false','is_paid':'boolean default false','is_public':'boolean default false','payment_override':'boolean default false','payment_status':"text default 'not_required'",'approved_at':'timestamptz','approved_by':'uuid','rejected_at':'timestamptz','rejected_by':'uuid','rejection_reason':'text','hidden_by_admin':'boolean default false','removed_at':'timestamptz','removed_by':'uuid','admin_featured':'boolean default false','admin_notes':'text','admin_refund_note':'text','revision_admin_note':'text'}
+fields={'venue_id':'uuid','venue_connection_status':"text default 'unmatched'",'event_start_at':'timestamptz','event_end_at':'timestamptz','promotion_start_at':'timestamptz','promotion_end_at':'timestamptz','discovery_start_at':'timestamptz','discovery_end_at':'timestamptz','included_promo_days':'integer default 14','extra_promo_days':'integer default 0','venue_relationship_verified':'boolean default false','staff_pick':'boolean default false','is_approved':'boolean default false','is_paid':'boolean default false','is_public':'boolean default false','payment_override':'boolean default false','payment_status':"text default 'not_required'",'approved_at':'timestamptz','approved_by':'uuid','rejected_at':'timestamptz','rejected_by':'uuid','rejection_reason':'text','hidden_by_admin':'boolean default false','removed_at':'timestamptz','removed_by':'uuid','admin_featured':'boolean default false','admin_notes':'text','admin_refund_note':'text','revision_admin_note':'text'}
 base="""
 do $$ begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; create role authenticated; create role service_role bypassrls; end if; end $$;
 create schema auth; create schema bm1_private;
@@ -53,6 +54,8 @@ grant usage on schema public,auth,bm1_private to anon,authenticated,service_role
 create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$;
 create function auth.uid() returns uuid language sql stable as $$ select nullif(auth.jwt()->>'sub','')::uuid $$;
 create table profiles(id uuid primary key,app_role text);
+create table venue_managers(venue_id uuid,user_id uuid,status text);
+create function bm1_private.can_manage_venue(target uuid) returns boolean language sql stable security definer set search_path='' as $$ select exists(select 1 from public.venue_managers where venue_id=target and user_id=auth.uid() and status='active') $$;
 create table events(id uuid primary key,owner_id uuid not null,name text,status text not null,
 status_changed_at timestamptz,status_changed_by uuid,status_change_reason text,status_change_source text,updated_at timestamptz,
 """+','.join(k+' '+v for k,v in fields.items())+"""
@@ -71,7 +74,7 @@ grant all on events,event_status_history to anon,authenticated,service_role;
 """
 # Reproduce the audited legacy SECURITY DEFINER RPC, including the exact patch anchor.
 updates=[]
-for k in list(fields)[:13]:
+for k in ['is_approved','is_paid','is_public','payment_override','payment_status','approved_at','approved_by','rejected_at','rejected_by','rejection_reason','hidden_by_admin','removed_at','removed_by']:
     kind=fields[k].split()[0]
     value="(p_event_updates->>'"+k+"')::"+kind if kind=='boolean' else "nullif(p_event_updates->>'"+k+"','')::"+kind
     updates.append(k+"=case when p_event_updates ? '"+k+"' then "+value+' else '+k+' end')
@@ -107,6 +110,9 @@ sql('\\set VERBOSITY verbose\n'+base)
 request('anon',None,rpc(actor=ADMIN,kind='admin',status='scheduled',updates='{"is_approved":true,"is_public":true}')+'; rollback')
 print('PASS baseline: anonymous actor spoof reproduced, rolled back')
 migration=Path('supabase/migrations/20261008015556_bm1_event_transition_actor_authority.sql').read_text()
+# Synthetic fixture is explicitly different from live DDL; retain a strict hash gate locally.
+fixture_hash=re.search(r'[a-f0-9]{32}',sql("select md5(pg_get_functiondef('public.transition_event_status(uuid,text,uuid,text,text,text,text,jsonb,jsonb)'::regprocedure))").stdout).group()
+migration=migration.replace('eb0e3f3269cc9c9276cbcedd7cbbe862',fixture_hash)
 # Migration apply/rollback must restore the original ACL and leave no trigger behind.
 sql(migration.rsplit('commit;',1)[0]+'rollback;')
 sql("do $$ begin if exists(select 1 from pg_trigger where tgname='bm1_event_actor_authority') then raise exception 'rollback retained trigger'; end if; if not has_function_privilege('anon','public.transition_event_status(uuid,text,uuid,text,text,text,text,jsonb,jsonb)','execute') then raise exception 'rollback lost ACL'; end if; end $$;")
@@ -115,6 +121,19 @@ sql(migration)
 # Every psql session uses verbose errors for SQLSTATE assertions.
 _original_sql=sql
 def sql(source,good=True): return _original_sql('\\set VERBOSITY verbose\n'+source,good)
+sql("insert into venue_managers values('00000000-0000-0000-0000-000000000098','"+OWNER+"','active')")
+
+denied('owner cannot buy extra days by direct update',"update events set extra_promo_days=46 where id='"+EVENT+"'")
+denied('owner cannot inflate free Discovery',"update events set included_promo_days=60 where id='"+EVENT+"'")
+denied('owner cannot forge Featured editorial state',"update events set staff_pick=true where id='"+EVENT+"'")
+denied('owner cannot forge venue verification',"update events set venue_relationship_verified=true where id='"+EVENT+"'")
+denied('owner cannot approve another venue connection',"update events set venue_id='00000000-0000-0000-0000-000000000099',venue_connection_status='approved' where id='"+EVENT+"'")
+denied('draft insert cannot smuggle Discovery entitlement',"insert into events(id,owner_id,status,extra_promo_days) values('"+NEW_EVENT+"','"+OWNER+"','draft',46)")
+denied('draft insert cannot smuggle early Discovery',"insert into events(id,owner_id,status,event_start_at,discovery_start_at) values('"+NEW_EVENT+"','"+OWNER+"','draft','2027-01-01','2026-01-01')")
+allowed('organizer creates event at unmanaged venue without acceptance',"insert into events(id,owner_id,status,venue_id,venue_connection_status) values('"+NEW_EVENT+"','"+OWNER+"','draft','00000000-0000-0000-0000-000000000099','pending'); delete from events where id='"+NEW_EVENT+"'")
+allowed('active venue manager creates approved connection',"insert into events(id,owner_id,status,venue_id,venue_connection_status) values('"+NEW_EVENT+"','"+OWNER+"','draft','00000000-0000-0000-0000-000000000098','approved'); delete from events where id='"+NEW_EVENT+"'")
+allowed('owner draft date and authorized window recalculation',"update events set event_start_at='2027-01-01',promotion_start_at='2026-12-18',discovery_start_at='2026-12-18' where id='"+EVENT+"'")
+denied('draft window cannot start before entitlement',"update events set discovery_start_at='2026-11-01' where id='"+EVENT+"'")
 denied('anonymous RPC',rpc(actor=ADMIN,kind='admin'),uid=None,role='anon')
 denied('authenticated without subject',rpc(),uid=None)
 denied('outsider impersonates owner',rpc(),uid=OTHER)
@@ -139,6 +158,8 @@ allowed('ordinary owner content edit',"update events set name='Updated draft' wh
 allowed('legitimate owner resumes draft',rpc(status='building',updates='{"is_approved":false,"is_public":false}'))
 allowed('legitimate owner submits',rpc(updates='{"is_approved":false,"is_public":false}'))
 allowed('administrator approval without payment',rpc(actor=ADMIN,kind='admin',status='scheduled',source='admin_action',updates='{"is_approved":true,"is_public":true}'),uid=ADMIN)
+denied('approved owner cannot reschedule without review',"update events set event_start_at='2027-02-01' where id='"+EVENT+"'")
+denied('approved owner cannot alter Discovery eligibility',"update events set discovery_start_at='2026-01-01' where id='"+EVENT+"'")
 allowed('ordinary approved event edit preserves public state',"update events set name='Safe public edit' where id='"+EVENT+"'")
 allowed('owner cancellation retains public history',rpc(status='cancelled',updates='{"is_public":true}'))
 allowed('owner material revision',rpc(event=PUBLIC_EVENT,status='revision_draft',updates='{"is_public":false}'))

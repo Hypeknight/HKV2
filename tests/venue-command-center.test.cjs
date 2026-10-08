@@ -75,7 +75,7 @@ function load(relative) {
     if (name === 'server-only') return {};
     if (name === '@/lib/supabase/server') return { createClient: async () => userClient };
     if (name === '@/lib/supabase/admin') return { createAdminClient: () => adminClient };
-    if (name === 'next/navigation') return { redirect, notFound: () => { throw new Error('notFound'); } };
+    if (name === 'next/navigation') return { redirect, notFound: require('next/navigation').notFound };
     if (name === 'next/cache') return { revalidatePath() {} };
     if (name === 'next/server') return { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200 }) } };
     if (name === '@/lib/stripe/server') return { getStripeForCurrentMode: async () => { state.stripeCalls++; if (state.stripeSession) return { stripe: { checkout: { sessions: { retrieve: async () => state.stripeSession } } } }; throw new Error('Stripe must not be reached in denied tests'); } };
@@ -108,7 +108,7 @@ test('Command Center denies legacy owner, global venue_owner and manager of anot
     reset(); state.rows.profiles[0].app_role='venue_owner';
     if(mode==='other') state.rows.venue_managers=[{...manager,venue_id:'venue-b'}];
     if(mode==='suspended') state.rows.venue_managers=[{...manager,status:'suspended'}];
-    await assert.rejects(context.getVenueCommandContext('venue-a'),/not authorized/);
+    await assert.rejects(context.getVenueCommandContext('venue-a'),e=>e.digest==='NEXT_HTTP_ERROR_FALLBACK;404');
     assert.deepEqual(state.writes,[]);
   }
 });
@@ -161,7 +161,7 @@ test('foreign venue target, stale update, invalid roles, forged actor metadata a
   await assert.rejects(lifecycle.saveVenueManager(base),/not found/); assert.deepEqual(state.writes,[]);
   admin(); await assert.rejects(lifecycle.saveVenueManager({...base,expectedUpdatedAt:'stale'}),/changed/); assert.deepEqual(state.writes,[]);
   admin(); await assert.rejects(lifecycle.saveVenueManager({...base,role:'admin'}),/Invalid/); assert.deepEqual(state.writes,[]);
-  reset(); await assert.rejects(actions.changeVenueManager(form({venue_id:'venue-a',manager_id:'manager-a',role:'owner',status:'active',user_id:'admin',confirm_authority_change:'yes'})),/not authorized/); assert.deepEqual(state.writes,[]);
+  reset(); await assert.rejects(actions.changeVenueManager(form({venue_id:'venue-a',manager_id:'manager-a',role:'owner',status:'active',user_id:'admin',confirm_authority_change:'yes'})),e=>e.digest==='NEXT_HTTP_ERROR_FALLBACK;404'); assert.deepEqual(state.writes,[]);
   admin(); state.errors['user:venue_managers']={message:'denied'};
   await assert.rejects(lifecycle.saveVenueManager(base),/denied/); assert.deepEqual(state.writes,[]);
 });
@@ -182,7 +182,7 @@ test('ordinary profile editor submits admin material edits for review and preser
   assert.equal(state.rows.venues[0].is_visible,false);
 });
 test('unauthorized material proposal cannot write',async()=>{
-  reset();await assert.rejects(actions.proposeVenueCorrection(form({venue_id:'venue-a',field_name:'address',proposed_value:'Moved',reason:'test'})),/not authorized/);assert.deepEqual(state.writes,[]);
+  reset();await assert.rejects(actions.proposeVenueCorrection(form({venue_id:'venue-a',field_name:'address',proposed_value:'Moved',reason:'test'})),e=>e.digest==='NEXT_HTTP_ERROR_FALLBACK;404');assert.deepEqual(state.writes,[]);
 });
 test('Command Center links use canonical Event Builder, existing Presence and explicit authority',()=>{
   const shell=fs.readFileSync('app/dashboard/venues/[id]/layout.tsx','utf8');
