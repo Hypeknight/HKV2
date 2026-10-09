@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import PatronPulseAutoRefresh from '@/components/patron-pulse/PatronPulseAutoRefresh';
 import {
   submitPatronPulseResponse,
@@ -51,7 +50,6 @@ type Props = {
   eventId: string;
   eventSlug: string;
   eventName: string;
-  userId?: string | null;
   session: {
     id: string;
     title: string;
@@ -62,7 +60,6 @@ type Props = {
   } | null;
   pulses: PulseRecord[];
   announcements: AnnouncementRecord[];
-  participantToken: string | null;
   hasVerifiedEventPresence: boolean;
   viewerCheckin: {
     id: string;
@@ -77,12 +74,10 @@ export default function PatronPulseGuestPanel({
   eventId,
   eventSlug,
   eventName,
-  userId,
   session,
   pulses,
   announcements,
   viewerCheckin,
-  participantToken,
   hasVerifiedEventPresence,
   viewerResponses,
 }: Props) {
@@ -115,7 +110,6 @@ export default function PatronPulseGuestPanel({
   }
 
   const isCheckedIn = hasVerifiedEventPresence;
-  void participantToken;
 
   const responseByPulse = new Map(
     viewerResponses.map((response) => [
@@ -261,7 +255,6 @@ export default function PatronPulseGuestPanel({
                   pulse={pulse}
                   eventId={eventId}
                   eventSlug={eventSlug}
-                  userId={userId}
                   checkedIn={isCheckedIn}
                   viewerResponse={
                     responseByPulse.get(pulse.id) ||
@@ -281,14 +274,12 @@ function PulseCard({
   pulse,
   eventId,
   eventSlug,
-  userId,
   checkedIn,
   viewerResponse,
 }: {
   pulse: PulseRecord;
   eventId: string;
   eventSlug: string;
-  userId?: string | null;
   checkedIn: boolean;
   viewerResponse: ViewerResponse | null;
 }) {
@@ -335,8 +326,6 @@ function PulseCard({
           pulse={pulse}
           response={viewerResponse}
         />
-      ) : !userId ? (
-        <LockedState text="Sign in to answer this pulse." />
       ) : !checkedIn ? (
         <LockedState text="Check in before answering live pulses." />
       ) : !isOpen ? (

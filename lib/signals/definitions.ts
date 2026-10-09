@@ -228,22 +228,22 @@ export const SIGNAL_DEFINITIONS = {
   },
   "patron_pulse_checkin": {
     "family": "feedback",
-    "trigger": "Check-in row stored; verification is route-dependent",
+    "trigger": "Credential-validated participant check-in stored atomically with signal",
     "actor": "authenticated or guest participant",
-    "context": "event, venue/session when provided, market",
+    "context": "participant, stored event/session/pulse, credential-backed verification, canonical venue and registered market",
     "attribution": "Emitter/source is not acquisition; acquisition unknown unless separately supported",
-    "verification": "declared",
-    "deduplication": "none_legacy",
+    "verification": "presence_supported",
+    "deduplication": "participant + session/pulse; identical retry no-op; permitted revisions append evidence",
     "instrumentation": "instrumented"
   },
   "patron_pulse_response": {
     "family": "feedback",
-    "trigger": "Pulse response stored; not independently verified attendance",
+    "trigger": "Credential-validated participant answer or permitted revision stored atomically with signal",
     "actor": "authenticated or guest participant",
-    "context": "event, venue/session when provided, market",
+    "context": "participant, stored event/session/pulse, credential-backed verification, canonical venue and registered market",
     "attribution": "Emitter/source is not acquisition; acquisition unknown unless separately supported",
-    "verification": "declared",
-    "deduplication": "none_legacy",
+    "verification": "presence_supported",
+    "deduplication": "participant + session/pulse; identical retry no-op; permitted revisions append evidence",
     "instrumentation": "instrumented"
   },
   "coupon_redeemed": {

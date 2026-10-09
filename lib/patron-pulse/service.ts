@@ -1,3 +1,4 @@
+import { parseParticipantToken } from '@/lib/presence/participant-cookie';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveEffectiveSystemTier } from '@/lib/systems/resolve-effective-tier';
 import { resolvePatronPulseSettings } from '@/lib/patron-pulse/resolve-settings';
@@ -35,11 +36,19 @@ export async function loadPublicPatronPulse({
   supabase,
   eventId,
   userId,
+  participantToken,
 }: {
   supabase: SupabaseClient;
   eventId: string;
   userId?: string | null;
+  participantToken?: string | null;
 }) {
+  const token = parseParticipantToken(participantToken);
+  const { data: participantState, error: stateError } = token
+    ? await supabase.rpc('get_patron_pulse_participant_state', { p_event_id: eventId, p_token: token })
+    : { data: null, error: null };
+  if (stateError) throw new Error(stateError.message);
+  const hasVerifiedEventPresence = participantState?.verified === true;
   const settings =
     await resolvePatronPulseSettings({
       supabase,
@@ -48,9 +57,10 @@ export async function loadPublicPatronPulse({
 
   if (
     !settings.enabled ||
-    (!userId && !settings.allowAnonymousView)
+    (!userId && !settings.allowAnonymousView && !hasVerifiedEventPresence)
   ) {
     return {
+      hasVerifiedEventPresence,
       settings,
       session: null,
       pulses: [],
@@ -85,6 +95,7 @@ export async function loadPublicPatronPulse({
 
   if (!session) {
     return {
+      hasVerifiedEventPresence,
       settings,
       session: null,
       pulses: [],
@@ -186,6 +197,7 @@ export async function loadPublicPatronPulse({
   }
 
   return {
+    hasVerifiedEventPresence,
     settings,
     session,
     pulses: pulses || [],
@@ -193,7 +205,7 @@ export async function loadPublicPatronPulse({
       settings.announcementsEnabled
         ? announcements || []
         : [],
-    viewerCheckin: checkinResult.data,
-    viewerResponses: responsesResult.data || [],
+    viewerCheckin: participantState?.checkin || checkinResult.data,
+    viewerResponses: hasVerifiedEventPresence ? participantState.responses || [] : responsesResult.data || [],
   };
 }
