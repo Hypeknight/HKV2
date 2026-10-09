@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSiteUrl } from '@/lib/metadata/share';
 import { PRESENCE_PARTICIPANT_COOKIE, parseParticipantToken } from '@/lib/presence/participant-cookie';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  // Render's request origin is internal; use configured public origin, not host headers.
+  const publicOrigin = getSiteUrl().origin;
   const { slug } = await params;
   const supabase = await createClient();
   // User-client RLS establishes the public event context; the RPC independently
   // validates lifecycle and credential. No client verification/user ID is trusted.
   const { data: event, error } = await supabase.from('events').select('id,slug').eq('slug', slug).maybeSingle();
   if (error) throw new Error(error.message);
-  if (!event) return NextResponse.redirect(new URL('/events', request.url));
-  const destination = new URL(`/events/${encodeURIComponent(event.slug)}`, request.url);
+  if (!event) return NextResponse.redirect(new URL('/events', publicOrigin));
+  const destination = new URL(`/events/${encodeURIComponent(event.slug)}`, publicOrigin);
   const credential = request.nextUrl.searchParams.get('credential');
   if (!credential) {
     destination.searchParams.set('presence', 'credential_required');
