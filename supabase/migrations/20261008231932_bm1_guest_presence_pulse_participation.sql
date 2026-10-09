@@ -1,5 +1,26 @@
 -- P2-B2: account-optional participation; table writes remain protected.
 -- No historical evidence/backfill, venue identity, entitlement or Intelligence changes.
+-- Production evidence grants are broad; RLS does not protect TRUNCATE.
+-- Preserve admin row policies, constrained RPCs and service-role operations.
+revoke truncate, references, trigger, maintain
+  on public.patron_pulse_checkins, public.patron_pulse_responses, public.signals
+  from public, anon, authenticated;
+-- Fail closed on inherited grants rather than altering unrelated memberships.
+do $$
+declare role_name text; table_name text; privilege_name text;
+begin
+  foreach role_name in array array['anon','authenticated'] loop
+    foreach table_name in array array['patron_pulse_checkins','patron_pulse_responses','signals',
+      'presence_participants','presence_verifications','presence_credentials'] loop
+      foreach privilege_name in array array['TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] loop
+        if has_table_privilege(role_name, 'public.' || table_name, privilege_name) then
+          raise exception 'Unexpected effective % privilege for % on public.%', privilege_name, role_name, table_name;
+        end if;
+      end loop;
+    end loop;
+  end loop;
+end $$;
+
 create schema bm1_presence_internal;
 revoke all on schema bm1_presence_internal from public, anon, authenticated;
 

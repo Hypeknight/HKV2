@@ -34,3 +34,11 @@ P2-B1's insert normalizer remains authoritative for stored event → canonical v
 - Static QR sharing, device/cookie reset and cross-device guest identity cannot prove unique human attendance. No unsupported uniqueness/attendance claim is introduced.
 - Existing organizer session/pulse setup, Intelligence consumers and result aggregation are retained, not redesigned.
 - Production migration preflight must check existing participant duplicate indexes before application. This migration intentionally fails instead of silently deleting conflicts.
+
+## Destructive privilege correction
+
+Production preflight found direct ALL grants for anon/authenticated on Pulse check-ins, responses and raw signals, including TRUNCATE, REFERENCES, TRIGGER and PostgreSQL 17 MAINTAIN. Neither role has parent-role membership or public-schema CREATE. Identity, verification and credential tables already exclude these roles. RLS does not secure TRUNCATE. The pending migration revokes these four unnecessary privileges on only those three evidence tables from PUBLIC/anon/authenticated. Row grants, admin RLS policies, validated RPCs and service-role privileges remain. Effective-privilege assertions reject unexpected inherited access rather than changing unrelated memberships.
+
+The PostgreSQL 17 fixture models production ALL/default grants, the original direct/inherited TRUNCATE bypass, legacy account check-in/response rows, blocked anonymous/authenticated destructive operations and retained admin/service operations.
+
+Broad public-schema default grants remain unchanged. Their presence is consistent with current ACLs, but catalogs cannot determine whether each historical grant originated from defaults or an explicit GRANT. A separate default-privilege review should prevent future tables inheriting destructive rights and audit unrelated tables. This checkpoint does not globally change grants or rewrite historical evidence.

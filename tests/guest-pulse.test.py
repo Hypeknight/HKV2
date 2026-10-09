@@ -17,7 +17,8 @@ def join(event=4,credential='valid-credential-'+'a'*32,token=None,actor=None):
  return run("set role "+('authenticated' if actor else 'anon')+"; set request.jwt.claim.sub='"+(uid(actor) if actor else '')+"'; select public.join_event_presence('"+uid(event)+"','"+credential+"',"+("'"+token+"'" if token else 'null')+");")
 def call(name,token,extra='',actor=None):
  return "set role "+('authenticated' if actor else 'anon')+"; set request.jwt.claim.sub='"+(uid(actor) if actor else '')+"'; select public."+name+"('"+uid(4)+"','"+token+"'"+extra+");"
-base='''create role anon; create role authenticated; create role service_role;
+base='''create role anon; create role authenticated; create role service_role bypassrls; create role authenticated_session inherit; grant authenticated to authenticated_session;
+alter default privileges in schema public grant all on tables to anon,authenticated,service_role;
 create schema auth; create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated;
@@ -38,6 +39,8 @@ for table in ['event_patron_pulse_settings','patron_pulse_activity_log','patron_
  base+='alter table '+table+' add primary key(id);'
 base+='alter table patron_pulse_checkins add unique(session_id,user_id);alter table patron_pulse_responses add unique(pulse_id,user_id);alter table patron_pulse_sessions add unique(event_id);'
 for filename in ['0024_bm1_presence_participant_foundation.sql','0025_bm1_presence_credentials.sql']:base+=Path('supabase/migrations/'+filename).read_text()
+# Production identity tables have explicit restricted ACLs despite broad defaults.
+base+='revoke all on presence_participants,presence_verifications,presence_credentials from public,anon,authenticated;'
 # Real tables/RLS names and user policies being replaced; unrelated organizer config omitted.
 for table in ['patron_pulse_checkins','patron_pulse_responses','patron_pulse_sessions','patron_pulses','patron_pulse_options','patron_pulse_announcements']:
  base+='alter table '+table+' enable row level security; grant select,insert,update,delete on '+table+' to anon,authenticated;'
@@ -50,6 +53,10 @@ create policy "Guests read open pulse sessions" on patron_pulse_sessions for sel
 create policy "Guests read visible pulses" on patron_pulses for select to anon,authenticated using(status in ('scheduled','open','closed'));
 create policy "Guests read published announcements" on patron_pulse_announcements for select to anon,authenticated using(status='published');
 create policy "Guests read pulse options" on patron_pulse_options for select to anon,authenticated using(is_active and exists(select 1 from patron_pulses p where p.id=pulse_id));
+create table profiles(id uuid primary key,app_role text);
+grant select on profiles to authenticated;
+create policy "Admins manage pulse checkins" on patron_pulse_checkins to authenticated using(exists(select 1 from profiles where id=auth.uid() and app_role='admin')) with check(exists(select 1 from profiles where id=auth.uid() and app_role='admin'));
+create policy "Admins manage pulse responses" on patron_pulse_responses to authenticated using(exists(select 1 from profiles where id=auth.uid() and app_role='admin')) with check(exists(select 1 from profiles where id=auth.uid() and app_role='admin'));
 grant select on events to anon,authenticated;
 '''
 i=pp.index('CREATE OR REPLACE FUNCTION "public"."log_patron_pulse_participation"()');base+=pp[i:pp.index('$$;',i)+3]
@@ -72,6 +79,24 @@ try:
   time.sleep(.2)
  else:raise RuntimeError('Disposable PostgreSQL did not become ready')
  run(base)
+ # Production-shaped historical account rows with null participant/evidence.
+ historical_sql="insert into patron_pulse_checkins(id,session_id,event_id,user_id) values('"+uid(71)+"','"+uid(8)+"','"+uid(4)+"','"+uid(2)+"');insert into patron_pulse_responses(id,pulse_id,session_id,event_id,user_id,option_id) values('"+uid(72)+"','"+uid(9)+"','"+uid(8)+"','"+uid(4)+"','"+uid(2)+"','"+uid(10)+"');"
+ # Existing activity trigger is broken before P2-B2; seed as historical import.
+ run('set session_replication_role=replica;'+historical_sql+'set session_replication_role=origin;')
+ history_query="select jsonb_build_array((select to_jsonb(c) from patron_pulse_checkins c where id='"+uid(71)+"'),(select to_jsonb(r) from patron_pulse_responses r where id='"+uid(72)+"'))"
+ historical=run(history_query)
+ for role in ['anon','authenticated','authenticated_session']:
+  for table in ['patron_pulse_checkins','patron_pulse_responses','signals']:
+   assert run("select has_table_privilege('"+role+"','"+table+"','TRUNCATE')")=='t'
+   assert run('begin;set role '+role+';truncate '+table+';reset role;select count(*) from '+table+';rollback;')=='0'
+ assert run(history_query)==historical
+ print('PASS original direct/inherited TRUNCATE bypass reproduced and rolled back')
+ run('create role unexpected_evidence_writer;grant unexpected_evidence_writer to authenticated;grant truncate on signals to unexpected_evidence_writer;')
+ try:run('begin;'+migration+'rollback;')
+ except RuntimeError as error:assert 'Unexpected effective TRUNCATE privilege for authenticated on public.signals' in str(error)
+ else:raise AssertionError('Inherited destructive grant silently accepted')
+ run('revoke unexpected_evidence_writer from authenticated;revoke truncate on signals from unexpected_evidence_writer;drop role unexpected_evidence_writer;')
+ print('PASS unexpected inherited destructive grant fails migration closed')
  run('begin;'+migration+"""
 do $$ declare token uuid; begin
   token:=public.join_event_presence('"""+uid(4)+"""','valid-credential-"""+'a'*32+"""');
@@ -86,22 +111,38 @@ select 'P2B2_TRANSACTION_END';rollback;""")
  assert run("select to_regprocedure('public.join_event_presence(uuid,text,uuid)') is null")=='t'
  assert run("select count(*) from presence_participants")=='0'
  assert run("select count(*) from signals where subject_id='legacy'")=='1'
+ assert run(history_query)==historical
  print('PASS transaction reaches final statement; rollback preserves foundation and history')
  run(migration)
+ assert run(history_query)==historical
+ for role in ['anon','authenticated','authenticated_session']:
+  for table in ['patron_pulse_checkins','patron_pulse_responses','signals','presence_participants','presence_verifications','presence_credentials']:
+   for privilege in ['TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']:
+    assert run("select has_table_privilege('"+role+"','"+table+"','"+privilege+"')")=='f'
+   deny('set role '+role+';truncate '+table+';')
+ for table in ['patron_pulse_checkins','patron_pulse_responses','signals']:
+  assert run("select has_table_privilege('service_role','"+table+"','TRUNCATE')")=='t'
+  run('begin;set role service_role;truncate '+table+';rollback;')
+ run("insert into profiles values('"+uid(70)+"','admin');")
+ for table in ['patron_pulse_checkins','patron_pulse_responses']:
+  assert run("begin;set role authenticated;set request.jwt.claim.sub='"+uid(70)+"';with changed as(update "+table+" set user_id=user_id returning id) select count(*) from changed;rollback;")=='1'
+  assert run("begin;set role authenticated;set request.jwt.claim.sub='"+uid(70)+"';with removed as(delete from "+table+" returning id) select count(*) from removed;rollback;")=='1'
+ assert run(history_query)==historical
+ print('PASS destructive grants removed; service/admin operations and historical rows preserved')
  token=join();assert len(token)==36
  assert run("select count(*) from presence_participants where participant_token='"+token+"' and user_id is null and email is null")=='1'
  assert join(token=token)==token
  run(call('check_in_patron_pulse',token));run(call('check_in_patron_pulse',token))
- assert run('select count(*) from patron_pulse_checkins')=='1'
+ assert run('select count(*) from patron_pulse_checkins where participant_id is not null')=='1'
  print('PASS account/email optional guest; UUID cookie reuse; participant-linked check-in retry')
  response=lambda tok=token,option=10,actor=None:call('submit_patron_pulse_response',tok,",'"+uid(9)+"','"+uid(option)+"',null",actor)
  with ThreadPoolExecutor(max_workers=6) as pool:list(pool.map(lambda _:run(response()),range(6)))
- assert run('select count(*) from patron_pulse_responses')=='1'
+ assert run('select count(*) from patron_pulse_responses where participant_id is not null')=='1'
  assert run("select count(*) from signals where signal_type='patron_pulse_response'")=='1'
  deny(response(option=11));deny(call('submit_patron_pulse_response',token,",'"+uid(9)+"','"+uid(99)+"',null"))
  run("update patron_pulses set allow_multiple_responses=true where id='"+uid(9)+"';")
  run(response(option=11));run(response(option=11))
- assert run('select count(*) from patron_pulse_responses')=='1'
+ assert run('select count(*) from patron_pulse_responses where participant_id is not null')=='1'
  assert run("select count(*) from signals where signal_type='patron_pulse_response'")=='2'
  print('PASS concurrent retry dedup; option ownership; single-answer denial; allowed revisions append once')
  assert run("select count(*) from patron_pulse_responses r join patron_pulse_checkins c using(participant_id,event_id,session_id) join presence_verifications v on v.id=r.presence_verification_id where v.participant_id=r.participant_id and v.credential_id is not null")=='1'
@@ -120,7 +161,10 @@ select 'P2B2_TRANSACTION_END';rollback;""")
  assert 'text_response' in state and 'participant_token' not in state and 'user_id' not in state and 'email' not in state
  assert run(call('get_patron_pulse_participant_state',uid(99)))=='{"checkin": null, "verified": false, "responses": []}'
  print('PASS optional authenticated actor binding; another account/guest cannot use account token; scoped private viewer state')
- for role in ['anon','authenticated']:
+ for role in ['anon','authenticated','authenticated_session']:
+  for table in ['patron_pulse_checkins','patron_pulse_responses','signals']:
+   assert run("set role "+role+";set request.jwt.claim.sub='"+uid(1)+"';with changed as(update "+table+" set id=id returning id) select count(*) from changed")=='0'
+   assert run("set role "+role+";set request.jwt.claim.sub='"+uid(1)+"';with removed as(delete from "+table+" returning id) select count(*) from removed")=='0'
   deny('set role '+role+";insert into patron_pulse_checkins(session_id,event_id,user_id) values('"+uid(8)+"','"+uid(4)+"','"+uid(1)+"');")
   deny('set role '+role+";insert into patron_pulse_responses(pulse_id,session_id,event_id,user_id) values('"+uid(9)+"','"+uid(8)+"','"+uid(4)+"','"+uid(1)+"');")
   deny('set role '+role+';select * from presence_participants;')
@@ -146,5 +190,6 @@ select 'P2B2_TRANSACTION_END';rollback;""")
   assert run('set role anon;select count(*) from '+table+' where '+predicate)=='0'
  print('PASS completed/ended event, revoked evidence, closed pulse, disabled Core, removed participant denied; private Pulse config hidden')
  print('PASS paused session/revoked credential close existing participation; historical raw evidence unchanged')
- print('9 database security/behavior groups passed; no production connection')
+ assert run(history_query)==historical
+ print('12 database security/behavior groups passed; no production connection')
 finally:subprocess.run(['docker','stop',container],capture_output=True)
