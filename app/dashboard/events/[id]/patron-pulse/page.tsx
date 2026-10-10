@@ -1,3 +1,4 @@
+import { exactCount, pulseFacts } from "@/lib/reporting/factual";
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -92,9 +93,11 @@ export default async function PatronPulseOwnerPage({
 
   let pulses: any[] = [];
   let announcements: any[] = [];
-  let checkinCount = 0;
-  let responseCount = 0;
-  let responseRows: any[] = [];
+  let checkinCount: number | null = null;
+  let responseCount: number | null = null;
+  let responseRows: any[] | null = null;
+  let responseSampleCount: number | null = null;
+  let resultsUnavailable = false;
   let activityItems: PatronPulseActivityItem[] = [];
 
   if (session) {
@@ -115,6 +118,7 @@ export default async function PatronPulseOwnerPage({
       {
         data: detailedResponses,
         error: detailedResponseError,
+        count: detailedResponseCount,
       },
       {
         data: activityRows,
@@ -171,8 +175,9 @@ export default async function PatronPulseOwnerPage({
           text_response,
           numeric_response,
           boolean_response,
-          submitted_at
-        `)
+          submitted_at,
+          updated_at
+        `, { count: 'exact' })
         .eq('session_id', session.id),
 
       supabase
@@ -203,19 +208,7 @@ export default async function PatronPulseOwnerPage({
       );
     }
 
-    if (checkinError) {
-      throw new Error(checkinError.message);
-    }
-
-    if (responseError) {
-      throw new Error(responseError.message);
-    }
-
-    if (detailedResponseError) {
-      throw new Error(
-        detailedResponseError.message
-      );
-    }
+    resultsUnavailable = Boolean(responseError || detailedResponseError || detailedResponses === null || detailedResponseCount === null || detailedResponses?.length !== detailedResponseCount);
 
     if (activityError) {
       throw new Error(activityError.message);
@@ -223,50 +216,15 @@ export default async function PatronPulseOwnerPage({
 
     pulses = pulseRows || [];
     announcements = announcementRows || [];
-    checkinCount = checkins || 0;
-    responseCount = responses || 0;
-    responseRows = detailedResponses || [];
+    checkinCount = exactCount(checkins, checkinError);
+    responseCount = exactCount(responses, responseError);
+    responseRows = detailedResponses;
+    responseSampleCount = detailedResponseCount;
     activityItems =
       (activityRows || []) as PatronPulseActivityItem[];
   }
 
-  const pulseResults: PatronPulseResultSummary[] =
-    pulses.map((pulse) => {
-      const pulseResponses = responseRows.filter(
-        (response) =>
-          response.pulse_id === pulse.id
-      );
-
-      const totalResponses =
-        pulseResponses.length;
-
-      const options = (pulse.options || []).map(
-        (option: any) => {
-          const count = pulseResponses.filter(
-            (response) =>
-              response.option_id === option.id
-          ).length;
-
-          return {
-            optionId: option.id,
-            label: option.label,
-            count,
-            percentage:
-              totalResponses > 0
-                ? (count / totalResponses) * 100
-                : 0,
-          };
-        }
-      );
-
-      return {
-        pulseId: pulse.id,
-        title: pulse.title,
-        status: pulse.status,
-        totalResponses,
-        options,
-      };
-    });
+  const pulseResults: PatronPulseResultSummary[] = pulseFacts(pulses, responseRows, responseSampleCount, resultsUnavailable);
 
   const canUsePulse = true;
 
@@ -303,7 +261,7 @@ export default async function PatronPulseOwnerPage({
         <p className="mt-4 max-w-3xl text-sm leading-7 text-white/65">
           Create and manage the in-house mobile experience for this event.
           Open check-in, publish announcements, launch pulses, and monitor
-          participation.
+          participation. Check-ins are current Pulse state, not a verified attendance total. Current answers come from operational response rows; accepted revisions update an answer and append separate signal history.
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -319,13 +277,13 @@ export default async function PatronPulseOwnerPage({
           />
 
           <Metric
-            label="Checked In"
-            value={String(checkinCount)}
+            label="Current Pulse Check-Ins"
+            value={checkinCount === null ? 'Unavailable' : String(checkinCount)}
           />
 
           <Metric
-            label="Responses"
-            value={String(responseCount)}
+            label="Current Answer Rows"
+            value={responseCount === null ? 'Unavailable' : String(responseCount)}
           />
         </div>
       </section>
@@ -415,13 +373,13 @@ export default async function PatronPulseOwnerPage({
             >
               <div className="grid gap-4 sm:grid-cols-2">
                 <Metric
-                  label="Active Check-Ins"
-                  value={String(checkinCount)}
+                  label="Current Pulse Check-Ins"
+                  value={checkinCount === null ? 'Unavailable' : String(checkinCount)}
                 />
 
                 <Metric
-                  label="Responses"
-                  value={String(responseCount)}
+                  label="Current Answer Rows"
+                  value={responseCount === null ? 'Unavailable' : String(responseCount)}
                 />
 
                 <Metric
@@ -652,6 +610,7 @@ export default async function PatronPulseOwnerPage({
           <section className="grid gap-6 xl:grid-cols-2">
             <PulseResultsPanel
               results={pulseResults}
+              unavailable={resultsUnavailable}
             />
 
             <PatronPulseActivityTimeline

@@ -1,3 +1,4 @@
+import { eventFacts, formatFact, type FactMetric } from "@/lib/reporting/factual";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -113,37 +114,8 @@ export default async function EventCommandCenterPage({ params }: Props) {
     });
   }
 
-  const signalRows =
-    (signalSummary as EventSignalSummaryRow[] | null) || [];
-
-  const signalCounts = new Map(
-    signalRows.map((row) => [row.signal_type, Number(row.signal_count || 0)])
-  );
-
-  const uniqueActorCounts = new Map(
-    signalRows.map((row) => [
-      row.signal_type,
-      Number(row.unique_actor_count || 0),
-    ])
-  );
-
-  const performance = {
-    views: signalCounts.get("event_view") || 0,
-    uniqueReach: uniqueActorCounts.get("event_view") || 0,
-    saves: signalCounts.get("event_saved") || 0,
-    shares: signalCounts.get("event_shared") || 0,
-    ticketClicks: signalCounts.get("ticket_outbound") || 0,
-    directions: signalCounts.get("directions_requested") || 0,
-    going: signalCounts.get("event_rsvp_going") || 0,
-  };
-
-  const trackedActivity =
-    performance.views +
-    performance.saves +
-    performance.shares +
-    performance.ticketClicks +
-    performance.directions +
-    performance.going;
+  const performance = eventFacts(signalSummary as EventSignalSummaryRow[] | null, signalSummaryError);
+  const trackedActivity = performance.total;
 
   const discoveryStart =
     event.discovery_start_at || event.promotion_start_at || null;
@@ -468,8 +440,7 @@ export default async function EventCommandCenterPage({ params }: Props) {
                 </h2>
 
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">
-                  These are recorded HypeKnight actions associated with this
-                  event. Individual patron identities are not exposed.
+                  These are recorded HypeKnight actions across this event’s retained history. Counts use event signals once; coverage may be incomplete. Missing observations do not prove no activity, and individual identities are not exposed.
                 </p>
               </div>
 
@@ -478,7 +449,7 @@ export default async function EventCommandCenterPage({ params }: Props) {
                   Tracked Activity
                 </p>
                 <p className="mt-1 text-3xl font-black text-white">
-                  {formatCount(trackedActivity)}
+                  {formatFact(trackedActivity)}
                 </p>
               </div>
             </div>
@@ -491,13 +462,13 @@ export default async function EventCommandCenterPage({ params }: Props) {
               />
 
               <PerformanceMetric
-                label="Unique Reach"
-                value={performance.uniqueReach}
-                detail="Distinct identifiable accounts or browsers that viewed this event"
+                label="Distinct View Identifiers"
+                value={performance.viewIdentifiers}
+                detail="Distinct stored account UUIDs or anonymous session identifiers; not unique people"
               />
 
               <PerformanceMetric
-                label="Saves"
+                label="Historical Save Actions"
                 value={performance.saves}
                 detail="Recorded save actions"
               />
@@ -521,13 +492,31 @@ export default async function EventCommandCenterPage({ params }: Props) {
               />
 
               <PerformanceMetric
-                label="Going"
+                label="Historical Going Actions"
                 value={performance.going}
                 detail="Recorded Going responses"
               />
+              <PerformanceMetric
+                label="Recorded Discovery Impressions"
+                value={performance.discoveryImpressions}
+                detail="Recorded Discovery exposure observations. Organic collection requires at least half of the card visible for one continuous second. Older records may have unknown exposure classification."
+              />
+              <PerformanceMetric
+                label="Classified Organic Impressions"
+                value={performance.organicImpressions}
+                detail="This report cannot distinguish organic exposure for all retained observations. Unclassified historical observations remain unknown."
+              />
+              <PerformanceMetric
+                label="Featured Impressions"
+                value={performance.featuredImpressions}
+                detail="Featured exposure is not instrumented. A purchase or eligibility is not proof of exposure."
+              />
+              <PerformanceMetric label="Currently Saved" value={{ value: null, state: "unavailable" }} detail="Current saved totals are not available in this report. Historical save actions may include selections that later changed." />
+              <PerformanceMetric label="Current Going RSVPs" value={{ value: null, state: "unavailable" }} detail="Current Going totals are not available in this report. Historical Going actions may include selections that later changed." />
+              <PerformanceMetric label="Acquisition Attribution" value={{ value: null, state: "unavailable" }} detail="An acquisition breakdown is not available. Unknown acquisition remains unknown; a Discovery impression does not establish the source of later actions." />
             </div>
 
-            {signalSummaryError ? (
+            {!performance.available ? (
               <div className="mt-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4">
                 <p className="text-sm font-semibold text-yellow-100">
                   Performance data is temporarily unavailable.
@@ -536,14 +525,13 @@ export default async function EventCommandCenterPage({ params }: Props) {
                   Your event and public page are unaffected.
                 </p>
               </div>
-            ) : trackedActivity === 0 ? (
+            ) : trackedActivity.state === "no_observations" ? (
               <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-5">
                 <p className="text-sm font-semibold text-white">
-                  No tracked activity yet
+                  No observations for these actions
                 </p>
                 <p className="mt-1 text-sm leading-6 text-white/45">
-                  Activity will appear here as people discover and interact
-                  with this event on HypeKnight.
+                  No eligible records were returned. Collection coverage and real-world activity are not established by this absence.
                 </p>
               </div>
             ) : null}
@@ -860,7 +848,7 @@ function PerformanceMetric({
   detail,
 }: {
   label: string;
-  value: number;
+  value: FactMetric;
   detail: string;
 }) {
   return (
@@ -869,15 +857,11 @@ function PerformanceMetric({
         {label}
       </p>
       <p className="mt-2 text-2xl font-black text-white">
-        {formatCount(value)}
+        {formatFact(value)}
       </p>
       <p className="mt-1 text-xs leading-5 text-white/40">{detail}</p>
     </div>
   );
-}
-
-function formatCount(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function Fact({
