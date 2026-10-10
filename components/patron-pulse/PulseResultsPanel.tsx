@@ -1,22 +1,26 @@
 export type PatronPulseOptionResult = {
   optionId: string;
   label: string;
-  count: number;
-  percentage: number;
+  count: number | null;
+  percentage: number | null;
 };
 
 export type PatronPulseResultSummary = {
   pulseId: string;
   title: string;
   status: string;
-  totalResponses: number;
+  totalResponses: number | null;
+  available: boolean;
+  optionSample: number | null;
   options: PatronPulseOptionResult[];
 };
 
 export default function PulseResultsPanel({
   results,
+  unavailable = false,
 }: {
   results: PatronPulseResultSummary[];
+  unavailable?: boolean;
 }) {
   return (
     <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
@@ -29,7 +33,9 @@ export default function PulseResultsPanel({
       </h2>
 
       <div className="mt-6 space-y-5">
-        {results.length ? (
+        {unavailable ? (
+          <p role="status" className="text-sm text-yellow-100">Pulse results are unavailable: the response query failed or did not return a complete sample. No percentages are shown.</p>
+        ) : results.length ? (
           results.map((pulse) => (
             <article
               key={pulse.pulseId}
@@ -42,7 +48,7 @@ export default function PulseResultsPanel({
                   </h3>
 
                   <p className="mt-1 text-sm text-white/45">
-                    {pulse.totalResponses} response
+                    {pulse.totalResponses === null ? "Unavailable" : pulse.totalResponses} current answer
                     {pulse.totalResponses === 1
                       ? ''
                       : 's'}
@@ -54,6 +60,10 @@ export default function PulseResultsPanel({
                 </span>
               </div>
 
+              <p className="mt-3 text-xs text-white/45">
+                Current answers count once per participant/Pulse. Response revisions are separate history, not additional participants or attendance.
+                {pulse.optionSample === 0 ? ' No valid option response sample; percentages are withheld.' : pulse.optionSample !== null ? ' Percentages use ' + pulse.optionSample + ' valid current option answers.' : ' Results unavailable.'}
+              </p>
               {pulse.options.length ? (
                 <div className="mt-5 space-y-4">
                   {pulse.options.map((option) => (
@@ -64,12 +74,12 @@ export default function PulseResultsPanel({
                         </span>
 
                         <span className="text-white/45">
-                          {option.count} ·{' '}
-                          {option.percentage.toFixed(1)}%
+                          {option.count === null ? 'Unavailable' : option.count}
+                          {option.percentage === null ? ' · No percentage' : ' · ' + option.percentage.toFixed(1) + '%'}
                         </span>
                       </div>
 
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                      {option.percentage !== null ? <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
                         <div
                           className="h-full rounded-full bg-accent"
                           style={{
@@ -82,14 +92,13 @@ export default function PulseResultsPanel({
                             )}%`,
                           }}
                         />
-                      </div>
+                      </div> : null}
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="mt-4 text-sm text-white/45">
-                  Text responses are included in the total.
-                  Detailed moderation can be added next.
+                  Current text, numeric or boolean answers are included in the total; no option percentage applies.
                 </p>
               )}
             </article>

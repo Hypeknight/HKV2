@@ -1,3 +1,4 @@
+import { exactCount } from "@/lib/reporting/factual";
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -135,8 +136,8 @@ export default async function AdminPatronPulseEventPage({
 
   let pulses: any[] = [];
   let announcements: any[] = [];
-  let checkinCount = 0;
-  let responseCount = 0;
+  let checkinCount: number | null = null;
+  let responseCount: number | null = null;
 
   if (session) {
     const [
@@ -145,8 +146,8 @@ export default async function AdminPatronPulseEventPage({
         data: announcementRows,
         error: announcementError,
       },
-      { count: checkins },
-      { count: responses },
+      { count: checkins, error: checkinError },
+      { count: responses, error: responseError },
     ] = await Promise.all([
       supabase
         .from('patron_pulses')
@@ -202,8 +203,8 @@ export default async function AdminPatronPulseEventPage({
 
     pulses = pulseRows || [];
     announcements = announcementRows || [];
-    checkinCount = checkins || 0;
-    responseCount = responses || 0;
+    checkinCount = exactCount(checkins, checkinError);
+    responseCount = exactCount(responses, responseError);
   }
 
   const tier = Array.isArray(activation?.tier)
@@ -271,12 +272,12 @@ export default async function AdminPatronPulseEventPage({
             }
           />
           <Metric
-            label="Check-Ins"
-            value={String(checkinCount)}
+            label="Current Pulse Check-Ins"
+            value={checkinCount === null ? 'Unavailable' : String(checkinCount)}
           />
           <Metric
-            label="Responses"
-            value={String(responseCount)}
+            label="Current Answer Rows"
+            value={responseCount === null ? 'Unavailable' : String(responseCount)}
           />
         </div>
       </section>
