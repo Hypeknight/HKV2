@@ -106,8 +106,18 @@ function pulseOwner(db) {
 function pulseClient({responseError=null,rows=[],count=rows.length,checkinError=null,user='owner',role='user'}={}) {
   const selects=[];
   return {selects,auth:{getUser:async()=>({data:{user:user?{id:user}:null},error:null})},
-    rpc:async()=>({data:{version:'p2b3b',complete:count===rows.length,sessionId:'session',responseCount:count,
-      results:facts.pulseFacts([pulse],rows,rows.length,null)},error:responseError}),from(table){
+    rpc:async()=> {
+      const diagnostic=role==='admin';
+      const results=facts.pulseFacts([pulse],rows,rows.length,null).map(p=>{
+        const sampleState=diagnostic?'diagnostic':p.totalResponses===0?'empty':p.totalResponses<5?'insufficient_sample':'observed';
+        const visible=sampleState==='observed'||diagnostic;
+        return {...p,sampleState,totalResponses:sampleState==='insufficient_sample'?null:p.totalResponses,
+          optionSample:visible?p.optionSample:null,options:p.options.map(o=>({...o,count:visible?o.count:null}))};
+      });
+      const suppressed=results.some(p=>p.sampleState==='insufficient_sample');
+      return {data:{version:'p2b3b-display-v1',complete:count===rows.length,sessionId:'session',disclosure:diagnostic?'diagnostic':'aggregate',
+        responseCount:suppressed?null:count,responseCountState:suppressed?'insufficient_sample':'observed',results},error:responseError};
+    },from(table){
     let head=false;
     const result=()=> {
       if(table==='events') return {data:{id:'event',owner_id:'owner',name:'Test'},error:null};
@@ -149,4 +159,15 @@ test('admin Pulse count query failures are unavailable in every count display',a
   }).default;
   const html=renderToStaticMarkup(await page({params:Promise.resolve({eventId:'event'})}));
   assert.match(html,/Current Answer Rows/);assert.match(html,/Unavailable/);assert.doesNotMatch(html,/>null</);
+});
+
+test('organizer page suppresses serialized result fields and session total below five',async()=>{
+  const db=pulseClient({rows:[answer('1','a')],count:1});
+  const html=renderToStaticMarkup(await pulseOwner(db)({params:Promise.resolve({id:'event'})}));
+  assert.match(html,/Insufficient sample/);assert.match(html,/Withheld/);assert.doesNotMatch(html,/1 current answer|100\.0%/);
+});
+test('authenticated administrator retains exact operational results on organizer diagnostics',async()=>{
+  const db=pulseClient({user:'admin',role:'admin',rows:[answer('1','a')],count:1});
+  const html=renderToStaticMarkup(await pulseOwner(db)({params:Promise.resolve({id:'event'})}));
+  assert.match(html,/1 current answer/);assert.match(html,/100\.0%/);assert.doesNotMatch(html,/Insufficient sample/);
 });

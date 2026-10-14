@@ -90,8 +90,35 @@ try:
  print('PASS canonical organic contract only; legacy/unknown preserved; purchase is not exposure')
  assert pulse() is None
  run("insert into patron_pulse_sessions values('"+uid(30)+"','"+uid(10)+"'); insert into patron_pulses values('"+uid(40)+"','"+uid(30)+"','"+uid(10)+"','Poll','closed',now()); insert into patron_pulse_options values('"+uid(50)+"','"+uid(40)+"','A',0),('"+uid(51)+"','"+uid(40)+"','B',1);")
- assert pulse()['responseCount']==0 and pulse()['results'][0]['optionSample']==0
- assert pulse(3)==pulse()
+ assert pulse()['responseCount']==0 and pulse()['results'][0]['sampleState']=='empty' and pulse()['results'][0]['optionSample'] is None
+ assert pulse(3)['responseCount']==pulse()['responseCount']
+
+ for n in [0,1,4,5,6]:
+  run("truncate patron_pulse_responses; insert into patron_pulse_responses(pulse_id,session_id,event_id,participant_id,option_id) select '"+uid(40)+"','"+uid(30)+"','"+uid(10)+"',md5('guest-'||i::text)::uuid,'"+uid(50)+"' from generate_series(1,"+str(n)+") i;")
+  data=pulse();result=data['results'][0];small=0<n<5
+  assert result['sampleState']==('empty' if n==0 else 'insufficient_sample' if small else 'observed')
+  assert result['totalResponses']==(None if small else n)
+  assert result['optionSample']==(n if n>=5 else None)
+  assert result['options'][0]['count']==(n if n>=5 else None)
+  assert data['responseCount']==(None if small else n)
+  admin=pulse(3);assert admin['disclosure']=='diagnostic' and admin['responseCount']==n and admin['results'][0]['options'][0]['count']==n
+ print('PASS 0/1/4/5/6 DB disclosure; empty distinct from insufficient; admin diagnostics remain exact')
+ run("truncate patron_pulse_responses; insert into patron_pulse_responses(pulse_id,session_id,event_id,participant_id,option_id) select '"+uid(40)+"','"+uid(30)+"','"+uid(10)+"',md5('guest-'||i::text)::uuid,'"+uid(50)+"' from generate_series(1,4) i;")
+ run("update patron_pulse_responses set option_id='"+uid(51)+"',updated_at=now() where participant_id=md5('guest-1')::uuid;")
+ assert pulse()['results'][0]['options'][1]['count'] is None
+ assert pulse(3)['results'][0]['options'][1]['count']==1
+ try: run("insert into patron_pulse_responses(pulse_id,session_id,event_id,participant_id,option_id) values('"+uid(40)+"','"+uid(30)+"','"+uid(10)+"',md5('guest-1')::uuid,'"+uid(50)+"');")
+ except RuntimeError: pass
+ else: raise AssertionError('Duplicate effective participant answer accepted')
+ assert pulse(3)['responseCount']==4
+ assert as_user('select count(*) from patron_pulse_responses;',1)=='4'
+ print('PASS revisions and rejected duplicates cannot inflate threshold; authorized raw response access preserved')
+ run("insert into patron_pulses values('"+uid(41)+"','"+uid(30)+"','"+uid(10)+"','Other','closed',now()); insert into patron_pulse_responses(pulse_id,session_id,event_id,participant_id) select '"+uid(41)+"','"+uid(30)+"','"+uid(10)+"',md5('other-'||i::text)::uuid from generate_series(1,5) i;")
+ data=pulse();assert data['responseCount'] is None and data['responseCountState']=='insufficient_sample'
+ assert next(r for r in data['results'] if r['pulseId']==uid(41))['totalResponses']==5
+ assert pulse(3)['responseCount']==9
+ run("delete from patron_pulse_responses where pulse_id='"+uid(41)+"'; delete from patron_pulses where id='"+uid(41)+"';")
+ print('PASS mixed sample session totals cannot reconstruct suppressed counts')
  for n in [999,1000,1001,2001]:
   run("truncate patron_pulse_responses; insert into patron_pulse_responses(pulse_id,session_id,event_id,participant_id,option_id) select '"+uid(40)+"','"+uid(30)+"','"+uid(10)+"',md5('guest-'||i::text)::uuid,'"+uid(50)+"' from generate_series(1,"+str(n)+") i;")
   data=pulse();assert data['responseCount']==n and data['results'][0]['optionSample']==n and data['results'][0]['options'][0]['count']==n
@@ -130,9 +157,9 @@ try:
  assert isolated['saved']==isolated['discovery_observations']==0
  run("update patron_pulse_responses set event_id='"+uid(10)+"' where user_id='"+uid(2)+"';")
  assert json.loads(as_user("select bm1_reporting_internal.event_pulse_facts('"+uid(10)+"');",1))==pulse()
- assert pulse(3)==pulse()
+ assert pulse(3)['responseCount']==pulse()['responseCount']
  print('PASS deterministic function ACLs and schema USAGE with production defaults and role inheritance')
  print('PASS direct/public/private owner calls, admin Pulse override, cross-event denial and malformed parameters')
- print('10 reporting database groups passed; no production connection')
+ print('13 reporting database groups passed; no production connection')
 finally:
  subprocess.run(['docker','stop',container],capture_output=True)

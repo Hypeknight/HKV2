@@ -37,14 +37,17 @@ $$;
 revoke all on function public.get_owned_event_reporting_facts(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.get_owned_event_reporting_facts(uuid) to authenticated;
 -- STABLE snapshot returns a scalar JSON aggregate, unaffected by API row limits.
+-- Approved display safeguard only: omit exact small-sample and reconstructing totals.
+-- Admin diagnostics retain factual access; caller cannot select or spoof this exception.
 -- Current unique participant/Pulse or legacy user/Pulse rows only; no history joins.
 create function bm1_reporting_internal.event_pulse_facts(p_event_id uuid)
 returns jsonb language plpgsql stable security definer set search_path = '' as $$
-declare v_session_id uuid; result jsonb;
+declare v_session_id uuid; v_is_admin boolean; result jsonb;
 begin
+  select exists(select 1 from public.profiles p where p.id=auth.uid() and p.app_role='admin') into v_is_admin;
   if auth.uid() is null or not exists (
     select 1 from public.events e where e.id=p_event_id and (
-      e.owner_id=auth.uid() or exists(select 1 from public.profiles p where p.id=auth.uid() and p.app_role='admin')
+      e.owner_id=auth.uid() or v_is_admin
     )
   ) then raise exception 'Event not found or access denied' using errcode='42501'; end if;
   select s.id into v_session_id from public.patron_pulse_sessions s where s.event_id=p_event_id;
@@ -67,13 +70,22 @@ begin
     select p.id,p.title,p.status,p.created_at,
       (select count(*) from responses r where r.pulse_id=p.id) as total,
       coalesce((select sum(o.answer_count) from option_counts o where o.pulse_id=p.id),0) as option_sample,
-      coalesce((select jsonb_agg(jsonb_build_object('optionId',o.id,'label',o.label,'count',o.answer_count)
+      coalesce((select jsonb_agg(jsonb_build_object('optionId',o.id,'label',o.label,'count',
+          case when v_is_admin or (select count(*) from responses r where r.pulse_id=p.id)>=5 then o.answer_count else null end)
         order by o.sort_order,o.id) from option_counts o where o.pulse_id=p.id),'[]'::jsonb) as options
     from public.patron_pulses p where p.session_id=v_session_id and p.event_id=p_event_id
-  ) select jsonb_build_object('version','p2b3b','complete',true,'sessionId',v_session_id,
-    'responseCount',(select count(*) from responses),
+  ) select jsonb_build_object('version','p2b3b-display-v1','complete',true,'sessionId',v_session_id,
+    'disclosure',case when v_is_admin then 'diagnostic' else 'aggregate' end,
+    'responseCountState',case when not v_is_admin and exists(select 1 from pulse_counts c where c.total between 1 and 4)
+      then 'insufficient_sample' else 'observed' end,
+    'responseCount',case when not v_is_admin and exists(select 1 from pulse_counts c where c.total between 1 and 4)
+      then null else (select count(*) from responses) end,
     'results',coalesce(jsonb_agg(jsonb_build_object('pulseId',p.id,'title',p.title,'status',p.status,
-      'totalResponses',p.total,'optionSample',p.option_sample,'options',p.options) order by p.created_at desc,p.id),'[]'::jsonb))
+      'sampleState',case when v_is_admin then 'diagnostic' when p.total=0 then 'empty'
+        when p.total<5 then 'insufficient_sample' else 'observed' end,
+      'totalResponses',case when not v_is_admin and p.total between 1 and 4 then null else p.total end,
+      'optionSample',case when v_is_admin or p.total>=5 then p.option_sample else null end,
+      'options',p.options) order by p.created_at desc,p.id),'[]'::jsonb))
     into result from pulse_counts p;
   return result;
 end; $$;

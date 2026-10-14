@@ -98,6 +98,7 @@ export default async function PatronPulseOwnerPage({
   let responseCount: number | null = null;
   let pulseResults: PatronPulseResultSummary[] = [];
   let resultsUnavailable = false;
+  let responseCountSuppressed = false;
   let activityItems: PatronPulseActivityItem[] = [];
 
   if (session) {
@@ -180,7 +181,7 @@ export default async function PatronPulseOwnerPage({
       );
     }
 
-    const snapshot = pulseSnapshot(snapshotData, snapshotError, session.id);
+    const snapshot = pulseSnapshot(snapshotData, snapshotError, session.id, isAdmin);
     resultsUnavailable = snapshot.unavailable;
     pulseResults = snapshot.results;
 
@@ -192,6 +193,7 @@ export default async function PatronPulseOwnerPage({
     announcements = announcementRows || [];
     checkinCount = exactCount(checkins, checkinError);
     responseCount = snapshot.responseCount;
+    responseCountSuppressed = snapshot.responseCountState === 'insufficient_sample';
     activityItems =
       (activityRows || []) as PatronPulseActivityItem[];
   }
@@ -254,7 +256,7 @@ export default async function PatronPulseOwnerPage({
 
           <Metric
             label="Current Answer Rows"
-            value={responseCount === null ? 'Unavailable' : String(responseCount)}
+            value={responseCountSuppressed ? 'Insufficient sample' : responseCount === null ? 'Unavailable' : String(responseCount)}
           />
         </div>
       </section>
@@ -350,7 +352,7 @@ export default async function PatronPulseOwnerPage({
 
                 <Metric
                   label="Current Answer Rows"
-                  value={responseCount === null ? 'Unavailable' : String(responseCount)}
+                  value={responseCountSuppressed ? 'Insufficient sample' : responseCount === null ? 'Unavailable' : String(responseCount)}
                 />
 
                 <Metric

@@ -14,8 +14,8 @@ const facts=load('lib/reporting/factual.ts');
 const snapshots=load('lib/reporting/snapshot.ts',{'./factual':facts});
 const Panel=load('components/patron-pulse/PulseResultsPanel.tsx').default;
 const current={version:'p2b3b',saved:0,going:2,interested:1,discovery_observations:5,organic_observations:2,unclassified_observations:3};
-const poll={pulseId:'pulse',title:'Choose',status:'closed',totalResponses:0,optionSample:0,options:[{optionId:'a',label:'A',count:0},{optionId:'b',label:'B',count:0}]};
-const snapshot=(results=[poll])=>({version:'p2b3b',complete:true,sessionId:'session',responseCount:results.reduce((s,p)=>s+p.totalResponses,0),results});
+const poll={pulseId:'pulse',title:'Choose',status:'closed',sampleState:'empty',totalResponses:0,optionSample:null,options:[{optionId:'a',label:'A',count:null},{optionId:'b',label:'B',count:null}]};
+const snapshot=(results=[poll])=>({version:'p2b3b-display-v1',disclosure:'aggregate',complete:true,sessionId:'session',responseCount:results.some(p=>p.sampleState==='insufficient_sample')?null:results.reduce((s,p)=>s+(p.totalResponses||0),0),responseCountState:results.some(p=>p.sampleState==='insufficient_sample')?'insufficient_sample':'observed',results});
 test('operational current counts are distinct from retained signal actions',()=>{
   const state=snapshots.ownerSnapshot(current,null);
   assert.equal(state.saved.value,0); assert.equal(state.going.value,2);
@@ -44,7 +44,7 @@ test('failed, null, wrong-session, truncated and inconsistent samples fail close
 });
 test('snapshot response and Pulse boundaries do not truncate at 1000 rows',()=>{
   for(const n of [999,1000,1001,2001]) {
-    const result=snapshots.pulseSnapshot(snapshot([{...poll,totalResponses:n,optionSample:n,options:[{optionId:'a',label:'A',count:n}]}]),null,'session');
+    const result=snapshots.pulseSnapshot(snapshot([{...poll,sampleState:'observed',totalResponses:n,optionSample:n,options:[{optionId:'a',label:'A',count:n}]}]),null,'session');
     assert.equal(result.responseCount,n);assert.equal(result.results[0].options[0].percentage,100);
     const polls=Array.from({length:n},(_,i)=>({...poll,pulseId:String(i)}));
     assert.equal(snapshots.pulseSnapshot(snapshot(polls),null,'session').results.length,n);
@@ -101,4 +101,42 @@ test('public event detail renders valid signed-in zero and query failure unavail
 test('failed viewer state does not pretend an unsaved selection or offer a mutation form',async()=>{
   const html=renderToStaticMarkup(await publicPage(publicClient({user:'viewer',viewerError:{message:'failed'}}))({params:Promise.resolve({slug:'event'})}));
   assert.match(html,/saved and RSVP state is temporarily unavailable/);assert.doesNotMatch(html,/Remove Save|Save Event|I&#x27;m Going/);
+});
+
+test('approved safeguard covers 0,1,4,5,6 effective samples without reconstructing totals',()=>{
+  for(const n of [0,1,4,5,6]) {
+    const visible=n>=5;const small=n>0&&n<5;
+    const p={...poll,sampleState:n===0?'empty':small?'insufficient_sample':'observed',totalResponses:small?null:n,optionSample:visible?n:null,
+      options:[{optionId:'a',label:'A',count:visible?n:null}]};
+    const result=snapshots.pulseSnapshot(snapshot([p]),null,'session');
+    assert.equal(result.unavailable,false);assert.equal(result.results[0].options[0].count,visible?n:null);
+    assert.equal(result.results[0].options[0].percentage,visible?100:null);assert.equal(result.responseCount,small?null:n);
+    assert.equal(result.results[0].optionSample,visible?n:null);
+    const html=renderToStaticMarkup(React.createElement(Panel,{results:result.results}));
+    if(small) {assert.match(html,/Insufficient sample/);assert.doesNotMatch(html,/[1-4] current answers|100\.0%|width:/);} else if(!n) assert.match(html,/0 current answers/);
+  }
+});
+test('suppressed leaked counts, denominators, session totals and diagnostic spoofing fail closed',()=>{
+  const p={...poll,sampleState:'insufficient_sample',totalResponses:null};const data=snapshot([p]);
+  for(const payload of [{...data,responseCount:4},{...data,responseCountState:'observed'},snapshot([{...p,totalResponses:4}]),snapshot([{...p,optionSample:4}]),snapshot([{...p,options:[{optionId:'a',label:'A',count:4}]}]),{...data,version:'p2b3b'}]) {
+    assert.equal(snapshots.pulseSnapshot(payload,null,'session').unavailable,true);
+  }
+  const diagnostic={...snapshot([{...poll,sampleState:'diagnostic',totalResponses:1,optionSample:1,options:[{optionId:'a',label:'A',count:1}]}]),disclosure:'diagnostic'};
+  assert.equal(snapshots.pulseSnapshot(diagnostic,null,'session').unavailable,true);
+  const result=snapshots.pulseSnapshot(diagnostic,null,'session',true);
+  assert.equal(result.responseCount,1);assert.equal(result.results[0].options[0].percentage,100);
+});
+test('mixed visible and insufficient samples withhold reconstructing session total and strip extra fields',()=>{
+  const hidden={...poll,pulseId:'hidden',sampleState:'insufficient_sample',totalResponses:null,participant_id:'secret',hiddenCount:4};
+  const shown={...poll,pulseId:'shown',sampleState:'observed',totalResponses:6,optionSample:6,options:[{optionId:'a',label:'A',count:6}]};
+  const result=snapshots.pulseSnapshot(snapshot([hidden,shown]),null,'session');
+  assert.equal(result.unavailable,false);assert.equal(result.responseCount,null);assert.equal(result.results[1].totalResponses,6);
+  assert.doesNotMatch(JSON.stringify(result),/secret|hiddenCount/);
+});
+
+test('five or more effective answers show supported small option cells without extra suppression',()=>{
+  const p={...poll,sampleState:'observed',totalResponses:5,optionSample:5,options:[{optionId:'a',label:'A',count:4},{optionId:'b',label:'B',count:1}]};
+  const result=snapshots.pulseSnapshot(snapshot([p]),null,'session');
+  assert.equal(result.results[0].options[1].count,1);assert.equal(result.results[0].options[1].percentage,20);
+  const html=renderToStaticMarkup(React.createElement(Panel,{results:result.results}));assert.match(html,/20\.0%/);assert.doesNotMatch(html,/Withheld/);
 });
