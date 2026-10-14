@@ -1,8 +1,10 @@
 -- P2-B3B: facts only; no row policies, writes or historical rewrites.
 -- Unapplied: validate locally and hold for release review.
+-- Clear Supabase default grants before allowing authenticated application calls.
+-- Admin override uses authenticated + profiles.app_role; no service-role caller is required.
 begin;
 create schema if not exists bm1_reporting_internal;
-revoke all on schema bm1_reporting_internal from public, anon;
+revoke all on schema bm1_reporting_internal from public, anon, authenticated, service_role;
 grant usage on schema bm1_reporting_internal to authenticated;
 -- Private privileged aggregate; owner guard precedes every read. Raw RLS stays intact.
 create function bm1_reporting_internal.owned_event_facts(p_event_id uuid)
@@ -26,13 +28,13 @@ begin
   ) into result from public.signals s where s.event_id=p_event_id and s.signal_type='discovery_impression';
   return result;
 end; $$;
-revoke all on function bm1_reporting_internal.owned_event_facts(uuid) from public, anon;
+revoke all on function bm1_reporting_internal.owned_event_facts(uuid) from public, anon, authenticated, service_role;
 grant execute on function bm1_reporting_internal.owned_event_facts(uuid) to authenticated;
 create function public.get_owned_event_reporting_facts(p_event_id uuid)
 returns jsonb language sql stable security invoker set search_path = '' as $$
   select bm1_reporting_internal.owned_event_facts(p_event_id);
 $$;
-revoke all on function public.get_owned_event_reporting_facts(uuid) from public, anon;
+revoke all on function public.get_owned_event_reporting_facts(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.get_owned_event_reporting_facts(uuid) to authenticated;
 -- STABLE snapshot returns a scalar JSON aggregate, unaffected by API row limits.
 -- Current unique participant/Pulse or legacy user/Pulse rows only; no history joins.
@@ -75,12 +77,12 @@ begin
     into result from pulse_counts p;
   return result;
 end; $$;
-revoke all on function bm1_reporting_internal.event_pulse_facts(uuid) from public, anon;
+revoke all on function bm1_reporting_internal.event_pulse_facts(uuid) from public, anon, authenticated, service_role;
 grant execute on function bm1_reporting_internal.event_pulse_facts(uuid) to authenticated;
 create function public.get_event_pulse_reporting_facts(p_event_id uuid)
 returns jsonb language sql stable security invoker set search_path = '' as $$
   select bm1_reporting_internal.event_pulse_facts(p_event_id);
 $$;
-revoke all on function public.get_event_pulse_reporting_facts(uuid) from public, anon;
+revoke all on function public.get_event_pulse_reporting_facts(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.get_event_pulse_reporting_facts(uuid) to authenticated;
 commit;

@@ -19,7 +19,10 @@ def deny(sql,actor=2,role='authenticated'):
  raise AssertionError('Unauthorized aggregate accepted')
 def own(actor=1): return json.loads(as_user("select public.get_owned_event_reporting_facts('"+uid(10)+"');",actor))
 def pulse(actor=1): return json.loads(as_user("select public.get_event_pulse_reporting_facts('"+uid(10)+"');",actor) or 'null')
-base='''create role anon; create role authenticated;
+base='''create role anon; create role authenticated; create role service_role;
+create role authenticator noinherit; grant anon,authenticated,service_role to authenticator;
+create role reporting_inherited; grant authenticated to reporting_inherited;
+alter default privileges in schema public grant execute on functions to anon,authenticated,service_role;
 alter default privileges in schema public grant all on tables to anon,authenticated;
 create schema auth;
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
@@ -107,6 +110,29 @@ try:
  else: raise AssertionError('Inconsistent context accepted')
  print('PASS complete Pulse inventory beyond 1000; inconsistent response context rejected')
  assert run("select bool_and(proconfig @> array['search_path=\"\"']) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='bm1_reporting_internal';")=='t'
- print('8 reporting database groups passed; no production connection')
+
+ functions=['public.get_owned_event_reporting_facts','public.get_event_pulse_reporting_facts','bm1_reporting_internal.owned_event_facts','bm1_reporting_internal.event_pulse_facts']
+ for name in functions:
+  for role,expected in [('anon','f'),('authenticated','t'),('service_role','f'),('authenticator','f'),('reporting_inherited','t')]:
+   assert run("select has_function_privilege('"+role+"','"+name+"(uuid)','EXECUTE');")==expected
+  deny("select "+name+"('"+uid(10)+"');",None,'anon')
+  deny("select "+name+"('"+uid(10)+"');",None,'service_role')
+  deny("select "+name+"('"+uid(10)+"');",None,'authenticated')
+  deny("select "+name+"('"+uid(10)+"');",2,'reporting_inherited')
+  for argument in ["null::uuid", "'00000000-0000-0000-0000-000000000000'::uuid", "'invalid'::uuid"]:
+   deny("select "+name+"("+argument+");",1)
+ for role,expected in [('anon','f'),('authenticated','t'),('service_role','f'),('authenticator','f'),('reporting_inherited','t')]:
+  assert run("select has_schema_privilege('"+role+"','bm1_reporting_internal','USAGE');")==expected
+ assert run("select has_schema_privilege('authenticated','bm1_reporting_internal','CREATE');")=='f'
+ assert json.loads(as_user("select bm1_reporting_internal.owned_event_facts('"+uid(10)+"');",1))==own()
+ assert json.loads(as_user("select public.get_owned_event_reporting_facts('"+uid(10)+"');",1,'reporting_inherited'))==own()
+ isolated=json.loads(as_user("select public.get_owned_event_reporting_facts('"+uid(11)+"');",2))
+ assert isolated['saved']==isolated['discovery_observations']==0
+ run("update patron_pulse_responses set event_id='"+uid(10)+"' where user_id='"+uid(2)+"';")
+ assert json.loads(as_user("select bm1_reporting_internal.event_pulse_facts('"+uid(10)+"');",1))==pulse()
+ assert pulse(3)==pulse()
+ print('PASS deterministic function ACLs and schema USAGE with production defaults and role inheritance')
+ print('PASS direct/public/private owner calls, admin Pulse override, cross-event denial and malformed parameters')
+ print('10 reporting database groups passed; no production connection')
 finally:
  subprocess.run(['docker','stop',container],capture_output=True)
