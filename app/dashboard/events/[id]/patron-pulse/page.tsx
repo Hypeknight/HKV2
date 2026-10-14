@@ -1,4 +1,5 @@
-import { exactCount, pulseFacts } from "@/lib/reporting/factual";
+import { pulseSnapshot } from "@/lib/reporting/snapshot";
+import { exactCount } from "@/lib/reporting/factual";
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -95,8 +96,7 @@ export default async function PatronPulseOwnerPage({
   let announcements: any[] = [];
   let checkinCount: number | null = null;
   let responseCount: number | null = null;
-  let responseRows: any[] | null = null;
-  let responseSampleCount: number | null = null;
+  let pulseResults: PatronPulseResultSummary[] = [];
   let resultsUnavailable = false;
   let activityItems: PatronPulseActivityItem[] = [];
 
@@ -111,15 +111,7 @@ export default async function PatronPulseOwnerPage({
         count: checkins,
         error: checkinError,
       },
-      {
-        count: responses,
-        error: responseError,
-      },
-      {
-        data: detailedResponses,
-        error: detailedResponseError,
-        count: detailedResponseCount,
-      },
+      { data: snapshotData, error: snapshotError },
       {
         data: activityRows,
         error: activityError,
@@ -158,27 +150,7 @@ export default async function PatronPulseOwnerPage({
         .eq('session_id', session.id)
         .eq('status', 'checked_in'),
 
-      supabase
-        .from('patron_pulse_responses')
-        .select('id', {
-          count: 'exact',
-          head: true,
-        })
-        .eq('session_id', session.id),
-
-      supabase
-        .from('patron_pulse_responses')
-        .select(`
-          id,
-          pulse_id,
-          option_id,
-          text_response,
-          numeric_response,
-          boolean_response,
-          submitted_at,
-          updated_at
-        `, { count: 'exact' })
-        .eq('session_id', session.id),
+      supabase.rpc('get_event_pulse_reporting_facts', { p_event_id: event.id }),
 
       supabase
         .from('patron_pulse_activity_log')
@@ -208,7 +180,9 @@ export default async function PatronPulseOwnerPage({
       );
     }
 
-    resultsUnavailable = Boolean(responseError || detailedResponseError || detailedResponses === null || detailedResponseCount === null || detailedResponses?.length !== detailedResponseCount);
+    const snapshot = pulseSnapshot(snapshotData, snapshotError, session.id);
+    resultsUnavailable = snapshot.unavailable;
+    pulseResults = snapshot.results;
 
     if (activityError) {
       throw new Error(activityError.message);
@@ -217,14 +191,11 @@ export default async function PatronPulseOwnerPage({
     pulses = pulseRows || [];
     announcements = announcementRows || [];
     checkinCount = exactCount(checkins, checkinError);
-    responseCount = exactCount(responses, responseError);
-    responseRows = detailedResponses;
-    responseSampleCount = detailedResponseCount;
+    responseCount = snapshot.responseCount;
     activityItems =
       (activityRows || []) as PatronPulseActivityItem[];
   }
 
-  const pulseResults: PatronPulseResultSummary[] = pulseFacts(pulses, responseRows, responseSampleCount, resultsUnavailable);
 
   const canUsePulse = true;
 
@@ -383,12 +354,12 @@ export default async function PatronPulseOwnerPage({
                 />
 
                 <Metric
-                  label="Pulses"
+                  label="Loaded Pulses"
                   value={String(pulses.length)}
                 />
 
                 <Metric
-                  label="Announcements"
+                  label="Loaded Announcements"
                   value={String(
                     announcements.length
                   )}

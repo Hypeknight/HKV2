@@ -1,3 +1,4 @@
+import { publicCurrentCount } from "@/lib/reporting/snapshot";
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -48,6 +49,7 @@ export default async function EventDetailPage({ params }: Props) {
   const [
     {
       data: { user },
+      error: authError,
     },
     lookups,
   ] = await Promise.all([
@@ -86,6 +88,7 @@ export default async function EventDetailPage({ params }: Props) {
 
   await recordRecentEventView(event.id);
 
+  const totalsAuthorized = Boolean(user) && !authError;
   const [
     { count: saveCount, error: saveCountError },
     { count: goingCount, error: goingCountError },
@@ -93,22 +96,22 @@ export default async function EventDetailPage({ params }: Props) {
     { data: viewerSave, error: viewerSaveError },
     { data: viewerRsvp, error: viewerRsvpError },
   ] = await Promise.all([
-    supabase
+    totalsAuthorized ? supabase
       .from('event_saves')
       .select('id', { count: 'exact', head: true })
-      .eq('event_id', event.id),
+      .eq('event_id', event.id) : Promise.resolve({ count: null, error: null }),
 
-    supabase
+    totalsAuthorized ? supabase
       .from('event_rsvps')
       .select('id', { count: 'exact', head: true })
       .eq('event_id', event.id)
-      .eq('status', 'going'),
+      .eq('status', 'going') : Promise.resolve({ count: null, error: null }),
 
-    supabase
+    totalsAuthorized ? supabase
       .from('event_rsvps')
       .select('id', { count: 'exact', head: true })
       .eq('event_id', event.id)
-      .eq('status', 'interested'),
+      .eq('status', 'interested') : Promise.resolve({ count: null, error: null }),
 
     user
       ? supabase
@@ -135,22 +138,7 @@ export default async function EventDetailPage({ params }: Props) {
         }),
   ]);
 
-  const engagementErrors = [
-    saveCountError,
-    goingCountError,
-    interestedCountError,
-    viewerSaveError,
-    viewerRsvpError,
-  ].filter(Boolean);
-
-  if (engagementErrors.length) {
-    throw new Error(
-      engagementErrors
-        .map((item) => item?.message)
-        .filter(Boolean)
-        .join(' | ')
-    );
-  }
+  const viewerStateUnavailable = Boolean(authError || viewerSaveError || viewerRsvpError);
 
   const { data: eventSources, error: eventSourcesError } = await supabase
     .from('event_sources')
@@ -312,10 +300,11 @@ export default async function EventDetailPage({ params }: Props) {
                   />
                 </div>
                 <div className="mt-7 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/35">Saved</p><p className="mt-1 text-xl font-black text-white">{saveCount || 0}</p></div>
-                  <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/35">Interested</p><p className="mt-1 text-xl font-black text-white">{interestedCount || 0}</p></div>
-                  <div className="rounded-2xl border border-accent/15 bg-accent/[0.06] p-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent/70">Going</p><p className="mt-1 text-xl font-black text-accent">{goingCount || 0}</p></div>
+                  <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/35">Currently Saved Accounts</p><p className="mt-1 text-xl font-black text-white">{publicCurrentCount(saveCount, saveCountError, totalsAuthorized)}</p></div>
+                  <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/35">Current Interested Accounts</p><p className="mt-1 text-xl font-black text-white">{publicCurrentCount(interestedCount, interestedCountError, totalsAuthorized)}</p></div>
+                  <div className="rounded-2xl border border-accent/15 bg-accent/[0.06] p-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent/70">Current Going Accounts</p><p className="mt-1 text-xl font-black text-accent">{publicCurrentCount(goingCount, goingCountError, totalsAuthorized)}</p></div>
                 </div>
+                <p className="mt-3 text-xs leading-5 text-white/45">Current stored account selections, one per account/event; not unique people or verified attendance. Totals are unavailable without authorized access or when a query fails.</p>
               </div>
             </div>
           </div>
@@ -327,7 +316,9 @@ export default async function EventDetailPage({ params }: Props) {
           >
             <p className="text-sm leading-6 text-white/55">Save it, tell HypeKnight you are interested, or commit to Going. These actions improve both your personal recommendations and the event's demand signal.</p>
 
-            {user ? (
+            {viewerStateUnavailable ? (
+              <p role="status" className="mt-6 text-sm text-yellow-100">Your saved and RSVP state is temporarily unavailable. Reload before changing a selection.</p>
+            ) : user ? (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <form
                   action={toggleEventSave}

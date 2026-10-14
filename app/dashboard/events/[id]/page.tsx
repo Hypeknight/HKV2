@@ -1,3 +1,4 @@
+import { ownerSnapshot } from "@/lib/reporting/snapshot";
 import { eventFacts, formatFact, type FactMetric } from "@/lib/reporting/factual";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -116,6 +117,11 @@ export default async function EventCommandCenterPage({ params }: Props) {
 
   const performance = eventFacts(signalSummary as EventSignalSummaryRow[] | null, signalSummaryError);
   const trackedActivity = performance.total;
+  const { data: currentFacts, error: currentFactsError } = await supabase.rpc(
+    "get_owned_event_reporting_facts", { p_event_id: event.id }
+  );
+  const current = ownerSnapshot(currentFacts, currentFactsError);
+
 
   const discoveryStart =
     event.discovery_start_at || event.promotion_start_at || null;
@@ -502,18 +508,19 @@ export default async function EventCommandCenterPage({ params }: Props) {
                 detail="Recorded Discovery exposure observations. Organic collection requires at least half of the card visible for one continuous second. Older records may have unknown exposure classification."
               />
               <PerformanceMetric
-                label="Classified Organic Impressions"
-                value={performance.organicImpressions}
-                detail="This report cannot distinguish organic exposure for all retained observations. Unclassified historical observations remain unknown."
+                label="Classified Organic Observations"
+                value={current.organic}
+                detail="Browser-reported Discovery observations from the P2-B1 viewability contract: at least half the card visible for one continuous second. Collection is not verified human exposure or acquisition attribution."
               />
               <PerformanceMetric
                 label="Featured Impressions"
                 value={performance.featuredImpressions}
                 detail="Featured exposure is not instrumented. A purchase or eligibility is not proof of exposure."
               />
-              <PerformanceMetric label="Currently Saved" value={{ value: null, state: "unavailable" }} detail="Current saved totals are not available in this report. Historical save actions may include selections that later changed." />
-              <PerformanceMetric label="Current Going RSVPs" value={{ value: null, state: "unavailable" }} detail="Current Going totals are not available in this report. Historical Going actions may include selections that later changed." />
-              <PerformanceMetric label="Acquisition Attribution" value={{ value: null, state: "unavailable" }} detail="An acquisition breakdown is not available. Unknown acquisition remains unknown; a Discovery impression does not establish the source of later actions." />
+              <PerformanceMetric label="Currently Saved Accounts" value={current.saved} detail="Current event_saves rows, one per stored account/event; not unique people or historical save actions." />
+              <PerformanceMetric label="Current Going Accounts" value={current.going} detail="Current event_rsvps rows marked Going, one per stored account/event; declared intent, not verified attendance." />
+              <PerformanceMetric label="Unclassified Discovery Observations" value={current.unclassified} detail="Legacy or unsupported exposure context remains unclassified; it is never assigned to organic by default." />
+              <PerformanceMetric label="Acquisition Attribution" value={{ value: null, state: "unavailable" }} detail="An acquisition breakdown is not available. Unknown acquisition remains unknown. Browser, event_action, event_page and inventory provider describe emitters/context, not Direct/Organizer, Search, Discovery, External/Referral or Featured acquisition. A Discovery impression does not establish the source of later actions." />
             </div>
 
             {!performance.available ? (
@@ -547,7 +554,7 @@ export default async function EventCommandCenterPage({ params }: Props) {
             </div>
 
             <p className="mt-4 text-xs leading-5 text-white/30">
-              Saves and Going shown here are historical recorded actions.
+              Historical Save Actions and Historical Going Actions are retained signal history. Currently Saved Accounts and Current Going Accounts use operational tables.
               Current saved and RSVP state may differ as patrons change their
               selections.
             </p>

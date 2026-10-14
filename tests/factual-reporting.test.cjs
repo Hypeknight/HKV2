@@ -11,6 +11,7 @@ function load(file,mocks={}) {
   return exports;
 }
 const facts=load('lib/reporting/factual.ts');
+const snapshots=load('lib/reporting/snapshot.ts',{'./factual':facts});
 const Panel=load('components/patron-pulse/PulseResultsPanel.tsx').default;
 const summary=(type,count,unique=count)=>({signal_type:type,signal_count:count,unique_actor_count:unique});
 const pulse={id:'pulse',title:'Pick a song',status:'open',pulse_type:'poll',options:[{id:'a',label:'A'},{id:'b',label:'B'}]};
@@ -61,7 +62,7 @@ function mission(db) {
     'next/link':{default:({children,...props})=>React.createElement('a',props,children)},
     'next/navigation':{redirect:()=>{throw new Error('redirect');}},
     '@/lib/supabase/server':{createClient:async()=>db},
-    '@/lib/reporting/factual':facts,
+    '@/lib/reporting/factual':facts,'@/lib/reporting/snapshot':snapshots,
     '@/app/dashboard/events/actions':{startEventRevision:empty},
     '@/lib/commerce/event-order':{getExtendedDiscoveryUpgradeOptions:()=>[]},
     '@/components/events/PublicEventLinkCard':{default:empty},
@@ -95,7 +96,7 @@ function pulseOwner(db) {
     'next/link':{default:({children,...props})=>React.createElement('a',props,children)},
     'next/navigation':{redirect:()=>{throw new Error('redirect');},notFound:()=>{throw new Error('not found');}},
     '@/lib/supabase/server':{createClient:async()=>db},
-    '@/lib/reporting/factual':facts,
+    '@/lib/reporting/factual':facts,'@/lib/reporting/snapshot':snapshots,
     '@/components/patron-pulse/PulseResultsPanel':{default:Panel},
     '@/components/patron-pulse/PatronPulseAutoRefresh':{default:empty},
     '@/components/patron-pulse/PatronPulseActivityTimeline':{default:empty},
@@ -104,7 +105,9 @@ function pulseOwner(db) {
 }
 function pulseClient({responseError=null,rows=[],count=rows.length,checkinError=null,user='owner',role='user'}={}) {
   const selects=[];
-  return {selects,auth:{getUser:async()=>({data:{user:user?{id:user}:null},error:null})},from(table){
+  return {selects,auth:{getUser:async()=>({data:{user:user?{id:user}:null},error:null})},
+    rpc:async()=>({data:{version:'p2b3b',complete:count===rows.length,sessionId:'session',responseCount:count,
+      results:facts.pulseFacts([pulse],rows,rows.length,null)},error:responseError}),from(table){
     let head=false;
     const result=()=> {
       if(table==='events') return {data:{id:'event',owner_id:'owner',name:'Test'},error:null};
@@ -142,7 +145,7 @@ test('admin Pulse count query failures are unavailable in every count display',a
   const page=load('app/admin/patron-pulse/[eventId]/page.tsx',{
     'next/link':{default:({children,...props})=>React.createElement('a',props,children)},
     'next/navigation':{redirect:()=>{throw new Error('redirect');},notFound:()=>{throw new Error('not found');}},
-    '@/lib/supabase/server':{createClient:async()=>db},'@/lib/reporting/factual':facts,'../actions':{},
+    '@/lib/supabase/server':{createClient:async()=>db},'@/lib/reporting/factual':facts,'@/lib/reporting/snapshot':snapshots,'../actions':{},
   }).default;
   const html=renderToStaticMarkup(await page({params:Promise.resolve({eventId:'event'})}));
   assert.match(html,/Current Answer Rows/);assert.match(html,/Unavailable/);assert.doesNotMatch(html,/>null</);
