@@ -80,11 +80,16 @@ export default async function EventDetailPage({ params }: Props) {
     `)
     .eq('slug', slug)
     .eq('is_public', true)
-    .in('status', ['scheduled', 'active', 'live'])
+    .eq('is_approved', true)
+    .in('status', ['scheduled', 'active', 'live', 'completed', 'ended', 'cancelled', 'archived'])
     .is('removed_at', null)
     .single();
 
-  if (error || !event) notFound();
+  if (error || !event || event.hidden_by_admin === true) notFound();
+
+  const historicalLabel = event.status === 'cancelled' ? 'Cancelled'
+    : event.status === 'archived' ? 'Archived'
+    : ['completed', 'ended'].includes(event.status) ? 'Completed' : null;
 
   await recordRecentEventView(event.id);
 
@@ -156,7 +161,9 @@ export default async function EventDetailPage({ params }: Props) {
 
   const cookieStore = await cookies();
   const participantToken = parseParticipantToken(cookieStore.get(PRESENCE_PARTICIPANT_COOKIE)?.value);
-  const patronPulse = await loadPublicPatronPulse({ supabase, eventId: event.id, userId: user?.id || null, participantToken });
+  const patronPulse = historicalLabel
+    ? { session: null, pulses: [], announcements: [], viewerCheckin: null, viewerResponses: [], hasVerifiedEventPresence: false }
+    : await loadPublicPatronPulse({ supabase, eventId: event.id, userId: user?.id || null, participantToken });
   const hasVerifiedEventPresence = patronPulse.hasVerifiedEventPresence;
   const { data: profile } = user
     ? await supabase
@@ -269,6 +276,12 @@ export default async function EventDetailPage({ params }: Props) {
           ← Back to Events
         </Link>
 
+        {historicalLabel ? (
+          <Panel title={historicalLabel + ' event'} eyebrow="Historical event">
+            <p>This is a historical event page. Live participation is unavailable.</p>
+          </Panel>
+        ) : null}
+
         <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#0c0f16] sm:rounded-[2.75rem]">
           <div className="grid lg:grid-cols-[minmax(0,0.92fr)_1.08fr]">
             <div className="relative min-h-[320px] bg-black sm:min-h-[430px] lg:min-h-[560px]">
@@ -283,7 +296,7 @@ export default async function EventDetailPage({ params }: Props) {
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/10 lg:bg-gradient-to-r lg:from-transparent lg:to-[#0c0f16]/25" />
               <div className="absolute left-4 top-4 sm:left-6 sm:top-6">
-                <EventStatusBadge startAt={event.event_start_at} endAt={event.event_end_at} />
+                {historicalLabel ? <Chip>{historicalLabel}</Chip> : <EventStatusBadge startAt={event.event_start_at} endAt={event.event_end_at} />}
               </div>
             </div>
 
@@ -311,10 +324,10 @@ export default async function EventDetailPage({ params }: Props) {
         </section>
         <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <Panel
-            title="Join the night"
+            title={historicalLabel ? 'Event record' : 'Join the night'}
             eyebrow="Event Engagement"
           >
-            <p className="text-sm leading-6 text-white/55">Save it, tell HypeKnight you are interested, or commit to Going. These actions improve both your personal recommendations and the event's demand signal.</p>
+            <p className="text-sm leading-6 text-white/55">{historicalLabel ? 'Stored account selections are retained records, not verified attendance.' : "Save it, tell HypeKnight you are interested, or commit to Going. These actions improve both your personal recommendations and the event's demand signal."}</p>
 
             {viewerStateUnavailable ? (
               <p role="status" className="mt-6 text-sm text-yellow-100">Your saved and RSVP state is temporarily unavailable. Reload before changing a selection.</p>
@@ -700,7 +713,7 @@ export default async function EventDetailPage({ params }: Props) {
           </Panel>
         </section>
 
-        <PatronPulseGuestPanel
+        {!historicalLabel ? <PatronPulseGuestPanel
           eventId={event.id}
           eventSlug={event.slug}
           eventName={
@@ -717,7 +730,7 @@ export default async function EventDetailPage({ params }: Props) {
           }
 
       hasVerifiedEventPresence={hasVerifiedEventPresence}
-    />
+    /> : null}
 
         <section>
           <Panel

@@ -7,6 +7,8 @@ import {
 
 type EventMetadataRecord = {
   slug: string;
+  status: string;
+  hidden_by_admin: boolean | null;
   name: string | null;
   description: string | null;
   flyer_url: string | null;
@@ -33,10 +35,12 @@ export async function getEventShareMetadata(
 ): Promise<Metadata> {
   const supabase = await createClient();
 
-  const { data: event } = await supabase
+  const { data: event, error } = await supabase
     .from('events')
     .select(`
       slug,
+      status,
+      hidden_by_admin,
       name,
       description,
       flyer_url,
@@ -52,11 +56,12 @@ export async function getEventShareMetadata(
     `)
     .eq('slug', slug)
     .eq('is_public', true)
-    .in('status', ['scheduled', 'active', 'live'])
+    .eq('is_approved', true)
+    .in('status', ['scheduled', 'active', 'live', 'completed', 'ended', 'cancelled', 'archived'])
     .is('removed_at', null)
     .maybeSingle();
 
-  if (!event) {
+  if (error || !event || event.hidden_by_admin === true) {
     return buildShareMetadata({
       title: 'Event Not Available | HypeKnight',
       description:
@@ -108,7 +113,11 @@ export async function getEventShareMetadata(
     .filter(Boolean)
     .join(' — ');
 
-  const title = `${cleanMetadataText(
+  const historicalLabel = typedEvent.status === 'cancelled' ? 'Cancelled'
+    : typedEvent.status === 'archived' ? 'Archived'
+    : ['completed', 'ended'].includes(typedEvent.status) ? 'Completed' : null;
+
+  const title = (historicalLabel ? historicalLabel + ' · ' : '') + `${cleanMetadataText(
     typedEvent.name,
     'HypeKnight Event'
   )} | HypeKnight`;
