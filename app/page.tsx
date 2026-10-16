@@ -1,3 +1,5 @@
+import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord } from '@/lib/discovery/classification';
+import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { getPlatformSettings } from '@/lib/settings';
@@ -10,14 +12,14 @@ import { getRecommendedEventsForUser } from '@/lib/discovery/recommend-events';
 import { EventRail, SectionHeader } from '@/components/ui';
 
 const VIBES = [
-  { label: 'Turn Up', emoji: '✦', value: 'turn-up', terms: ['club', 'party', 'dance', 'nightlife', 'dj'] },
-  { label: 'Hip-Hop', emoji: '♫', value: 'hip-hop', terms: ['hip-hop', 'hip hop', 'rap'] },
-  { label: 'Live Music', emoji: '♪', value: 'music', terms: ['music', 'concert', 'live music', 'rock', 'jazz', 'blues'] },
-  { label: 'Date Night', emoji: '♡', value: 'date-night', terms: ['date', 'romance', 'dinner', 'lounge'] },
-  { label: 'Sports', emoji: '◉', value: 'sports', terms: ['sports', 'soccer', 'football', 'baseball', 'basketball'] },
-  { label: 'Comedy', emoji: '☺', value: 'comedy', terms: ['comedy'] },
-  { label: 'Festivals', emoji: '◇', value: 'festivals', terms: ['festival', 'fair', 'fairs'] },
-  { label: 'Family', emoji: '☆', value: 'family', terms: ['family', 'kids'] },
+  { label: 'Turn Up', emoji: '✦', value: 'turn-up' },
+  { label: 'Hip-Hop', emoji: '♫', value: 'hip-hop' },
+  { label: 'Music', emoji: '♪', value: 'music' },
+  { label: 'Date Night', emoji: '♡', value: 'date-night' },
+  { label: 'Sports', emoji: '◉', value: 'sports' },
+  { label: 'Comedy', emoji: '☺', value: 'comedy' },
+  { label: 'Festivals', emoji: '◇', value: 'festivals' },
+  { label: 'Family', emoji: '☆', value: 'family' },
 ];
 
 export default async function HomePage() {
@@ -59,9 +61,9 @@ export default async function HomePage() {
   ]);
 
   const allEvents = [
-    ...(hypeEvents ?? []).map((event: any) => normalizeEvent(event, 'hypeknight')),
+    ...(hypeEvents ?? []).filter(isPublicNativeDiscoveryRecord).map((event: any) => normalizeEvent(event, 'hypeknight')),
     ...(externalEvents ?? []).map((event: any) => normalizeEvent(event, 'external')),
-  ].sort(sortByStartTime);
+  ].filter(event => event.href !== null).sort(sortByStartTime);
 
   const cityCounts = buildCityCounts(allEvents);
   const liveNowEvents = allEvents.filter(isLiveNow).slice(0, 8);
@@ -436,7 +438,8 @@ function normalizeEvent(event: any, source: 'hypeknight' | 'external') {
     event_start_at: event.event_start_at,
     event_end_at: event.event_end_at,
     image_url: event.flyer_url || event.image_url,
-    href: source === 'hypeknight' ? `/events/${event.slug}` : `/events/external/${event.id}`,
+    href: source === 'hypeknight' ? nativeEventDestination(event.slug) : externalEventDestination(event.id),
+    categories: classifyDiscoveryEvent(event, source),
     source,
     source_label:
       source === 'hypeknight'
@@ -452,35 +455,11 @@ function normalizeEvent(event: any, source: 'hypeknight' | 'external') {
 }
 
 function buildAccurateVibeCards(events: any[]) {
-  return VIBES.map((vibe) => {
-    const rankedTerms = vibe.terms
-      .map((term) => ({
-        term,
-        count: events.filter((event) => eventMatchesTerms(event, [term])).length,
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    const strongest = rankedTerms[0];
-    if (!strongest || strongest.count <= 0) return null;
-
-    // IMPORTANT: the displayed count and destination use the same search term.
-    // This prevents a vibe card from promising inventory and opening an empty page.
-    return {
-      ...vibe,
-      count: strongest.count,
-      href: `/events?q=${encodeURIComponent(strongest.term)}`,
-      matchedTerm: strongest.term,
-    };
-  }).filter(Boolean) as Array<(typeof VIBES)[number] & { count: number; href: string; matchedTerm: string }>;
-}
-
-function eventMatchesTerms(event: any, terms: string[]) {
-  const haystack = [event.name, event.description, event.genre, event.classification, event.source_label, event.venue_name]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  return terms.some((term) => haystack.includes(term.toLowerCase()));
+  return VIBES.map(vibe => ({
+    ...vibe,
+    count: events.filter(event => event.categories.includes(vibe.value)).length,
+    href: '/events?category=' + encodeURIComponent(vibe.value),
+  })).filter(vibe => vibe.count > 0);
 }
 
 function buildCityCounts(events: any[]) {
