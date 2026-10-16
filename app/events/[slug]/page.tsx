@@ -532,6 +532,7 @@ export default async function EventDetailPage({ params }: Props) {
                 <EventTime
                   value={event.event_end_at}
                   mode="wall"
+                  showStatus={false}
                 />
               ) : (
                 'End time not listed'
