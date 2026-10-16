@@ -67,7 +67,8 @@ export async function getManagedVenueIds(): Promise<string[]> {
     .eq('user_id', user.id)
     .eq('status', 'active');
   if (error) throw error;
-  return Array.from(new Set((data ?? []).map((row) => String(row.venue_id))));
+  if (!Array.isArray(data) || data.some(row => !row || typeof row.venue_id !== 'string')) throw new Error('Managed venues unavailable');
+  return Array.from(new Set(data.map((row) => String(row.venue_id))));
 }
 
 /** Minimal venue-scoped roster; private lookup stays behind centralized authority. */

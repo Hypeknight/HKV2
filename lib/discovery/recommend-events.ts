@@ -69,11 +69,13 @@ export async function getRecommendedEventsForUser(userId: string) {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
 
-  const { data: preferences } = await supabase
+  const { data: preferences, error: preferenceError } = await supabase
     .from('user_event_preferences')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle();
+
+  if (preferenceError) throw new Error('Recommendations unavailable');
 
   const preferredSources = preferences?.preferred_sources ?? [
     'hypeknight',
@@ -107,6 +109,8 @@ export async function getRecommendedEventsForUser(userId: string) {
 
   if (hypeResult.error) throw new Error(hypeResult.error.message);
   if (externalResult.error) throw new Error(externalResult.error.message);
+
+  if (!Array.isArray(hypeResult.data) || !Array.isArray(externalResult.data)) throw new Error('Recommendations unavailable');
 
   const cards: DiscoveryEventCardItem[] = [
     ...(hypeResult.data ?? []).map((event: any) => ({

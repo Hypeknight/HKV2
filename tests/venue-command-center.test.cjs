@@ -15,7 +15,7 @@ function reset(overrides = {}) {
     rows: {
       profiles: [{ id: 'authenticated-user', app_role: 'user' }],
       venue_managers: [],
-      venues: [{ id: 'venue-a', owner_id: 'authenticated-user', slug: 'a', status: 'draft' }],
+      venues: [{ id: 'venue-a', name: 'Test Venue', owner_id: 'authenticated-user', slug: 'a', status: 'draft' }],
       venue_hours: [],
       venue_event_connection_requests: [{ id: 'request-a', venue_id: 'venue-a', event_id: 'event-a', status: 'pending' }],
       events: [{ id: 'event-a', venue_id: 'venue-a', status: 'scheduled', is_public: true }],

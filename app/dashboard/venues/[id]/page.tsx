@@ -9,7 +9,7 @@ export default async function VenueOverview({ params }: { params: Promise<{ id: 
     <p>{venue.address}, {venue.city}, {venue.state}</p>
     <dl className="grid gap-4 sm:grid-cols-2">
       {[
-        ['Lifecycle', venue.status], ['Public visibility', venue.is_visible ? 'Visible (subject to moderation)' : 'Administratively hidden'],
+        ['Lifecycle', venue.status], ['Public visibility', venue.is_visible === true ? 'Visible (subject to moderation)' : venue.is_visible === false ? 'Administratively hidden' : 'Not recorded'],
         ['Claim state', venue.claim_state], ['Verification state', venue.verification_state],
       ].map(([label, value]) => <div key={label} className="rounded-xl border border-white/10 p-4"><dt>{label}</dt><dd className="mt-2 font-semibold">{value || 'Not recorded'}</dd></div>)}
     </dl>

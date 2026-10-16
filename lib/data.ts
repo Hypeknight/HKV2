@@ -134,7 +134,8 @@ export async function getOwnedVenues(userId: string) {
     .in('id', venueIds)
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as Venue[];
+  if (!Array.isArray(data)) throw new Error('Managed venues unavailable');
+  return data as Venue[];
 }
 
 export async function getMyDraftEvents() {

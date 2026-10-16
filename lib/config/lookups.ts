@@ -23,6 +23,8 @@ export type LookupCategory = {
 };
 
 type LookupOptions = {
+  /** Opt in where a missing response must be distinguished from no choices. */
+  requireData?: boolean;
   includeInactive?: boolean;
   includeArchived?: boolean;
 };
@@ -153,6 +155,8 @@ export async function getLookupMap(
   if (error) {
     throw new Error(error.message);
   }
+
+  if (options?.requireData && !Array.isArray(data)) throw new Error('Filter choices unavailable');
 
   const normalizedRows = normalizeLookupRows(
     data ?? []

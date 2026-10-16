@@ -1,3 +1,6 @@
+import { marketFromExactQuery } from '@/lib/markets/normalize-market';
+import { readRows, readValue, combinedState, countLabel, isRecord, isEventRecord } from '@/lib/interface-state/data';
+import DataNotice from '@/components/interface-state/DataNotice';
 import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord, hasWholeTerm, type DiscoveryCategory } from '@/lib/discovery/classification';
 import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
@@ -86,36 +89,32 @@ export default async function EventsPage({ searchParams }: Props) {
 
   const supabase = await createClient();
 
-  const [
-    { data: hypeEvents, error: hypeError },
-    { data: externalEvents, error: externalError },
-    lookups,
-    { data: marketRows, error: marketError },
-    { data: marketAreaRows, error: marketAreaError },
-  ] = await Promise.all([
-    loadHypeKnightEvents(supabase),
-    loadExternalEvents(supabase),
-    getLookupMap([
+  const [hypeResult, externalResult, lookupResult, marketResult, areaResult] = await Promise.all([
+    readRows('discovery.native', () => loadHypeKnightEvents(supabase), isEventRecord),
+    readRows('discovery.external', () => loadExternalEvents(supabase), isEventRecord),
+    readValue<Record<string, LookupValue[]>>('discovery.filters', () => getLookupMap([
       'music_genres',
       'event_types',
       'vibe_tags',
       'event_amenities',
       'age_requirements',
-    ]),
-    supabase
+    ], { requireData: true }), value => isRecord(value) && ['music_genres', 'event_types', 'vibe_tags', 'event_amenities', 'age_requirements'].every(key => Array.isArray(value[key]))),
+    readRows<Parameters<typeof buildMarketRegistry>[0][number]>('discovery.markets', () => supabase
       .from('markets')
       .select('id, market_key, name, primary_city, primary_state, status')
-      .neq('status', 'retired'),
-    supabase
+      .neq('status', 'retired'), row => isRecord(row) && ['id', 'market_key', 'name', 'primary_city', 'primary_state'].every(key => typeof row[key] === 'string')),
+    readRows<Parameters<typeof buildMarketRegistry>[1][number]>('discovery.market-areas', () => supabase
       .from('market_areas')
       .select('id, market_id, city, state, normalized_city, normalized_state, area_type, is_primary, priority, is_active')
-      .eq('is_active', true),
+      .eq('is_active', true), row => isRecord(row) && ['id', 'market_id', 'city', 'state'].every(key => typeof row[key] === 'string')),
   ]);
-
-  if (hypeError) throw new Error(hypeError.message);
-  if (externalError) throw new Error(externalError.message);
-  if (marketError) throw new Error(marketError.message);
-  if (marketAreaError) throw new Error(marketAreaError.message);
+  const hypeEvents = hypeResult.data;
+  const externalEvents = externalResult.data;
+  const marketRows = marketResult.data;
+  const marketAreaRows = areaResult.data;
+  const lookups = lookupResult.data || { music_genres: [], event_types: [], vibe_tags: [], event_amenities: [], age_requirements: [] };
+  const geographyAvailable = marketResult.status === 'success' && areaResult.status === 'success';
+  const inventoryState = combinedState(source === 'hypeknight' ? [hypeResult] : source === 'external' ? [externalResult] : [hypeResult, externalResult]);
 
   // MARKET REGISTRY V2:
   // Discovery can now treat a metro as the searchable geography while each
@@ -127,7 +126,14 @@ export default async function EventsPage({ searchParams }: Props) {
     query.state || null,
     query.q || null
   );
-  const exactMarketQuery = !query.city && Boolean(query.q && searchMarket);
+  // Explicit location and recognized market intent require complete geography.
+  // Ordinary text can still be matched against retrieved event fields, but must
+  // not acquire metro/alias expansion from an incomplete registry.
+  const marketIntent = Boolean(city || searchMarket || (!geographyAvailable && marketFromExactQuery(search)));
+  const locationUnavailable = !geographyAvailable && marketIntent;
+  const keywordOnly = !geographyAvailable && Boolean(search) && !marketIntent;
+  const complete = inventoryState === 'success' && !locationUnavailable;
+  const exactMarketQuery = geographyAvailable && !query.city && Boolean(query.q && searchMarket);
 
   const allCards: DiscoveryCard[] = [
     ...(hypeEvents ?? []).filter(isPublicNativeDiscoveryRecord).filter((event: any) => nativeEventDestination(event.slug)).map((event: any) => ({
@@ -211,9 +217,9 @@ export default async function EventsPage({ searchParams }: Props) {
     const matchesSearch = search
       ? (exactMarketQuery && eventIsInSearchMarket) ||
         haystack.includes(search) ||
-        searchTerms.some((term) =>
+        (geographyAvailable && searchTerms.some((term) =>
           haystack.includes(String(term).toLowerCase())
-        )
+        ))
       : true;
 
     // An explicit city that belongs to a registered metro expands to all linked
@@ -268,6 +274,7 @@ export default async function EventsPage({ searchParams }: Props) {
           : true;
 
     return (
+      !locationUnavailable &&
       (!category || event.categories.includes(category as DiscoveryCategory)) &&
       matchesSearch &&
       matchesCity &&
@@ -334,6 +341,9 @@ export default async function EventsPage({ searchParams }: Props) {
       />
 
       <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-10 lg:px-8">
+        {!complete ? <DataNotice message={locationUnavailable ? 'Location-based results are temporarily unavailable. Try again before changing your search.' : inventoryState === 'partial' ? 'Some event sources are temporarily unavailable. Showing available results; totals are unavailable.' : 'Event results are temporarily unavailable. Please try again.'} /> : null}
+        {lookupResult.status === 'unavailable' ? <DataNotice message="Filter choices are temporarily unavailable. Your existing filters are retained." /> : null}
+        {!geographyAvailable && !locationUnavailable ? <DataNotice message={keywordOnly ? "Market expansion is temporarily unavailable. Showing keyword matches only." : "Market information is temporarily unavailable. Available events are still shown."} /> : null}
         <DiscoveryHero
           query={query}
           state={state}
@@ -348,12 +358,12 @@ export default async function EventsPage({ searchParams }: Props) {
           activeFilterCount={activeFilterCount}
           hasActiveFilters={hasActiveFilters}
           counts={{
-            live: liveEvents.length,
-            soon: startingSoonEvents.length,
-            tonight: tonightEvents.length,
-            tomorrow: tomorrowEvents.length,
-            weekend: weekendEvents.length,
-            all: cards.length,
+            live: countLabel(complete, liveEvents.length),
+            soon: countLabel(complete, startingSoonEvents.length),
+            tonight: countLabel(complete, tonightEvents.length),
+            tomorrow: countLabel(complete, tomorrowEvents.length),
+            weekend: countLabel(complete, weekendEvents.length),
+            all: countLabel(complete, cards.length),
           }}
         />
 
@@ -363,7 +373,7 @@ export default async function EventsPage({ searchParams }: Props) {
         />
 
         {cityCounts.length ? (
-          <CityRail cities={cityCounts} />
+          <CityRail cities={cityCounts} complete={hypeResult.status === 'success' && externalResult.status === 'success'} />
         ) : null}
 
         {hasActiveFilters ? (
@@ -375,8 +385,7 @@ export default async function EventsPage({ searchParams }: Props) {
                 </p>
 
                 <h2 className="mt-2 text-2xl font-black text-white">
-                  {cards.length} matching event
-                  {cards.length === 1 ? '' : 's'}
+                  {complete ? `${cards.length} ${keywordOnly ? `keyword match${cards.length === 1 ? '' : 'es'}` : `matching event${cards.length === 1 ? '' : 's'}`}` : 'Results unavailable or incomplete'}
                 </h2>
 
                 <p className="mt-2 text-sm text-white/60">
@@ -402,6 +411,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Here & Now"
             title="Live right now"
             text="Events currently happening."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={liveEvents}
           />
         ) : null}
@@ -413,6 +423,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Next Up"
             title="Starting soon"
             text="Events starting in the next three hours."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={startingSoonEvents}
           />
         ) : null}
@@ -424,6 +435,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Tonight"
             title="Tonight’s events"
             text="Events scheduled for today and tonight."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={tonightEvents}
           />
         ) : null}
@@ -435,6 +447,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Fresh"
             title="Recently added"
             text="New listings added into HypeKnight discovery."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={recentlyAddedEvents}
           />
         ) : null}
@@ -446,6 +459,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Weekend"
             title="This weekend"
             text="Friday through Sunday events."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={weekendEvents}
           />
         ) : null}
@@ -457,6 +471,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Tomorrow"
             title="Tomorrow’s move"
             text="Events happening tomorrow."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={tomorrowEvents}
           />
         ) : null}
@@ -468,6 +483,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="This Week"
             title="Coming up this week"
             text="Events after tomorrow through the next seven days."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={thisWeekEvents}
           />
         ) : null}
@@ -479,6 +495,7 @@ export default async function EventsPage({ searchParams }: Props) {
             eyebrow="Next Week"
             title="Next week’s lineup"
             text="Events scheduled seven to fourteen days out."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
             events={nextWeekEvents}
           />
         ) : null}
@@ -491,7 +508,7 @@ export default async function EventsPage({ searchParams }: Props) {
                 ? 'Events matching your move'
                 : 'All discoverable events'
             }
-            text={`Showing ${allPreviewEvents.length} of ${cards.length} events. Use filters to narrow the list.`}
+            text={complete ? `Showing ${allPreviewEvents.length} of ${cards.length} ${keywordOnly ? 'keyword matches' : 'events'}. Use filters to narrow the list.` : 'Showing available results only. Total matching inventory is unavailable.'}
           />
 
           {allPreviewEvents.length ? (
@@ -506,7 +523,7 @@ export default async function EventsPage({ searchParams }: Props) {
             </div>
           ) : (
             <div className="mt-5">
-              <EmptyState text="No events match your current filters. Try expanding your city, time, or category choices." />
+              <EmptyState text={complete ? keywordOnly ? "No keyword matches were found in the available inventory. Market expansion is unavailable." : "No events match your current filters. Try expanding your city, time, or category choices." : "Results are temporarily unavailable. Try again before changing your filters."} />
             </div>
           )}
         </section>
@@ -543,12 +560,12 @@ function DiscoveryHero({
   activeFilterCount: number;
   hasActiveFilters: boolean;
   counts: {
-    live: number;
-    soon: number;
-    tonight: number;
-    tomorrow: number;
-    weekend: number;
-    all: number;
+    live: number | 'Unavailable';
+    soon: number | 'Unavailable';
+    tonight: number | 'Unavailable';
+    tomorrow: number | 'Unavailable';
+    weekend: number | 'Unavailable';
+    all: number | 'Unavailable';
   };
 }) {
   return (
@@ -723,32 +740,32 @@ function DiscoveryHero({
         <div className="mt-6 grid grid-cols-3 gap-3 sm:mt-8 xl:grid-cols-6">
           <MetricCard
             label="Live"
-            value={counts.live}
+            value={counts.live === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.live}
             href={discoveryFilterDestination(query, { when: "live" })}
           />
           <MetricCard
             label="Soon"
-            value={counts.soon}
+            value={counts.soon === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.soon}
             href={discoveryFilterDestination(query, { when: "soon" })}
           />
           <MetricCard
             label="Tonight"
-            value={counts.tonight}
+            value={counts.tonight === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.tonight}
             href={discoveryFilterDestination(query, { when: "tonight" })}
           />
           <MetricCard
             label="Tomorrow"
-            value={counts.tomorrow}
+            value={counts.tomorrow === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.tomorrow}
             href={discoveryFilterDestination(query, { when: "tomorrow" })}
           />
           <MetricCard
             label="Weekend"
-            value={counts.weekend}
+            value={counts.weekend === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.weekend}
             href={discoveryFilterDestination(query, { when: "weekend" })}
           />
           <MetricCard
             label="All"
-            value={counts.all}
+            value={counts.all === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.all}
             href="#all"
             accent
           />
@@ -823,9 +840,10 @@ function DiscoveryChipRail({
 }
 
 function CityRail({
-  cities,
+  cities, complete,
 }: {
   cities: Array<{ city: string; state: string; count: number }>;
+  complete: boolean;
 }) {
   return (
     <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-6">
@@ -849,7 +867,7 @@ function CityRail({
             {item.city}, {item.state}
 
             <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-black text-black">
-              {item.count}
+              {countLabel(complete, item.count)}
             </span>
           </Link>
         ))}
@@ -900,6 +918,7 @@ function LookupSelect({
         className={fieldClass}
       >
         <option value="">All {label}</option>
+        {value && !options.some(option => option.value.toLowerCase() === value.toLowerCase()) ? <option value={value}>{value}</option> : null}
 
         {options.map((option) => (
           <option key={option.id} value={option.value}>
