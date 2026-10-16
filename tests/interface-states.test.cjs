@@ -36,6 +36,7 @@ function mocks(db,extra={}) {return {
   '@/lib/discovery/classification':load('lib/discovery/classification.ts'),'@/lib/discovery/destinations':load('lib/discovery/destinations.ts'),
   '@/lib/settings':{getPlatformSettings:async()=>({homepage_show_special_days:true})},'@/lib/states':{normalizeState:value=>value,US_STATES:[]},
   '@/lib/config/lookups':{getLookupMap:async()=>lookups},'@/lib/city-aliases':{expandCitySearch:value=>[value]},
+  '@/lib/markets/normalize-market':load('lib/markets/normalize-market.ts',{'@/lib/states':{normalizeState:value=>String(value||'').toUpperCase()}}),
   '@/lib/markets/registry':{buildMarketRegistry:()=>({}),resolveSearchMarket:()=>null,isLocationInMarket:()=>false},
   '@/lib/discovery/recommend-events':{getRecommendedEventsForUser:async()=>({preferences:null,recommendations:[]})},
   '@/lib/data':{getOwnedVenues:async()=>[]},'@/app/dashboard/actions':{signOutAction:()=>null},'./actions':{signOutAction:()=>null},
@@ -128,4 +129,60 @@ test('malformed market metadata cannot become an empty geographic search',async(
 test('malformed profile cannot produce a factual setup percentage',async()=>{
  const html=await page('app/dashboard/page.tsx',database({profiles:{data:{}}},'owner'));
  assert.match(html,/Profile setup progress is temporarily unavailable/);assert.doesNotMatch(html,/%/);
+});
+
+// Use the actual registry and exact-market resolver for geographic dependencies.
+const testStates = {normalizeState:value=>String(value||'').toUpperCase()};
+const marketNormalizer = load('lib/markets/normalize-market.ts',{'@/lib/states':testStates});
+const actualRegistry = load('lib/markets/registry.ts',{'@/lib/states':testStates,'./normalize-market':marketNormalizer});
+const metro = {id:'metro-kc',market_key:'kansas-city-mo',name:'Kansas City',primary_city:'Kansas City',primary_state:'MO'};
+const area = {id:'area-op',market_id:metro.id,city:'Overland Park',state:'KS',is_active:true};
+const geographyMocks = {'@/lib/markets/registry':actualRegistry};
+const healthyGeography = {markets:{data:[metro]},market_areas:{data:[area]}};
+async function geoPage(query,overrides={}) {return page('app/events/page.tsx',database({...healthyGeography,...overrides}),query,geographyMocks);}
+for(const table of ['markets','market_areas']) {
+ test('explicit city remains unavailable when '+table+' fails',async()=>{
+  const html=await geoPage({city:'Kansas City'},{[table]:new Error('SECRET')});
+  assert.match(html,/Location-based results are temporarily unavailable/);assert.doesNotMatch(html,/Available Native|Available External|0 matching events|SECRET/);
+ });
+ test('ordinary keyword survives unavailable '+table+' without fabricated expansion',async()=>{
+  const html=await geoPage({q:'Available'},{[table]:new Error('SECRET')});
+  assert.match(html,/Available Native/);assert.match(html,/Available External/);assert.match(html,/2 keyword matches/);assert.match(html,/Showing keyword matches only/);assert.doesNotMatch(html,/Location-based results are temporarily unavailable|SECRET/);
+ });
+ test('recognized market query requires unavailable '+table,async()=>{
+  for(const q of ['Kansas City','KC']) {
+   const html=await geoPage({q},{[table]:new Error('SECRET')});
+   assert.match(html,/Location-based results are temporarily unavailable/);assert.doesNotMatch(html,/Available Native|Available External|0 matching events/);
+  }
+ });
+}
+test('real healthy registry expands an exact market query and registered municipality',async()=>{
+ const nearby={...record,name:'Metro Jazz Hall',city:'Overland Park',state:'KS',market_id:metro.id};
+ for(const q of ['Kansas City','Overland Park']) {
+  const html=await geoPage({q},{events:{data:[nearby]},external_events:{data:[{...external,city:'Chicago',state:'IL'}]}});
+  assert.match(html,/Metro Jazz Hall/);assert.match(html,/1 matching event/);assert.doesNotMatch(html,/Available External|keyword matches only|temporarily unavailable/);
+ }
+});
+test('ordinary query with successful geography retains existing keyword matching',async()=>{
+ const html=await geoPage({q:'Available'});assert.match(html,/2 matching events/);assert.doesNotMatch(html,/keyword matches only|temporarily unavailable/);
+});
+test('both geography queries can fail without losing ordinary keyword matches',async()=>{
+ const html=await geoPage({q:'Available'},{markets:new Error('failed'),market_areas:new Error('failed')});
+ assert.match(html,/Available Native/);assert.match(html,/Available External/);assert.match(html,/2 keyword matches/);
+});
+test('partial inventory and failed geography retain keyword matches but withhold totals',async()=>{
+ const html=await geoPage({q:'Available'},{markets:new Error('failed'),events:new Error('failed')});
+ assert.match(html,/Available External/);assert.doesNotMatch(html,/Available Native|1 keyword match|0 matching events/);assert.match(html,/Results unavailable or incomplete|Unavailable/);assert.match(html,/Showing keyword matches only/);
+ const blocked=await geoPage({q:'Kansas City'},{markets:new Error('failed'),events:new Error('failed')});
+ assert.doesNotMatch(blocked,/Available External|0 matching events/);assert.match(blocked,/Location-based results are temporarily unavailable/);
+});
+test('valid empty keyword sample is labeled literally, never as empty metro inventory',async()=>{
+ const html=await geoPage({q:'Nonexistent concert'},{markets:new Error('failed')});
+ assert.match(html,/0 keyword matches/);assert.match(html,/Market expansion is unavailable/);assert.doesNotMatch(html,/0 matching events/);
+ const partial=await geoPage({q:'Nonexistent concert'},{markets:new Error('failed'),events:new Error('failed')});
+ assert.doesNotMatch(partial,/0 keyword matches|No keyword matches were found/);assert.match(partial,/Results unavailable or incomplete/);
+});
+test('unknown custom municipality during total geography failure receives literal matches only',async()=>{
+ const html=await geoPage({q:'Overland Park'},{events:{data:[{...record,city:'Overland Park',state:'KS'}]},markets:new Error('failed'),market_areas:new Error('failed')});
+ assert.match(html,/Available Native/);assert.match(html,/1 keyword match/);assert.match(html,/Showing keyword matches only/);assert.doesNotMatch(html,/Available External/);
 });

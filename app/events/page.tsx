@@ -1,3 +1,4 @@
+import { marketFromExactQuery } from '@/lib/markets/normalize-market';
 import { readRows, readValue, combinedState, countLabel, isRecord, isEventRecord } from '@/lib/interface-state/data';
 import DataNotice from '@/components/interface-state/DataNotice';
 import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord, hasWholeTerm, type DiscoveryCategory } from '@/lib/discovery/classification';
@@ -114,8 +115,6 @@ export default async function EventsPage({ searchParams }: Props) {
   const lookups = lookupResult.data || { music_genres: [], event_types: [], vibe_tags: [], event_amenities: [], age_requirements: [] };
   const geographyAvailable = marketResult.status === 'success' && areaResult.status === 'success';
   const inventoryState = combinedState(source === 'hypeknight' ? [hypeResult] : source === 'external' ? [externalResult] : [hypeResult, externalResult]);
-  const locationUnavailable = !geographyAvailable && Boolean(query.city || query.q);
-  const complete = inventoryState === 'success' && !locationUnavailable;
 
   // MARKET REGISTRY V2:
   // Discovery can now treat a metro as the searchable geography while each
@@ -127,7 +126,14 @@ export default async function EventsPage({ searchParams }: Props) {
     query.state || null,
     query.q || null
   );
-  const exactMarketQuery = !query.city && Boolean(query.q && searchMarket);
+  // Explicit location and recognized market intent require complete geography.
+  // Ordinary text can still be matched against retrieved event fields, but must
+  // not acquire metro/alias expansion from an incomplete registry.
+  const marketIntent = Boolean(city || searchMarket || (!geographyAvailable && marketFromExactQuery(search)));
+  const locationUnavailable = !geographyAvailable && marketIntent;
+  const keywordOnly = !geographyAvailable && Boolean(search) && !marketIntent;
+  const complete = inventoryState === 'success' && !locationUnavailable;
+  const exactMarketQuery = geographyAvailable && !query.city && Boolean(query.q && searchMarket);
 
   const allCards: DiscoveryCard[] = [
     ...(hypeEvents ?? []).filter(isPublicNativeDiscoveryRecord).filter((event: any) => nativeEventDestination(event.slug)).map((event: any) => ({
@@ -211,9 +217,9 @@ export default async function EventsPage({ searchParams }: Props) {
     const matchesSearch = search
       ? (exactMarketQuery && eventIsInSearchMarket) ||
         haystack.includes(search) ||
-        searchTerms.some((term) =>
+        (geographyAvailable && searchTerms.some((term) =>
           haystack.includes(String(term).toLowerCase())
-        )
+        ))
       : true;
 
     // An explicit city that belongs to a registered metro expands to all linked
@@ -337,7 +343,7 @@ export default async function EventsPage({ searchParams }: Props) {
       <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-10 lg:px-8">
         {!complete ? <DataNotice message={locationUnavailable ? 'Location-based results are temporarily unavailable. Try again before changing your search.' : inventoryState === 'partial' ? 'Some event sources are temporarily unavailable. Showing available results; totals are unavailable.' : 'Event results are temporarily unavailable. Please try again.'} /> : null}
         {lookupResult.status === 'unavailable' ? <DataNotice message="Filter choices are temporarily unavailable. Your existing filters are retained." /> : null}
-        {!geographyAvailable && !locationUnavailable ? <DataNotice message="Market information is temporarily unavailable. Available events are still shown." /> : null}
+        {!geographyAvailable && !locationUnavailable ? <DataNotice message={keywordOnly ? "Market expansion is temporarily unavailable. Showing keyword matches only." : "Market information is temporarily unavailable. Available events are still shown."} /> : null}
         <DiscoveryHero
           query={query}
           state={state}
@@ -379,7 +385,7 @@ export default async function EventsPage({ searchParams }: Props) {
                 </p>
 
                 <h2 className="mt-2 text-2xl font-black text-white">
-                  {complete ? `${cards.length} matching event${cards.length === 1 ? '' : 's'}` : 'Results unavailable or incomplete'}
+                  {complete ? `${cards.length} ${keywordOnly ? `keyword match${cards.length === 1 ? '' : 'es'}` : `matching event${cards.length === 1 ? '' : 's'}`}` : 'Results unavailable or incomplete'}
                 </h2>
 
                 <p className="mt-2 text-sm text-white/60">
@@ -502,7 +508,7 @@ export default async function EventsPage({ searchParams }: Props) {
                 ? 'Events matching your move'
                 : 'All discoverable events'
             }
-            text={complete ? `Showing ${allPreviewEvents.length} of ${cards.length} events. Use filters to narrow the list.` : 'Showing available results only. Total matching inventory is unavailable.'}
+            text={complete ? `Showing ${allPreviewEvents.length} of ${cards.length} ${keywordOnly ? 'keyword matches' : 'events'}. Use filters to narrow the list.` : 'Showing available results only. Total matching inventory is unavailable.'}
           />
 
           {allPreviewEvents.length ? (
@@ -517,7 +523,7 @@ export default async function EventsPage({ searchParams }: Props) {
             </div>
           ) : (
             <div className="mt-5">
-              <EmptyState text={complete ? "No events match your current filters. Try expanding your city, time, or category choices." : "Results are temporarily unavailable. Try again before changing your filters."} />
+              <EmptyState text={complete ? keywordOnly ? "No keyword matches were found in the available inventory. Market expansion is unavailable." : "No events match your current filters. Try expanding your city, time, or category choices." : "Results are temporarily unavailable. Try again before changing your filters."} />
             </div>
           )}
         </section>
