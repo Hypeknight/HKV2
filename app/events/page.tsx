@@ -1,3 +1,5 @@
+import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord, hasWholeTerm, type DiscoveryCategory } from '@/lib/discovery/classification';
+import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { expandCitySearch } from '@/lib/city-aliases';
@@ -21,6 +23,7 @@ import {
 type Props = {
   searchParams?: Promise<{
     q?: string;
+    category?: string;
     city?: string;
     state?: string;
     music?: string;
@@ -45,6 +48,7 @@ type DiscoveryCard = {
   href: string;
   status?: string | null;
   source: 'hypeknight' | 'external';
+  categories: DiscoveryCategory[];
   source_label: string;
   is_external: boolean;
   venue_name?: string | null;
@@ -65,6 +69,7 @@ const ALL_PREVIEW_LIMIT = 24;
 export default async function EventsPage({ searchParams }: Props) {
   const query = searchParams ? await searchParams : {};
 
+  const category = cleanLower(query.category);
   const search = cleanLower(query.q);
   const city = cleanLower(query.city);
   const state = normalizeState(String(query.state || ''));
@@ -125,7 +130,7 @@ export default async function EventsPage({ searchParams }: Props) {
   const exactMarketQuery = !query.city && Boolean(query.q && searchMarket);
 
   const allCards: DiscoveryCard[] = [
-    ...(hypeEvents ?? []).map((event: any) => ({
+    ...(hypeEvents ?? []).filter(isPublicNativeDiscoveryRecord).filter((event: any) => nativeEventDestination(event.slug)).map((event: any) => ({
       id: event.id,
       name: event.name,
       city: event.city || event.venue?.city,
@@ -136,7 +141,8 @@ export default async function EventsPage({ searchParams }: Props) {
       event_start_at: event.event_start_at,
       event_end_at: event.event_end_at,
       image_url: event.flyer_url,
-      href: `/events/${event.slug}`,
+      href: nativeEventDestination(event.slug)!,
+      categories: classifyDiscoveryEvent(event, 'hypeknight'),
       status: event.status,
       source: 'hypeknight' as const,
       source_label: 'HypeKnight Event',
@@ -153,7 +159,7 @@ export default async function EventsPage({ searchParams }: Props) {
       market_id: event.market_id || null,
     })),
 
-    ...(externalEvents ?? []).map((event: any) => ({
+    ...(externalEvents ?? []).filter((event: any) => externalEventDestination(event.id)).map((event: any) => ({
       id: event.id,
       name: event.name,
       city: event.city,
@@ -162,7 +168,8 @@ export default async function EventsPage({ searchParams }: Props) {
       event_start_at: event.event_start_at,
       event_end_at: event.event_end_at,
       image_url: event.image_url,
-      href: `/events/external/${event.id}`,
+      href: externalEventDestination(event.id)!,
+      categories: classifyDiscoveryEvent(event, 'external'),
       status: event.status,
       source: 'external' as const,
       source_label:
@@ -230,13 +237,12 @@ export default async function EventsPage({ searchParams }: Props) {
     const matchesState = searchMarket && city ? true : state ? eventState === state : true;
 
     const matchesMusic = music
-      ? includesNormalized(event.music_selection, music) ||
-        includesText(event.genre, music)
+      ? event.categories.includes('music') && (event.music_selection.some(value => hasWholeTerm(value, music)) || hasWholeTerm(event.genre, music))
       : true;
 
     const matchesEventType = eventType
-      ? includesNormalized(event.event_types, eventType) ||
-        includesText(event.classification, eventType)
+      ? event.event_types.some(value => hasWholeTerm(value, eventType)) ||
+        hasWholeTerm(event.classification, eventType)
       : true;
 
     const matchesVibe = vibe
@@ -262,6 +268,7 @@ export default async function EventsPage({ searchParams }: Props) {
           : true;
 
     return (
+      (!category || event.categories.includes(category as DiscoveryCategory)) &&
       matchesSearch &&
       matchesCity &&
       matchesState &&
@@ -302,6 +309,7 @@ export default async function EventsPage({ searchParams }: Props) {
   const allPreviewEvents = cards.slice(0, ALL_PREVIEW_LIMIT);
 
   const activeFilterCount = [
+    category,
     search,
     city,
     state,
@@ -573,6 +581,10 @@ function DiscoveryHero({
         </div>
 
         <DiscoverySearchForm className="mt-8 rounded-[1.75rem] border border-white/10 bg-black/40 p-4 backdrop-blur sm:p-5">
+          {query.category ? <>
+            <input type="hidden" name="category" value={query.category} />
+            <p className="mb-3 text-sm text-white/70">Category: {query.category}</p>
+          </> : null}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_170px_auto]">
             <FilterInput
               name="q"
@@ -712,27 +724,27 @@ function DiscoveryHero({
           <MetricCard
             label="Live"
             value={counts.live}
-            href="/events?when=live"
+            href={discoveryFilterDestination(query, { when: "live" })}
           />
           <MetricCard
             label="Soon"
             value={counts.soon}
-            href="/events?when=soon"
+            href={discoveryFilterDestination(query, { when: "soon" })}
           />
           <MetricCard
             label="Tonight"
             value={counts.tonight}
-            href="/events?when=tonight"
+            href={discoveryFilterDestination(query, { when: "tonight" })}
           />
           <MetricCard
             label="Tomorrow"
             value={counts.tomorrow}
-            href="/events?when=tomorrow"
+            href={discoveryFilterDestination(query, { when: "tomorrow" })}
           />
           <MetricCard
             label="Weekend"
             value={counts.weekend}
-            href="/events?when=weekend"
+            href={discoveryFilterDestination(query, { when: "weekend" })}
           />
           <MetricCard
             label="All"
@@ -1190,4 +1202,9 @@ function includesText(value: unknown, selected: string) {
     cleanValue.includes(selected) ||
     selected.includes(cleanValue)
   );
+}
+function discoveryFilterDestination(query: Record<string, string | undefined>, changes: Record<string, string>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries({ ...query, ...changes })) if (value) params.set(key, value);
+  return '/events?' + params.toString();
 }

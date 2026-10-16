@@ -1,3 +1,4 @@
+import { officialProviderDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
@@ -36,12 +37,9 @@ export default async function ExternalEventDetailPage({ params }: Props) {
       ? 'Ticketmaster'
       : event.source_code || 'External Event';
 
-  const officialUrl =
-    event.url ||
-    event.ticket_url ||
-    event.provider_url ||
-    event.source_url ||
-    null;
+  const officialUrl = officialProviderDestination(
+    event.url, event.ticket_url, event.provider_url, event.source_url
+  );
 
   const fullAddress = [
     event.address,
