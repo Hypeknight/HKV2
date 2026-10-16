@@ -1,3 +1,5 @@
+import { readRows, readValue, combinedState, countLabel, hasIdentity, isRecord, isEventRecord } from '@/lib/interface-state/data';
+import DataNotice from '@/components/interface-state/DataNotice';
 import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord } from '@/lib/discovery/classification';
 import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
@@ -30,7 +32,8 @@ export default async function HomePage() {
   const serverNow = new Date();
   const fourHoursAgo = new Date(serverNow.getTime() - 4 * 60 * 60 * 1000);
 
-  const [{ data: hypeEvents }, { data: externalEvents }, { data: specialDays }] = await Promise.all([
+  const [hypeResult, externalResult, specialResult] = await Promise.all([
+    readRows('homepage.native', () =>
     supabase
       .from('events')
       .select('*')
@@ -40,8 +43,8 @@ export default async function HomePage() {
       .lte('promotion_start_at', serverNow.toISOString())
       .gte('promotion_end_at', serverNow.toISOString())
       .order('event_start_at', { ascending: true })
-      .limit(80),
-    supabase
+      .limit(80), isEventRecord),
+    readRows('homepage.external', () => supabase
       .from('external_events')
       .select('*')
       .eq('status', 'active')
@@ -50,15 +53,22 @@ export default async function HomePage() {
         `event_end_at.gte.${serverNow.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
       )
       .order('event_start_at', { ascending: true })
-      .limit(80),
-    supabase
+      .limit(80), isEventRecord),
+    readRows('homepage.calendar', () => supabase
       .from('special_days')
       .select('*')
       .eq('is_active', true)
       .eq('is_featured', true)
       .order('starts_on', { ascending: true })
-      .limit(Number(settings.homepage_special_days_limit || 6)),
+      .limit(Number(settings.homepage_special_days_limit || 6)), hasIdentity),
   ]);
+
+  const hypeEvents = hypeResult.data;
+  const externalEvents = externalResult.data;
+  const specialDays = specialResult.data;
+  const inventoryState = combinedState([hypeResult, externalResult]);
+  const complete = inventoryState === 'success';
+  const inventoryMessage = inventoryState === 'partial' ? 'Some event sources are temporarily unavailable. Showing available events; totals are unavailable.' : 'Event discovery is temporarily unavailable. Please try again.';
 
   const allEvents = [
     ...(hypeEvents ?? []).filter(isPublicNativeDiscoveryRecord).map((event: any) => normalizeEvent(event, 'hypeknight')),
@@ -75,9 +85,8 @@ export default async function HomePage() {
     .slice(0, 8);
 
   const vibeCards = buildAccurateVibeCards(allEvents);
-  const personalizedEvents = user
-    ? (await getRecommendedEventsForUser(user.id)).recommendations.slice(0, 6).map((item) => item.event)
-    : [];
+  const personalized = user ? await readValue<any>('homepage.recommendations', () => getRecommendedEventsForUser(user.id), value => isRecord(value) && Array.isArray(value.recommendations)) : null;
+  const personalizedEvents = personalized?.data?.recommendations.slice(0, 6).map((item: any) => item.event) || [];
 
 
   return (
@@ -85,6 +94,8 @@ export default async function HomePage() {
       <TrackView pageType="homepage" path="/" />
 
       <div className="space-y-10 pb-20 sm:space-y-14 sm:pb-16">
+        {!complete ? <DataNotice message={inventoryMessage} /> : null}
+        {personalized?.status === 'unavailable' ? <DataNotice message="Personal recommendations are temporarily unavailable." /> : null}
         <section className="relative -mx-4 overflow-hidden border-b border-white/[0.07] px-4 pb-8 pt-5 sm:-mx-6 sm:px-6 sm:pb-12 lg:-mx-8 lg:px-8 lg:pt-8">
           <div className="hk-hero-orb hk-hero-orb-one" />
           <div className="hk-hero-orb hk-hero-orb-two" />
@@ -137,10 +148,10 @@ export default async function HomePage() {
               </div>
 
               <div className="mt-6 grid grid-cols-2 gap-2">
-                <SnapshotMetric label="Live now" value={liveNowEvents.length} note="confirmed by schedule" tone="live" />
-                <SnapshotMetric label="Starting soon" value={startingSoonEvents.length} note="next 3 hours" />
-                <SnapshotMetric label="Tonight" value={tonightEvents.length} note="active inventory" />
-                <SnapshotMetric label="Markets" value={cityCounts.length} note="with visible events" />
+                <SnapshotMetric label="Live now" value={countLabel(complete, liveNowEvents.length)} note="confirmed by schedule" tone="live" />
+                <SnapshotMetric label="Starting soon" value={countLabel(complete, startingSoonEvents.length)} note="next 3 hours" />
+                <SnapshotMetric label="Tonight" value={countLabel(complete, tonightEvents.length)} note="active inventory" />
+                <SnapshotMetric label="Markets" value={countLabel(complete, cityCounts.length)} note="with visible events" />
               </div>
 
               <div className="mt-5 rounded-2xl border border-white/[0.07] bg-black/25 p-4">
@@ -179,12 +190,12 @@ export default async function HomePage() {
                 <p className="mt-2 text-sm leading-6 text-white/48">Start with what is live or almost live instead of scrolling everything.</p>
               </div>
               <div className="grid grid-cols-2 gap-px bg-white/[0.07] sm:grid-cols-4">
-                <SignalStat label="Live" value={liveNowEvents.length} href="/events?when=live" signalId="live" />
-                <SignalStat label="Soon" value={startingSoonEvents.length} href="/events?when=soon" signalId="soon" />
-                <SignalStat label="Tonight" value={tonightEvents.length} href="/events?when=tonight" signalId="tonight" />
+                <SignalStat label="Live" value={countLabel(complete, liveNowEvents.length)} href="/events?when=live" signalId="live" />
+                <SignalStat label="Soon" value={countLabel(complete, startingSoonEvents.length)} href="/events?when=soon" signalId="soon" />
+                <SignalStat label="Tonight" value={countLabel(complete, tonightEvents.length)} href="/events?when=tonight" signalId="tonight" />
                 <Link href="/events" className="bg-[#0c0f14] p-5 transition hover:bg-white/[0.04] sm:p-6">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">All discovery</p>
-                  <p className="mt-3 text-2xl font-black text-white">{allEvents.length}</p>
+                  <p className="mt-3 text-2xl font-black text-white"><span className={complete ? undefined : 'text-sm'}>{countLabel(complete, allEvents.length)}</span></p>
                   <p className="mt-1 text-xs text-white/40">visible events →</p>
                 </Link>
               </div>
@@ -192,8 +203,8 @@ export default async function HomePage() {
           </section>
         ) : null}
 
-        {vibeCards.length ? <DiscoveryVibes vibes={vibeCards} /> : null}
-        {cityCounts.length ? <ActiveMarkets cityCounts={cityCounts} /> : null}
+        {vibeCards.length ? <DiscoveryVibes vibes={vibeCards} complete={complete} /> : null}
+        {cityCounts.length ? <ActiveMarkets cityCounts={cityCounts} complete={complete} /> : null}
 
         <EventRail
             signalSurface="homepage"
@@ -202,7 +213,7 @@ export default async function HomePage() {
           title="Live right now"
           text="Scheduled events whose current time window says they are happening now."
           events={liveNowEvents}
-          emptyText="Nothing is showing as live right now."
+          emptyText={complete ? "Nothing is showing as live right now." : "Event data is temporarily unavailable for this section."}
           href="/events?when=live"
           action="See live"
         />
@@ -214,7 +225,7 @@ export default async function HomePage() {
           title="Starting soon"
           text="Events beginning in the next three hours."
           events={startingSoonEvents}
-          emptyText="Nothing is starting soon right now."
+          emptyText={complete ? "Nothing is starting soon right now." : "Event data is temporarily unavailable for this section."}
           href="/events?when=soon"
           action="See what’s next"
         />
@@ -226,7 +237,7 @@ export default async function HomePage() {
           title="Build your night"
           text="A wider view of tonight’s active event inventory."
           events={tonightEvents}
-          emptyText="No events are currently showing for tonight."
+          emptyText={complete ? "No events are currently showing for tonight." : "Event data is temporarily unavailable for this section."}
           href="/events?when=tonight"
           action="Browse tonight"
         />
@@ -269,7 +280,7 @@ export default async function HomePage() {
           title="Recently added"
           text="New inventory entering HypeKnight discovery."
           events={recentlyAddedEvents}
-          emptyText="No recently added events yet."
+          emptyText={complete ? "No recently added events yet." : "Event data is temporarily unavailable for this section."}
           href="/events"
           action="View all"
         />
@@ -281,11 +292,12 @@ export default async function HomePage() {
           title="This weekend"
           text="What is already lining up for the weekend."
           events={weekendEvents}
-          emptyText="No weekend events are showing yet."
+          emptyText={complete ? "No weekend events are showing yet." : "Event data is temporarily unavailable for this section."}
           href="/events?when=weekend"
           action="Plan the weekend"
         />
 
+        {settings.homepage_show_special_days && specialResult.status === 'unavailable' ? <DataNotice message="Calendar highlights are temporarily unavailable." /> : null}
         {settings.homepage_show_special_days ? <SpecialDaysSection specialDays={specialDays ?? []} /> : null}
       </div>
     </>
@@ -312,20 +324,20 @@ function IntentChip({ label, href, signalId }: { label: string; href: string; si
   );
 }
 
-function SnapshotMetric({ label, value, note, tone }: { label: string; value: number; note: string; tone?: 'live' }) {
+function SnapshotMetric({ label, value, note, tone }: { label: string; value: number | 'Unavailable'; note: string; tone?: 'live' }) {
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-black/25 p-4">
       <div className="flex items-center gap-2">
-        {tone === 'live' ? <span className="h-2 w-2 rounded-full bg-emerald-400" /> : null}
+        {tone === 'live' && value !== 'Unavailable' ? <span className="h-2 w-2 rounded-full bg-emerald-400" /> : null}
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{label}</p>
       </div>
-      <p className="mt-2 text-3xl font-black tracking-tight text-white">{value}</p>
+      <p className={`mt-2 ${value === 'Unavailable' ? 'text-sm leading-9' : 'text-3xl'} font-black tracking-tight text-white`}>{value}</p>
       <p className="mt-1 text-[11px] text-white/35">{note}</p>
     </div>
   );
 }
 
-function SignalStat({ label, value, href, signalId }: { label: string; value: number; href: string; signalId: string }) {
+function SignalStat({ label, value, href, signalId }: { label: string; value: number | 'Unavailable'; href: string; signalId: string }) {
   return (
     <SignalLink
       href={href}
@@ -341,13 +353,13 @@ function SignalStat({ label, value, href, signalId }: { label: string; value: nu
       className="bg-[#0c0f14] p-5 transition hover:bg-white/[0.04] sm:p-6"
     >
       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">{label}</p>
-      <p className="mt-3 text-2xl font-black text-white">{value}</p>
+      <p className={`mt-3 ${value === 'Unavailable' ? 'text-sm leading-8' : 'text-2xl'} font-black text-white`}>{value}</p>
       <p className="mt-1 text-xs font-semibold text-accent">Explore →</p>
     </SignalLink>
   );
 }
 
-function DiscoveryVibes({ vibes }: { vibes: any[] }) {
+function DiscoveryVibes({ vibes, complete }: { vibes: any[]; complete: boolean }) {
   return (
     <section>
       <SectionHeader eyebrow="Choose your energy" title="What’s your vibe tonight?" text="Every choice makes discovery more useful without asking you to fill out a profile first." href="/events" action="Explore everything" />
@@ -369,7 +381,7 @@ function DiscoveryVibes({ vibes }: { vibes: any[] }) {
           >
             <div className="flex items-start justify-between gap-4">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-xl text-accent">{vibe.emoji}</span>
-              <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold text-white/35">{vibe.count} found</span>
+              <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold text-white/35">{complete ? `${vibe.count} found` : 'Total unavailable'}</span>
             </div>
             <h3 className="mt-6 text-xl font-black tracking-tight text-white group-hover:text-accent">{vibe.label}</h3>
             <p className="mt-1 text-xs text-white/40">Show me this energy →</p>
@@ -380,7 +392,7 @@ function DiscoveryVibes({ vibes }: { vibes: any[] }) {
   );
 }
 
-function ActiveMarkets({ cityCounts }: { cityCounts: any[] }) {
+function ActiveMarkets({ cityCounts, complete }: { cityCounts: any[]; complete: boolean }) {
   return (
     <section className="hk-glass-panel p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -410,7 +422,7 @@ function ActiveMarkets({ cityCounts }: { cityCounts: any[] }) {
             className="shrink-0 rounded-full border border-white/[0.08] bg-black/25 px-4 py-2.5 text-xs font-semibold text-white/55 transition hover:border-accent/30 hover:text-white"
           >
             {item.city}, {item.state}
-            <span className="ml-2 text-accent">{item.count}</span>
+            <span className="ml-2 text-accent">{countLabel(complete, item.count)}</span>
           </SignalLink>
         ))}
       </div>

@@ -1,3 +1,5 @@
+import { readRows, readValue, countLabel, hasIdentity, isRecord, isEventRecord } from '@/lib/interface-state/data';
+import DataNotice from '@/components/interface-state/DataNotice';
 import Link from 'next/link';
 import { getOwnedVenues } from '@/lib/data';
 import { redirect } from 'next/navigation';
@@ -14,27 +16,25 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/auth/login');
 
-  const [
-    { data: profile },
-    { data: events },
-    { data: venues },
-    { data: savedRows },
-    { data: rsvpRows },
-  ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-    supabase
-      .from('events')
-      .select('id,name,slug,status,event_start_at,city,state,created_at')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: false }),
-    getOwnedVenues(user.id).then((data) => ({ data })),
-    supabase.from('event_saves').select('id,event_id').eq('user_id', user.id),
-    supabase.from('event_rsvps').select('event_id,status').eq('user_id', user.id),
+  const [profileResult, eventResult, venueResult, saveResult, rsvpResult, recommendationResult] = await Promise.all([
+    readValue<any>('dashboard.profile', async () => { const result = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(); if (result.error) throw result.error; return result.data; }, value => hasIdentity(value) && isRecord(value) && value.id === user.id),
+    readRows('dashboard.events', () => supabase.from('events').select('id,name,slug,status,event_start_at,city,state,created_at').eq('owner_id', user.id).order('created_at', { ascending: false }), isEventRecord),
+    readRows('dashboard.venues', async () => ({ data: await getOwnedVenues(user.id) }), hasIdentity),
+    readRows('dashboard.saves', () => supabase.from('event_saves').select('id,event_id').eq('user_id', user.id), hasIdentity),
+    readRows('dashboard.rsvps', () => supabase.from('event_rsvps').select('event_id,status').eq('user_id', user.id), row => isRecord(row) && typeof row.event_id === 'string' && typeof row.status === 'string'),
+    readValue<any>('dashboard.recommendations', () => getRecommendedEventsForUser(user.id), value => isRecord(value) && Array.isArray(value.recommendations)),
   ]);
-
-  const recommendationResult = await getRecommendedEventsForUser(user.id);
-  const preferences = recommendationResult.preferences;
-  const recommendations = recommendationResult.recommendations.slice(0, 6);
+  const profile = profileResult.data;
+  const events = eventResult.data;
+  const venues = venueResult.data;
+  const savedRows = saveResult.data;
+  const rsvpRows = rsvpResult.data;
+  const preferences = recommendationResult.data?.preferences;
+  const recommendations = recommendationResult.data?.recommendations.slice(0, 6) || [];
+  const eventsAvailable = eventResult.status === 'success';
+  const venuesAvailable = venueResult.status === 'success';
+  const workspaceAvailable = eventsAvailable && venuesAvailable && profileResult.status === 'success';
+  const setupAvailable = profileResult.status === 'success' && recommendationResult.status === 'success';
 
   const goingCount = (rsvpRows || []).filter((row: any) => row.status === 'going').length;
   const interestedCount = (rsvpRows || []).filter((row: any) => row.status === 'interested').length;
@@ -90,6 +90,7 @@ export default async function DashboardPage() {
 
   return (
     <section className="mx-auto max-w-[1500px] space-y-7 px-4 py-5 pb-24 sm:px-6 sm:py-8 lg:px-8">
+      {[profileResult, eventResult, venueResult, saveResult, rsvpResult, recommendationResult].some(result => result.status === 'unavailable') ? <DataNotice message="Some dashboard information is temporarily unavailable. Available sections are still shown; unavailable values are not zero." /> : null}
       <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-[#141927] via-[#0a0d14] to-black p-5 sm:rounded-[2.75rem] sm:p-9">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
         <div className="relative grid gap-7 lg:grid-cols-[1fr_360px] lg:items-end">
@@ -118,14 +119,14 @@ export default async function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-2 rounded-[1.75rem] border border-white/10 bg-black/30 p-3">
-            <MiniMetric label="Saved" value={(savedRows || []).length} />
-            <MiniMetric label="Interested" value={interestedCount} />
-            <MiniMetric label="Going" value={goingCount} accent />
+            <MiniMetric label="Saved" value={countLabel(saveResult.status === 'success', (savedRows || []).length)} />
+            <MiniMetric label="Interested" value={countLabel(rsvpResult.status === 'success', interestedCount)} />
+            <MiniMetric label="Going" value={countLabel(rsvpResult.status === 'success', goingCount)} accent />
           </div>
         </div>
       </section>
 
-      {profilePercent < 100 ? (
+      {!setupAvailable ? <DataNotice message="Profile setup progress is temporarily unavailable." /> : profilePercent < 100 ? (
         <section className="rounded-[1.75rem] border border-accent/20 bg-accent/[0.07] p-5 sm:p-6">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="max-w-2xl">
@@ -174,7 +175,7 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {recommendations.length ? (
+        {recommendationResult.status === 'unavailable' ? <DataNotice message="Your recommendation feed is temporarily unavailable." /> : recommendations.length ? (
           <div className="-mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 xl:grid-cols-3">
             {recommendations.map(({ event }: any, index: number) => (
               <div key={`${event.source_label}-${event.id}`} className="min-w-[82vw] sm:min-w-0">
@@ -249,13 +250,13 @@ export default async function DashboardPage() {
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <BusinessMetric label="Events" value={ownedEvents.length} />
-          <BusinessMetric label="Upcoming" value={upcomingEvents.length} accent />
-          <BusinessMetric label="Needs attention" value={needsAttentionEvents.length + pendingEvents.length} />
-          <BusinessMetric label="Venues" value={venueRows.length} />
+          <BusinessMetric label="Events" value={countLabel(eventsAvailable, ownedEvents.length)} />
+          <BusinessMetric label="Upcoming" value={countLabel(eventsAvailable, upcomingEvents.length)} accent />
+          <BusinessMetric label="Needs attention" value={countLabel(eventsAvailable, needsAttentionEvents.length + pendingEvents.length)} />
+          <BusinessMetric label="Venues" value={countLabel(venuesAvailable, venueRows.length)} />
         </div>
 
-        {hasBusinessWorkspace ? (
+        {!workspaceAvailable && !hasBusinessWorkspace ? <DataNotice message="Your business workspace information is temporarily unavailable." /> : hasBusinessWorkspace ? (
           <>
             <div className="mt-6 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
               <div className="rounded-[1.75rem] border border-white/10 bg-black/20 p-5 sm:p-6">
@@ -270,13 +271,13 @@ export default async function DashboardPage() {
                 </div>
 
                 <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                  <PortfolioStat label="Public" value={publicEvents.length} />
-                  <PortfolioStat label="Pending review" value={pendingEvents.length} />
-                  <PortfolioStat label="Action needed" value={needsAttentionEvents.length} />
+                  <PortfolioStat label="Public" value={countLabel(eventsAvailable, publicEvents.length)} />
+                  <PortfolioStat label="Pending review" value={countLabel(eventsAvailable, pendingEvents.length)} />
+                  <PortfolioStat label="Action needed" value={countLabel(eventsAvailable, needsAttentionEvents.length)} />
                 </div>
 
                 <div className="mt-5 space-y-2">
-                  {recentBusinessEvents.length ? (
+                  {!eventsAvailable ? <DataNotice message="Your event portfolio is temporarily unavailable." /> : recentBusinessEvents.length ? (
                     recentBusinessEvents.map((event: any) => <EventRow key={event.id} event={event} />)
                   ) : (
                     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
@@ -436,12 +437,12 @@ function MiniMetric({
   accent = false,
 }: {
   label: string;
-  value: number;
+  value: number | 'Unavailable';
   accent?: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3 text-center">
-      <p className={`text-2xl font-black ${accent ? 'text-accent' : 'text-white'}`}>{value}</p>
+      <p className={`${value === 'Unavailable' ? 'text-xs leading-8' : 'text-2xl'} font-black ${accent ? 'text-accent' : 'text-white'}`}>{value}</p>
       <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">{label}</p>
     </div>
   );
@@ -453,21 +454,21 @@ function BusinessMetric({
   accent = false,
 }: {
   label: string;
-  value: number;
+  value: number | 'Unavailable';
   accent?: boolean;
 }) {
   return (
     <div className="rounded-[1.4rem] border border-white/[0.08] bg-black/20 p-4">
-      <p className={`text-3xl font-black ${accent ? 'text-accent' : 'text-white'}`}>{value}</p>
+      <p className={`${value === 'Unavailable' ? 'text-sm leading-9' : 'text-3xl'} font-black ${accent ? 'text-accent' : 'text-white'}`}>{value}</p>
       <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/40">{label}</p>
     </div>
   );
 }
 
-function PortfolioStat({ label, value }: { label: string; value: number }) {
+function PortfolioStat({ label, value }: { label: string; value: number | 'Unavailable' }) {
   return (
     <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
-      <p className="text-xl font-black text-white">{value}</p>
+      <p className={`${value === 'Unavailable' ? 'text-sm leading-7' : 'text-xl'} font-black text-white`}>{value}</p>
       <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">{label}</p>
     </div>
   );
