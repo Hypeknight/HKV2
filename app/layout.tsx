@@ -67,11 +67,12 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#080a0f] text-white antialiased">
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-white focus:p-3 focus:text-black">Skip to content</a>
         <Navbar
           initialUser={user ? { id: user.id, email: user.email ?? '' } : null}
           initialRole={role}
         />
-        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">{children}</main>
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">{children}</main>
         <Footer />
       </body>
     </html>
