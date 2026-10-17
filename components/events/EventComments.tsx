@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { authHref } from '@/lib/auth/return-path';
 import { addEventComment } from '@/app/events/actions';
 
 export default function EventComments({
@@ -46,7 +47,7 @@ export default function EventComments({
           </form>
         ) : (
           <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5 text-white/65">
-            <Link href="/auth/login" className="text-accent hover:opacity-80">
+            <Link href={authHref('login', eventPath)} className="text-accent hover:opacity-80">
               Sign in
             </Link>{' '}
             to comment on this event.

@@ -1,3 +1,4 @@
+import { authHref } from '@/lib/auth/return-path';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
@@ -47,9 +48,12 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith('/dashboard'))
   ) {
     const url = request.nextUrl.clone();
-    url.pathname = '/auth/login';
-    url.searchParams.set('next', request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+    const destination = authHref('login', request.nextUrl.pathname + request.nextUrl.search);
+    const loginUrl = new URL(destination, url.origin);
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    // Preserve refresh/clear-cookie updates on protected-route redirects too.
+    response.cookies.getAll().forEach(cookie => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
   }
 
   return response;

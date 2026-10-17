@@ -7,7 +7,7 @@ export default async function ClaimExternalEventPage({ params }: { params: Promi
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect(`/auth/login?redirect=${encodeURIComponent(`/events/external/${id}/claim`)}`);
+  if (!user) redirect(`/auth/login?next=${encodeURIComponent(`/events/external/${id}/claim`)}`);
 
   const [{ data: event }, { data: ownedEvents }, { data: existingClaim }] = await Promise.all([
     supabase.from('external_events').select('id,name,city,state,venue_name,event_start_at,source_code').eq('id', id).single(),

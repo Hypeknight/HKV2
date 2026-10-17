@@ -410,7 +410,7 @@ export default async function EventDetailPage({ params }: Props) {
                 </p>
 
                 <ButtonLink
-                  href={`/auth/login?redirect=${encodeURIComponent(
+                  href={`/auth/login?next=${encodeURIComponent(
                     `/events/${event.slug}`
                   )}`}
                   variant="primary"
@@ -829,7 +829,7 @@ export default async function EventDetailPage({ params }: Props) {
               </button>
             ) : (
               <ButtonLink
-                href={`/auth/login?redirect=${encodeURIComponent(
+                href={`/auth/login?next=${encodeURIComponent(
                   `/events/${event.slug}#report-event`
                 )}`}
                 variant="secondary"
