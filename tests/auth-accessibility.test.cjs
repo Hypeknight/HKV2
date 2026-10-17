@@ -12,7 +12,7 @@ function load(file, mocks={}) {
   return exports;
 }
 const paths = load('lib/auth/return-path.ts');
-const destinations = ['/events/native-event','/dashboard/events/event-id?tab=results','/dashboard/venues/venue-id','/admin/patron-pulse','/events?q=live%20music#results'];
+const destinations = ['/events/native-event','/dashboard/events/event-id?tab=results','/dashboard/venues/venue-id','/admin/patron-pulse','/events?q=live%20music#results','/events?q=100%25#results'];
 for(const destination of destinations) test('safe destination survives: '+destination,()=>{
   assert.equal(paths.safeReturnPath(destination),destination);
   assert.equal(new URL(paths.authHref('login',destination),'https://hypeknight.test').searchParams.get('next'),destination);

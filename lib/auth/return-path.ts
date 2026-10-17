@@ -4,8 +4,10 @@ const BASE = 'https://return.invalid';
 /** Navigation intent only; destination pages still enforce authorization. */
 export function safeReturnPath(value: unknown): string {
   if (typeof value !== 'string' || value.length > 2048 || !value.startsWith('/')) return DEFAULT_RETURN;
+  if (/%(?![0-9a-f]{2})/i.test(value) || /[\u0000-\u001f\u007f]/.test(value)) return DEFAULT_RETURN;
   try {
-    let decoded = value;
+    // Decode path evidence only: a valid search value such as 100%25 is not a path.
+    let decoded = value.split(/[?#]/, 1)[0];
     for (let i = 0; i < 5; i++) {
       const pathOnly = decoded.split(/[?#]/, 1)[0];
       if (/^\s*\/\//.test(pathOnly) || /[\\\u0000-\u0020\u007f]/.test(pathOnly) || /[\u0000-\u001f\u007f]/.test(decoded)) return DEFAULT_RETURN;
