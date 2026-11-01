@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { recordSearchSubmission } from '@/lib/signals/discovery-browser';
 import { LOCATION_STORAGE_KEY, type HypeKnightLocation } from '@/lib/location/types';
 
-export default function DiscoveryCommandBar({ compact = false }: { compact?: boolean }) {
+export default function DiscoveryCommandBar({ compact = false, tracking = true, initialCity = '', initialState = '' }: { compact?: boolean; tracking?: boolean; initialCity?: string; initialState?: string }) {
   const [location, setLocation] = useState<HypeKnightLocation | null>(null);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function DiscoveryCommandBar({ compact = false }: { compact?: boo
   }, []);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    recordSearchSubmission(event.currentTarget, 'homepage');
+    if (tracking) recordSearchSubmission(event.currentTarget, 'homepage');
   }
 
   return (
@@ -33,10 +33,10 @@ export default function DiscoveryCommandBar({ compact = false }: { compact?: boo
 
       <label className="relative block">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35">◎</span>
-        <input name="city" aria-label="City" placeholder="Where?" defaultValue={location?.city || ''} key={location?.city || 'city'} className="h-12 w-full border-0 bg-white/[0.045] pl-10 pr-3 text-sm text-white outline-none placeholder:text-white/30" />
+        <input name="city" aria-label="City" placeholder="Where?" defaultValue={initialCity || location?.city || ''} key={initialCity || location?.city || 'city'} className="h-12 w-full border-0 bg-white/[0.045] pl-10 pr-3 text-sm text-white outline-none placeholder:text-white/30" />
       </label>
 
-      {!compact ? <input name="state" aria-label="State" placeholder="State" defaultValue={location?.state || ''} key={location?.state || 'state'} className="h-12 w-full border-0 bg-white/[0.045] px-4 text-sm text-white outline-none placeholder:text-white/30" /> : null}
+      {!compact ? <input name="state" aria-label="State" placeholder="State" defaultValue={initialState || location?.state || ''} key={initialState || location?.state || 'state'} className="h-12 w-full border-0 bg-white/[0.045] px-4 text-sm text-white outline-none placeholder:text-white/30" /> : null}
 
       <select name="when" defaultValue="tonight" aria-label="When" className="h-12 border-0 bg-white/[0.045] px-4 text-sm text-white outline-none">
         <option value="">Any time</option>

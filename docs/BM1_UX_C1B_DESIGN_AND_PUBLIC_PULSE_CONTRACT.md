@@ -1,3 +1,5 @@
+> Approved prototype checkpoint. The actual-homepage integration and release handoff are documented in [UX-C1 implementation](BM1_UX_C1_IMPLEMENTATION.md).
+
 # UX-C1B — Living City, Public Pulse and Concierge
 
 ## Scope and capability audit
