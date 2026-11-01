@@ -16,7 +16,7 @@ const success=rows=>({status:'success',data:rows});const fail={status:'unavailab
 const native=(overrides={})=>({id:'native',name:'Native night',slug:'native-night',status:'scheduled',is_public:true,is_approved:true,hidden_by_admin:false,removed_at:null,city:'Kansas City',state:'MO',event_start_at:'2026-11-15T20:00:00-06:00',flyer_url:'https://images.example.test/native.jpg',event_type:'music',...overrides});
 const external=(overrides={})=>({id:'provider-1',name:'External night',status:'active',city:'Kansas City',state:'MO',source_code:'ticketmaster',event_start_at:'2026-11-16T20:00:00-06:00',segment:'Music',...overrides});
 const Link=({href,children,...props})=>React.createElement('a',{href,...props},children);
-const ui=load('components/preview/SimplyComplexHome.tsx',{'next/link':{default:Link},'@/components/preview/PreviewArtwork':{default:load('components/preview/PreviewArtwork.tsx').default},'@/components/ui/EventTime':{default:({value})=>React.createElement('time',{dateTime:value},value)}});
+const ui=load('components/preview/SimplyComplexHome.tsx',{'next/link':{default:Link},'@/components/preview/CityPulseSection':load('components/preview/CityPulseSection.tsx'),'@/components/preview/PreviewArtwork':{default:load('components/preview/PreviewArtwork.tsx').default},'@/components/ui/EventTime':{default:({value})=>React.createElement('time',{dateTime:value},value)}});
 const html=(inventory,props={})=>render(React.createElement(ui.default,{inventory,...props}));
 test('real native and supplemental inventory retains canonical detail destinations and native priority',()=>{
  const result=data.previewInventory(success([native()]),success([external()]));assert.equal(result.status,'success');assert.deepEqual(result.events.map(e=>e.href),['/events/native-night','/events/external/provider-1']);assert.equal(result.events[1].provider,'Ticketmaster');
@@ -86,4 +86,60 @@ test('state demonstrations are explicit, noindex, and empty/loading/error exampl
  let calls=0;const Page=load('app/preview/simply-complex/page.tsx',{'./preview.css':{},'@/lib/supabase/server':{createClient:async()=>{calls++;throw Error('not expected');}},'@/components/preview/SimplyComplexHome':{default:()=>null}});
  for(const demo of ['empty','loading','unavailable']){const view=await Page.default({searchParams:Promise.resolve({demo})});assert.equal(view.props.demo,demo);assert.deepEqual(view.props.inventory.events,[]);assert.equal(view.props.inventory.status,demo==='unavailable'?'unavailable':'success');}
  assert.equal(calls,0);assert.deepEqual(Page.metadata.robots,{index:false,follow:false});
+});
+
+const cityFacts=lib('lib/discovery/city-pulse.ts');
+const facts=(inventory,city='Kansas City',state='MO')=>cityFacts.citySnapshot(inventory,city,state);
+const inventory=()=>data.previewInventory(success([native()]),success([external()]));
+test('city inventory facts require explicit city and state, never infer a location',()=>{
+ for(const [city,state] of [['',''],['Kansas City',''],['','MO']])assert.deepEqual(facts(inventory(),city,state),{state:'select_city',native:null,external:null,categories:[]});
+});
+test('city snapshot separates native and provider listings, not people or unique experiences',()=>{
+ const out=facts(inventory());assert.equal(out.state,'observed');assert.equal(out.native,1);assert.equal(out.external,1);assert.deepEqual(out.categories,[{key:'music',label:'Music',count:2}]);
+ const rendered=html(inventory(),{city:'Kansas City',state:'MO'});assert.match(rendered,/Native listings/);assert.match(rendered,/External listings/);assert.match(rendered,/not people|not participant|not attendance/);assert.match(rendered,/not a real-time/);assert.doesNotMatch(rendered,/people out|popular tonight|%/);
+});
+test('city facts preserve real observed zero and withhold incomplete counts',()=>{
+ const empty=facts(data.previewInventory(success([]),success([])));assert.equal(empty.state,'empty');assert.equal(empty.native,0);assert.equal(empty.external,0);
+ for(const status of ['partial','unavailable'])assert.deepEqual(facts({status,events:inventory().events}),{state:status,native:null,external:null,categories:[]});
+});
+test('city category counts are source-based, exact location filtered and may overlap',()=>{
+ const inv={status:'success',events:[{...inventory().events[0],categories:['music','date-night']},{...inventory().events[1],city:'Lawrence',state:'KS'}]};const out=facts(inv);assert.equal(out.external,0);assert.equal(out.native,1);assert.equal(out.categories.length,2);assert.ok(out.categories.every(c=>c.count===1));assert.match(html(inv,{city:'Kansas City',state:'MO'}),/Categories may overlap/);
+});
+test('partial public facts cannot reconstruct missing-source counts through alternate totals or categories',()=>{
+ const inv={status:'partial',events:inventory().events};const out=html(inv,{city:'Kansas City',state:'MO'});assert.match(out,/Available event cards are still shown/);assert.doesNotMatch(out,/sc-city-numbers|sc-category-facts|<dd>/);assert.match(out,/Native night/);assert.equal(JSON.stringify(facts(inv)),JSON.stringify({state:'partial',native:null,external:null,categories:[]}));
+});
+test('city aggregate result shape excludes identifiers and private participant fields',()=>{
+ const inv=inventory();inv.events[0].participant_id='private-person';inv.events[0].created_by='private-owner';inv.events[0].responses=[{answer:'private-answer'}];assert.doesNotMatch(JSON.stringify(facts(inv)),/private|participant|created_by|responses|native-night/);
+});
+test('community question is non-submittable with disabled associated controls and no write boundary',()=>{
+ const out=html(inventory());const panel=out.slice(out.indexOf('<aside id="community-pulse"'),out.indexOf('</aside>',out.indexOf('<aside id="community-pulse"')));assert.match(panel,/Not open for responses/);assert.match(panel,/No answers are collected or stored/);assert.match(panel,/<fieldset disabled/);assert.equal((panel.match(/type="radio"/g)||[]).length,4);assert.equal((panel.match(/disabled=""/g)||[]).length,5);assert.match(panel,/for="sc-community-option-0"/);assert.doesNotMatch(panel,/<form|<button|action=|fetch\(|participant_id|response_count|[0-9]+%/);
+ const source=fs.readFileSync('components/preview/CityPulseSection.tsx','utf8');assert.doesNotMatch(source,/use client|fetch\(|createClient|\.rpc\(|onSubmit|onClick|<form/);
+});
+test('community result examples distinguish empty, unavailable, incomplete and insufficient without fabricated aggregates',()=>{
+ for(const [demo,word] of [['empty','No response sample'],['unavailable','Community results unavailable'],['partial','incomplete response sample'],['loading','Loading community results'],['insufficient','Insufficient sample']]){
+ const out=html(inventory(),{demo});assert.match(out,new RegExp(word));assert.match(out,/State example only/);assert.doesNotMatch(out,/response_count|totalResponses|optionCounts|[0-9]+%/);
+ }
+ assert.match(html(inventory(),{demo:'insufficient'}),/counts and percentages are withheld/);assert.match(html(inventory()),/not a promise of anonymity or protection from inference/);
+});
+test('question results stay unavailable regardless of populated event listing inventory',()=>{
+ for(const inv of [inventory(),{status:'success',events:[]},{status:'partial',events:inventory().events},{status:'unavailable',events:[]}])assert.match(html(inv),/Public community results are not available yet/);
+});
+test('concierge and professional CTAs use working existing routes or explicitly labeled concepts',()=>{
+ const out=html(inventory());for(const path of ['/surprise','/preview/simply-complex/plan','/venues','/promote','/pricing','/dashboard/events/new/step-1'])assert.ok(out.includes('href="'+path+'"'));assert.match(out,/Concept preview · Not available yet/);assert.match(out,/Plan My Night is a concept, not an active itinerary service/);assert.match(out,/href="#city-pulse"/);assert.match(out,/<summary>More ways to explore/);
+});
+test('Plan My Night concept does not collect sensitive preferences or pretend to generate itineraries',()=>{
+ const Plan=load('app/preview/simply-complex/plan/page.tsx',{'next/link':{default:Link},'../preview.css':{}});const out=render(React.createElement(Plan.default));assert.match(out,/not available yet/);assert.match(out,/does not generate itineraries or collect preferences/);assert.doesNotMatch(out,/<form|<input|<textarea|<select|<button/);assert.deepEqual(Plan.metadata.robots,{index:false,follow:false});
+});
+test('market context survives time and demo navigation, ordinary search never forced into tonight',()=>{
+ const out=html(inventory(),{city:'Kansas City',state:'MO'});assert.match(out,/city=Kansas\+City&amp;state=MO&amp;when=tonight/);assert.match(out,/demo=insufficient&amp;city=Kansas\+City&amp;state=MO/);const form=out.slice(out.indexOf('<form'),out.indexOf('</form>'));assert.doesNotMatch(form,/name="when"/);
+});
+test('insufficient sample example keeps real event queries and never requests private Pulse data',async()=>{
+ let calls=0;const Page=load('app/preview/simply-complex/page.tsx',{'./preview.css':{},'@/lib/supabase/server':{createClient:async()=>{calls++;return {};}},'@/lib/discovery/preview-home':{loadPreviewInventory:async()=>inventory()},'@/components/preview/SimplyComplexHome':{default:()=>null}});const out=await Page.default({searchParams:Promise.resolve({demo:'insufficient'})});assert.equal(calls,1);assert.equal(out.props.demo,'insufficient');assert.equal(out.props.inventory.events.length,2);
+});
+test('responsive review renders actual iframe widths at 320, 360, 390, tablet and desktop',async()=>{
+ const Review=load('app/preview/simply-complex/review/page.tsx',{'next/link':{default:Link}});for(const [size,width] of [['compact',320],['small',360],['mobile',390],['tablet',768],['desktop',1280]]){const out=render(await Review.default({searchParams:Promise.resolve({size,city:'Kansas City',state:'MO',demo:'insufficient'})}));assert.match(out,new RegExp('width:'+width+'px'));assert.match(out,/city=Kansas\+City&amp;state=MO&amp;demo=insufficient/);}
+});
+
+test('selected-city loading example never presents unresolved inventory as zero',()=>{
+ const out=html({status:'success',events:[]},{city:'Kansas City',state:'MO',demo:'loading'});assert.match(out,/Loading inventory counts/);assert.doesNotMatch(out,/sc-city-numbers|sc-category-facts|<dd>|No eligible listings matched/);
 });

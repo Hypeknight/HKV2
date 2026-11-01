@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Simply Complex · Design preview', robots: { index: false, follow: false } };
 export default async function SimplyComplexPreview({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const modes = ['empty', 'loading', 'unavailable', 'partial'];
+  const modes = ['empty', 'loading', 'unavailable', 'partial', 'insufficient'];
   const demo = typeof params.demo === 'string' && modes.includes(params.demo) ? params.demo : null;
   const city = typeof params.city === 'string' ? params.city.slice(0, 100) : '';
   const state = typeof params.state === 'string' ? params.state.slice(0, 50) : '';

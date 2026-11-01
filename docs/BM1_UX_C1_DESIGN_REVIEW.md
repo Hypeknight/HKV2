@@ -1,3 +1,5 @@
+> Historical UX-C1 checkpoint. For the latest UX-C1B refinement, validation and public Pulse backend contract, see [UX-C1B review](BM1_UX_C1B_DESIGN_AND_PUBLIC_PULSE_CONTRACT.md).
+
 # BM1 UX-C1 — Simply Complex design review
 
 Status: working isolated prototype; design approval required. No production merge or deployment.
