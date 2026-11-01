@@ -107,3 +107,11 @@ The demos do not interrupt production queries, modify records or imply their exa
 - Before production implementation: review hero copy and mobile density, approve source/spotlight presentation, test physical devices and an authenticated organizer account, and decide whether to retain six cards or introduce a controlled rail.
 
 No merge or production deployment is approved by this checkpoint.
+
+## Mobile refinement — November 1, 2026
+
+The draft now uses tighter mobile hero spacing, a 38px headline, a single-row search at 390px, and a 2:1 spotlight image. Below 360px, the search returns to stacked controls. Desktop and tablet styling are unchanged.
+
+Measured in the real 390px review frame: the first event moved from 736.8px to 605.6px from the frame top (131.1px earlier). Content remains 343px wide with no horizontal overflow; input and submit button are both 48px tall. Tab reaches the submit button with a visible 3px focus outline. No application console errors were observed.
+
+Fresh validation: all 244 application tests, TypeScript, git diff --check, and the full production-configured build passed. This is still a draft prototype; physical-device and below-360px browser coverage remain unverified. No production changes.
