@@ -35,6 +35,17 @@ test('responsive actual-homepage review cannot enable demonstration data on the 
 });
 
 test('advanced filters retain the explicit homepage market instead of silently losing location context',()=>{
- const Command=support.load('components/discovery/DiscoveryCommandBar.tsx',{react:{useState:()=>[{city:'Other city',state:'KS'},()=>{}],useEffect:()=>{}},'@/lib/signals/discovery-browser':{recordSearchSubmission:()=>{}}}).default;
+ const Command=support.load('components/discovery/DiscoveryCommandBar.tsx',{react:{useState:()=>[null,()=>{}],useEffect:()=>{}},'@/lib/signals/discovery-browser':{recordSearchSubmission:()=>{}}}).default;
  const html=render(Command({initialCity:'Kansas City',initialState:'MO'}));assert.match(html,/name="city"[^>]*value="Kansas City"/);assert.match(html,/name="state"[^>]*value="MO"/);assert.doesNotMatch(html,/value="Other city"/);
+});
+
+test('explicit homepage context does not load stale preferences, while a new device-location action still updates advanced search',()=>{
+ const oldWindow=global.window,oldStorage=global.localStorage;let location=null,effect,listener,reads=0,removed=0;
+ global.window={addEventListener:(name,fn)=>{listener=fn;},removeEventListener:(name,fn)=>{assert.equal(fn,listener);removed++;}};
+ global.localStorage={getItem:()=>{reads++;return JSON.stringify({city:'Stored city',state:'KS'});}};
+ try {
+  const Command=support.load('components/discovery/DiscoveryCommandBar.tsx',{react:{useState:()=>[location,value=>{location=value;}],useEffect:fn=>{effect=fn;}},'@/lib/signals/discovery-browser':{recordSearchSubmission:()=>{}}}).default;
+  const props={initialCity:'Kansas City',initialState:'MO',tracking:false};assert.match(render(Command(props)),/value="Kansas City"/);const cleanup=effect();assert.equal(reads,0);listener({detail:{city:'St. Louis',state:'MO',source:'device'}});assert.match(render(Command(props)),/value="St. Louis"/);cleanup();
+  location=null;Command({tracking:false});const savedCleanup=effect();assert.equal(reads,1);assert.match(render(Command({tracking:false})),/value="Stored city"/);savedCleanup();assert.equal(removed,2);
+ } finally {if(oldWindow===undefined)delete global.window;else global.window=oldWindow;if(oldStorage===undefined)delete global.localStorage;else global.localStorage=oldStorage;}
 });
