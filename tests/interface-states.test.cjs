@@ -1,3 +1,4 @@
+const homeSupport=require('./helpers/homepage-render.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -31,7 +32,7 @@ const Card=({event})=>React.createElement('a',{href:event.href},event.name);
 const Rail=({events=[],emptyText='No events are showing yet.'})=>React.createElement('div',null,events.length?events.map(event=>React.createElement(Card,{event,key:event.id})):emptyText);
 const ui={SectionHeader:({title,text})=>React.createElement('section',null,title,text),EventCard:Card,EventRail:Rail,EmptyState:({text})=>React.createElement('p',null,text),MetricCard:({label,value})=>React.createElement('p',null,label,': ',value)};
 function mocks(db,extra={}) {return {
-  'next/link':{default:Link},'next/navigation':{redirect(path){throw Error('redirect:'+path)},notFound(){throw Error('not-found')}},
+  './preview/simply-complex/preview.css':{},'@/components/preview/SimplyComplexHome':homeSupport.ui,'@/lib/discovery/preview-home':homeSupport.data,'next/link':{default:Link},'next/navigation':{redirect(path){throw Error('redirect:'+path)},notFound(){throw Error('not-found')}},
   '@/lib/supabase/server':{createClient:async()=>db},'@/lib/interface-state/data':states,'@/components/interface-state/DataNotice':{default:Notice},
   '@/lib/discovery/classification':load('lib/discovery/classification.ts'),'@/lib/discovery/destinations':load('lib/discovery/destinations.ts'),
   '@/lib/settings':{getPlatformSettings:async()=>({homepage_show_special_days:true})},'@/lib/states':{normalizeState:value=>value,US_STATES:[]},

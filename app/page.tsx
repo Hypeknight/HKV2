@@ -1,4 +1,4 @@
-import { readRows, readValue, combinedState, countLabel, hasIdentity, isRecord, isEventRecord } from '@/lib/interface-state/data';
+import { readRows, readValue, combinedState, hasIdentity, isRecord, isEventRecord } from '@/lib/interface-state/data';
 import DataNotice from '@/components/interface-state/DataNotice';
 import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord } from '@/lib/discovery/classification';
 import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
@@ -7,24 +7,21 @@ import { createClient } from '@/lib/supabase/server';
 import { getPlatformSettings } from '@/lib/settings';
 import { normalizeState } from '@/lib/states';
 import TrackView from '@/components/analytics/TrackView';
-import SignalLink from '@/components/analytics/SignalLink';
+import SimplyComplexHome from '@/components/preview/SimplyComplexHome';
+import { previewInventory, inPreviewCity } from '@/lib/discovery/preview-home';
+import './preview/simply-complex/preview.css';
 import DiscoveryCommandBar from '@/components/discovery/DiscoveryCommandBar';
 import DeviceLocationBadge from '@/components/location/DeviceLocationBadge';
 import { getRecommendedEventsForUser } from '@/lib/discovery/recommend-events';
 import { EventRail, SectionHeader } from '@/components/ui';
 
-const VIBES = [
-  { label: 'Turn Up', emoji: '✦', value: 'turn-up' },
-  { label: 'Hip-Hop', emoji: '♫', value: 'hip-hop' },
-  { label: 'Music', emoji: '♪', value: 'music' },
-  { label: 'Date Night', emoji: '♡', value: 'date-night' },
-  { label: 'Sports', emoji: '◉', value: 'sports' },
-  { label: 'Comedy', emoji: '☺', value: 'comedy' },
-  { label: 'Festivals', emoji: '◇', value: 'festivals' },
-  { label: 'Family', emoji: '☆', value: 'family' },
-];
+export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+export default async function HomePage(props: { searchParams?: Promise<Record<string,string|string[]|undefined>> }) {
+  const params = await props?.searchParams ?? {};
+  const telemetry = process.env.HYPEKNIGHT_HOMEPAGE_PREVIEW !== '1';
+  const city = typeof params.city === 'string' ? params.city.slice(0,100) : '';
+  const state = typeof params.state === 'string' ? params.state.slice(0,50) : '';
   const supabase = await createClient();
   const settings = await getPlatformSettings();
   const { data: { user } } = await supabase.auth.getUser();
@@ -68,14 +65,14 @@ export default async function HomePage() {
   const specialDays = specialResult.data;
   const inventoryState = combinedState([hypeResult, externalResult]);
   const complete = inventoryState === 'success';
-  const inventoryMessage = inventoryState === 'partial' ? 'Some event sources are temporarily unavailable. Showing available events; totals are unavailable.' : 'Event discovery is temporarily unavailable. Please try again.';
+  const inventory = previewInventory(hypeResult, externalResult);
+  const selectedIds = new Set(inventory.events.filter(event => inPreviewCity(event,city,state)).map(event => event.source + ':' + event.id));
 
   const allEvents = [
     ...(hypeEvents ?? []).filter(isPublicNativeDiscoveryRecord).map((event: any) => normalizeEvent(event, 'hypeknight')),
     ...(externalEvents ?? []).map((event: any) => normalizeEvent(event, 'external')),
-  ].filter(event => event.href !== null).sort(sortByStartTime);
+  ].filter(event => event.href !== null && selectedIds.has(event.source + ':' + event.id)).sort(sortByStartTime);
 
-  const cityCounts = buildCityCounts(allEvents);
   const liveNowEvents = allEvents.filter(isLiveNow).slice(0, 8);
   const startingSoonEvents = allEvents.filter(isStartingSoon).slice(0, 8);
   const tonightEvents = allEvents.filter(isTodayInEventTime).slice(0, 8);
@@ -84,360 +81,32 @@ export default async function HomePage() {
     .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
     .slice(0, 8);
 
-  const vibeCards = buildAccurateVibeCards(allEvents);
   const personalized = user ? await readValue<any>('homepage.recommendations', () => getRecommendedEventsForUser(user.id), value => isRecord(value) && Array.isArray(value.recommendations)) : null;
   const personalizedEvents = personalized?.data?.recommendations.slice(0, 6).map((item: any) => item.event) || [];
 
 
-  return (
-    <>
-      <TrackView pageType="homepage" path="/" />
-
-      <div className="space-y-10 pb-20 sm:space-y-14 sm:pb-16">
-        {!complete ? <DataNotice message={inventoryMessage} /> : null}
-        {personalized?.status === 'unavailable' ? <DataNotice message="Personal recommendations are temporarily unavailable." /> : null}
-        <section className="relative -mx-4 overflow-hidden border-b border-white/[0.07] px-4 pb-8 pt-5 sm:-mx-6 sm:px-6 sm:pb-12 lg:-mx-8 lg:px-8 lg:pt-8">
-          <div className="hk-hero-orb hk-hero-orb-one" />
-          <div className="hk-hero-orb hk-hero-orb-two" />
-
-          <div className="relative mx-auto grid max-w-[1500px] gap-8 xl:grid-cols-[minmax(0,1.15fr)_420px] xl:items-end">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="hk-kicker">HypeKnight Discovery</span>
-                <DeviceLocationBadge />
-              </div>
-
-              <h1 className="mt-5 max-w-5xl text-[clamp(3rem,8vw,7.4rem)] font-black leading-[0.86] tracking-[-0.055em] text-white">
-                What are you
-                <span className="block bg-gradient-to-r from-white via-white to-accent bg-clip-text text-transparent">
-                  doing tonight?
-                </span>
-              </h1>
-
-              <p className="mt-6 max-w-2xl text-base leading-7 text-white/58 sm:text-lg sm:leading-8">
-                Find events, venues, music, and vibes that fit the night you want.
-              </p>
-
-              <div className="mt-7 max-w-5xl">
-                <DiscoveryCommandBar />
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <IntentChip label="Live now" href="/events?when=live" signalId="live" />
-                <IntentChip label="Starting soon" href="/events?when=soon" signalId="soon" />
-                <IntentChip label="Tonight" href="/events?when=tonight" signalId="tonight" />
-                <IntentChip label="This weekend" href="/events?when=weekend" signalId="weekend" />
-                <Link
-                  href="/surprise"
-                  className="rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-black text-accent hover:bg-accent/15"
-                >
-                  🎲 Surprise me
-                </Link>
-              </div>
-            </div>
-
-            <aside className="hk-glass-panel p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="hk-kicker">Right now</p>
-                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">The night at a glance</h2>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30">
-                  <img src="/hypeknight-logo.jpeg" alt="HypeKnight" className="h-full w-full object-cover" />
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-2 gap-2">
-                <SnapshotMetric label="Live now" value={countLabel(complete, liveNowEvents.length)} note="confirmed by schedule" tone="live" />
-                <SnapshotMetric label="Starting soon" value={countLabel(complete, startingSoonEvents.length)} note="next 3 hours" />
-                <SnapshotMetric label="Tonight" value={countLabel(complete, tonightEvents.length)} note="active inventory" />
-                <SnapshotMetric label="Markets" value={countLabel(complete, cityCounts.length)} note="with visible events" />
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-white/[0.07] bg-black/25 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-accent shadow-[0_0_20px_rgba(244,180,0,.55)]" />
-                  <div>
-                    <p className="text-sm font-bold text-white">Signal-ready discovery</p>
-                    <p className="mt-1 text-xs leading-5 text-white/45">
-                      Searches, vibes, saves, Going, directions, Pulse, and other meaningful choices help HypeKnight learn what the market is actually considering.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </aside>
-          </div>
-        </section>
-
-        {personalizedEvents.length ? (
-          <EventRail
-            signalSurface="homepage"
-            eyebrow="For you"
-            title="Your night, ranked around you."
-            text="Because you are signed in, HypeKnight is using your saved nightlife preferences to prioritize what you see."
-            events={personalizedEvents}
-            href="/events/recommended"
-            action="See all recommendations"
-          />
-        ) : null}
-
-        {liveNowEvents.length || startingSoonEvents.length ? (
-          <section className="hk-glass-panel overflow-hidden">
-            <div className="grid md:grid-cols-[220px_1fr]">
-              <div className="border-b border-white/[0.07] bg-accent/[0.08] p-5 md:border-b-0 md:border-r md:p-6">
-                <p className="hk-kicker">Here & now</p>
-                <h2 className="mt-2 text-2xl font-black text-white">Move with the night.</h2>
-                <p className="mt-2 text-sm leading-6 text-white/48">Start with what is live or almost live instead of scrolling everything.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-px bg-white/[0.07] sm:grid-cols-4">
-                <SignalStat label="Live" value={countLabel(complete, liveNowEvents.length)} href="/events?when=live" signalId="live" />
-                <SignalStat label="Soon" value={countLabel(complete, startingSoonEvents.length)} href="/events?when=soon" signalId="soon" />
-                <SignalStat label="Tonight" value={countLabel(complete, tonightEvents.length)} href="/events?when=tonight" signalId="tonight" />
-                <Link href="/events" className="bg-[#0c0f14] p-5 transition hover:bg-white/[0.04] sm:p-6">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">All discovery</p>
-                  <p className="mt-3 text-2xl font-black text-white"><span className={complete ? undefined : 'text-sm'}>{countLabel(complete, allEvents.length)}</span></p>
-                  <p className="mt-1 text-xs text-white/40">visible events →</p>
-                </Link>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {vibeCards.length ? <DiscoveryVibes vibes={vibeCards} complete={complete} /> : null}
-        {cityCounts.length ? <ActiveMarkets cityCounts={cityCounts} complete={complete} /> : null}
-
-        <EventRail
-            signalSurface="homepage"
-          id="live"
-          eyebrow="Here & Now"
-          title="Live right now"
-          text="Scheduled events whose current time window says they are happening now."
-          events={liveNowEvents}
-          emptyText={complete ? "Nothing is showing as live right now." : "Event data is temporarily unavailable for this section."}
-          href="/events?when=live"
-          action="See live"
-        />
-
-        <EventRail
-            signalSurface="homepage"
-          id="soon"
-          eyebrow="Next move"
-          title="Starting soon"
-          text="Events beginning in the next three hours."
-          events={startingSoonEvents}
-          emptyText={complete ? "Nothing is starting soon right now." : "Event data is temporarily unavailable for this section."}
-          href="/events?when=soon"
-          action="See what’s next"
-        />
-
-        <EventRail
-            signalSurface="homepage"
-          id="tonight"
-          eyebrow="Tonight"
-          title="Build your night"
-          text="A wider view of tonight’s active event inventory."
-          events={tonightEvents}
-          emptyText={complete ? "No events are currently showing for tonight." : "Event data is temporarily unavailable for this section."}
-          href="/events?when=tonight"
-          action="Browse tonight"
-        />
-
-        <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
-          <div className="hk-glass-panel p-6 sm:p-8">
-            <p className="hk-kicker">Experience intelligence</p>
-            <h2 className="mt-3 max-w-xl text-3xl font-black tracking-tight text-white sm:text-4xl">Discovery is only the beginning.</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/55 sm:text-base">
-              HypeKnight is being built to understand the full path from discovery to intent to live experience. As evidence grows, Hype, Momentum, and Pulse can become useful signals instead of empty popularity numbers.
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <IntelligenceStage number="01" label="Discover" text="What catches attention." />
-              <IntelligenceStage number="02" label="Intent" text="What people choose." />
-              <IntelligenceStage number="03" label="Experience" text="How the night actually feels." />
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-accent/20 bg-gradient-to-br from-accent/15 via-white/[0.04] to-transparent p-6 sm:p-8">
-            <p className="hk-kicker">Know the move?</p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight text-white">Help build the map.</h2>
-            <p className="mt-3 text-sm leading-6 text-white/55">
-              Post your event for free, reach people deciding where to go, and keep using the ticket link you already have.
-            </p>
-            <div className="mt-6 grid gap-2">
-              <Link href="/dashboard/events/new/step-1" className="rounded-2xl bg-accent px-5 py-3 text-center text-sm font-black text-black hover:brightness-110">
-                Post an event
-              </Link>
-              <Link href="/promote" className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 text-center text-sm font-bold text-white/75 hover:border-accent/30 hover:text-white">
-                See promoter tools
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        <EventRail
-            signalSurface="homepage"
-          id="fresh"
-          eyebrow="Fresh drops"
-          title="Recently added"
-          text="New inventory entering HypeKnight discovery."
-          events={recentlyAddedEvents}
-          emptyText={complete ? "No recently added events yet." : "Event data is temporarily unavailable for this section."}
-          href="/events"
-          action="View all"
-        />
-
-        <EventRail
-            signalSurface="homepage"
-          id="weekend"
-          eyebrow="Plan ahead"
-          title="This weekend"
-          text="What is already lining up for the weekend."
-          events={weekendEvents}
-          emptyText={complete ? "No weekend events are showing yet." : "Event data is temporarily unavailable for this section."}
-          href="/events?when=weekend"
-          action="Plan the weekend"
-        />
-
-        {settings.homepage_show_special_days && specialResult.status === 'unavailable' ? <DataNotice message="Calendar highlights are temporarily unavailable." /> : null}
-        {settings.homepage_show_special_days ? <SpecialDaysSection specialDays={specialDays ?? []} /> : null}
-      </div>
-    </>
-  );
-}
-
-function IntentChip({ label, href, signalId }: { label: string; href: string; signalId: string }) {
-  return (
-    <SignalLink
-      href={href}
-      signal={{
-        signalType: 'time_intent_selected',
-        subjectType: 'search',
-        subjectId: signalId,
-        source: 'homepage',
-        surface: 'hero_intents',
-        verificationLevel: 'declared',
-        metadata: { when: signalId },
-      }}
-      className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-xs font-semibold text-white/55 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
-    >
-      {label}
-    </SignalLink>
-  );
-}
-
-function SnapshotMetric({ label, value, note, tone }: { label: string; value: number | 'Unavailable'; note: string; tone?: 'live' }) {
-  return (
-    <div className="rounded-2xl border border-white/[0.07] bg-black/25 p-4">
-      <div className="flex items-center gap-2">
-        {tone === 'live' && value !== 'Unavailable' ? <span className="h-2 w-2 rounded-full bg-emerald-400" /> : null}
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{label}</p>
-      </div>
-      <p className={`mt-2 ${value === 'Unavailable' ? 'text-sm leading-9' : 'text-3xl'} font-black tracking-tight text-white`}>{value}</p>
-      <p className="mt-1 text-[11px] text-white/35">{note}</p>
-    </div>
-  );
-}
-
-function SignalStat({ label, value, href, signalId }: { label: string; value: number | 'Unavailable'; href: string; signalId: string }) {
-  return (
-    <SignalLink
-      href={href}
-      signal={{
-        signalType: 'time_intent_selected',
-        subjectType: 'search',
-        subjectId: signalId,
-        source: 'homepage',
-        surface: 'here_now_summary',
-        verificationLevel: 'declared',
-        metadata: { when: signalId },
-      }}
-      className="bg-[#0c0f14] p-5 transition hover:bg-white/[0.04] sm:p-6"
-    >
-      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">{label}</p>
-      <p className={`mt-3 ${value === 'Unavailable' ? 'text-sm leading-8' : 'text-2xl'} font-black text-white`}>{value}</p>
-      <p className="mt-1 text-xs font-semibold text-accent">Explore →</p>
-    </SignalLink>
-  );
-}
-
-function DiscoveryVibes({ vibes, complete }: { vibes: any[]; complete: boolean }) {
-  return (
-    <section>
-      <SectionHeader eyebrow="Choose your energy" title="What’s your vibe tonight?" text="Every choice makes discovery more useful without asking you to fill out a profile first." href="/events" action="Explore everything" />
-      <div className="-mx-4 mt-5 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 lg:grid-cols-4">
-        {vibes.slice(0, 8).map((vibe) => (
-          <SignalLink
-            key={vibe.label}
-            href={vibe.href}
-            signal={{
-              signalType: 'vibe_selected',
-              subjectType: 'search',
-              subjectId: vibe.value,
-              source: 'homepage',
-              surface: 'vibe_grid_v3',
-              verificationLevel: 'declared',
-              metadata: { vibe: vibe.value, label: vibe.label },
-            }}
-            className="group min-w-[68vw] rounded-[1.75rem] border border-white/[0.08] bg-white/[0.035] p-5 transition hover:-translate-y-0.5 hover:border-accent/30 hover:bg-white/[0.055] sm:min-w-0"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-xl text-accent">{vibe.emoji}</span>
-              <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold text-white/35">{complete ? `${vibe.count} found` : 'Total unavailable'}</span>
-            </div>
-            <h3 className="mt-6 text-xl font-black tracking-tight text-white group-hover:text-accent">{vibe.label}</h3>
-            <p className="mt-1 text-xs text-white/40">Show me this energy →</p>
-          </SignalLink>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ActiveMarkets({ cityCounts, complete }: { cityCounts: any[]; complete: boolean }) {
-  return (
-    <section className="hk-glass-panel p-5 sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="hk-kicker">Market discovery</p>
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Where the inventory is moving.</h2>
-          <p className="mt-2 text-sm text-white/45">Event locations remain specific while HypeKnight increasingly understands their larger metro market.</p>
-        </div>
-        <Link href="/events" className="text-sm font-bold text-accent">All markets →</Link>
-      </div>
-
-      <div className="-mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
-        {cityCounts.slice(0, 12).map((item) => (
-          <SignalLink
-            key={`${item.city}-${item.state}`}
-            href={`/events?city=${encodeURIComponent(item.city)}&state=${encodeURIComponent(item.state)}`}
-            signal={{
-              signalType: 'market_selected',
-              subjectType: 'market',
-              subjectId: `${item.city},${item.state}`,
-              city: item.city,
-              state: item.state,
-              source: 'homepage',
-              surface: 'market_discovery_v3',
-              verificationLevel: 'declared',
-            }}
-            className="shrink-0 rounded-full border border-white/[0.08] bg-black/25 px-4 py-2.5 text-xs font-semibold text-white/55 transition hover:border-accent/30 hover:text-white"
-          >
-            {item.city}, {item.state}
-            <span className="ml-2 text-accent">{countLabel(complete, item.count)}</span>
-          </SignalLink>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function IntelligenceStage({ number, label, text }: { number: string; label: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-4">
-      <p className="text-[10px] font-black tracking-[0.2em] text-accent">{number}</p>
-      <p className="mt-3 text-sm font-black text-white">{label}</p>
-      <p className="mt-1 text-xs leading-5 text-white/40">{text}</p>
-    </div>
-  );
+  const discoverySections = [
+    { id:'live', title:'Live right now', text:'Scheduled events whose current time window says they are happening now.', events:liveNowEvents, empty:'Nothing is showing as live right now.', href:'/events?when=live', action:'See live' },
+    { id:'soon', title:'Starting soon', text:'Events beginning in the next three hours.', events:startingSoonEvents, empty:'Nothing is starting soon right now.', href:'/events?when=soon', action:'See what’s next' },
+    { id:'tonight', title:'Tonight', text:'Tonight’s eligible event inventory.', events:tonightEvents, empty:'No events are currently showing for tonight.', href:'/events?when=tonight', action:'Browse tonight' },
+    { id:'fresh', title:'Recently added', text:'New inventory entering HypeKnight discovery.', events:recentlyAddedEvents, empty:'No recently added events yet.', href:'/events', action:'View all' },
+    { id:'weekend', title:'This weekend', text:'What is already lining up for the weekend.', events:weekendEvents, empty:'No weekend events are showing yet.', href:'/events?when=weekend', action:'Plan the weekend' },
+  ];
+  const withMarket = (href:string) => href + (city || state ? (href.includes('?') ? '&' : '?') + new URLSearchParams({city,state}) : '');
+  return <>
+    {telemetry ? <TrackView pageType="homepage" path="/" /> : null}
+    <SimplyComplexHome inventory={inventory} city={city} state={state} production tracking={telemetry}>
+      {personalized?.status === 'unavailable' ? <DataNotice message="Personal recommendations are temporarily unavailable." /> : null}
+      {personalizedEvents.length ? <section className="sc-section"><EventRail signalSurface={telemetry ? "homepage" : undefined} eyebrow="For you" title="From your preferences" text="Your existing personalized recommendations, across locations." events={personalizedEvents} href="/events/recommended" action="See all recommendations" /></section> : null}
+      <section className="sc-section sc-additional-discovery" aria-labelledby="sc-more-discovery">
+        <div className="sc-section-heading"><div><p className="sc-eyebrow">Keep exploring</p><h2 id="sc-more-discovery">More ways into the night.</h2></div></div>
+        <details className="sc-discovery-disclosure"><summary>Advanced search &amp; device location</summary><div className="sc-advanced-search"><DeviceLocationBadge /><DiscoveryCommandBar key={city + "," + state} tracking={telemetry} initialCity={city} initialState={state} /></div></details>
+        {discoverySections.map(section => <details key={section.id} className="sc-discovery-disclosure"><summary>{section.title}</summary><EventRail signalSurface={telemetry ? "homepage" : undefined} id={section.id} title={section.title} text={section.text} events={section.events} emptyText={complete ? section.empty : 'Event data is temporarily unavailable for this section.'} href={withMarket(section.href)} action={section.action} /></details>)}
+      </section>
+      {settings.homepage_show_special_days && specialResult.status === 'unavailable' ? <DataNotice message="Calendar highlights are temporarily unavailable." /> : null}
+      {settings.homepage_show_special_days ? <section className="sc-section"><SpecialDaysSection specialDays={specialDays ?? []} /></section> : null}
+    </SimplyComplexHome>
+  </>;
 }
 
 function normalizeEvent(event: any, source: 'hypeknight' | 'external') {
@@ -464,28 +133,6 @@ function normalizeEvent(event: any, source: 'hypeknight' | 'external') {
     classification: event.classification || event.segment,
     created_at: event.created_at,
   };
-}
-
-function buildAccurateVibeCards(events: any[]) {
-  return VIBES.map(vibe => ({
-    ...vibe,
-    count: events.filter(event => event.categories.includes(vibe.value)).length,
-    href: '/events?category=' + encodeURIComponent(vibe.value),
-  })).filter(vibe => vibe.count > 0);
-}
-
-function buildCityCounts(events: any[]) {
-  const map = new Map<string, { city: string; state: string; count: number }>();
-  for (const event of events) {
-    const city = String(event.city || '').trim();
-    const state = normalizeState(String(event.state || ''));
-    if (!city || !state) continue;
-    const key = `${city.toLowerCase()}-${state}`;
-    const existing = map.get(key);
-    if (existing) existing.count += 1;
-    else map.set(key, { city, state, count: 1 });
-  }
-  return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
 function parseWallTime(value?: string | null) {
