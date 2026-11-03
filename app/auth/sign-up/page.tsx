@@ -14,8 +14,8 @@ export default async function SignUpPage({
   const error = params.error ? 'Unable to create your account. Check your details and try again.' : null;
 
   return (
-    <section className="hk-auth mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-16 sm:px-6 lg:px-8">
-      <div className="w-full rounded-[2rem] border border-white/10 bg-white/5 p-8">
+    <section className="hk-auth mx-auto flex w-full min-w-0 max-w-md items-center py-6 sm:min-h-[70vh] sm:px-4 sm:py-12">
+      <div className="w-full min-w-0 rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-8">
         <h1 className="text-3xl font-bold text-white">Create your account</h1>
         <p className="mt-2 text-sm text-white/60">Create an account to save events and manage your activity.</p>
         <AuthFeedback error={error} />
