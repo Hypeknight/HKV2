@@ -1,3 +1,4 @@
+import PreviewArtwork from '@/components/preview/PreviewArtwork';
 import DiscoveryImpression from '@/components/analytics/DiscoveryImpression';
 import type { DiscoverySurface } from '@/lib/signals/discovery';
 import Link from 'next/link';
@@ -7,12 +8,23 @@ import EventTime from './EventTime';
 export default function EventCard({
   event,
   compact = false,
+  editorial = false,
   impression,
 }: {
   event: any;
   compact?: boolean;
+  editorial?: boolean;
   impression?: { surface: DiscoverySurface; placement: string; position?: number };
 }) {
+  if (editorial) return <article className="sc-card"><Link href={event.href} className="sc-card-link">
+    <PreviewArtwork key={event.image_url} image={event.image_url || null} />
+    {impression ? <DiscoveryImpression subjectId={event.id} inventorySource={event.source === 'external' || event.is_external ? 'external' : 'hypeknight'} {...impression} /> : null}
+    <div className="sc-card-copy"><p className="sc-source">{event.source === 'external' || event.is_external ? 'External · ' : 'Native · '}{event.source_label || 'HypeKnight'}</p>
+      <h3>{event.name || 'Untitled event'}</h3><p className="sc-place">{[event.venue_name,event.city,event.state].filter(Boolean).join(' · ') || 'Location unavailable'}</p>
+      {event.event_start_at ? <EventTime value={event.event_start_at} /> : <p className="sc-muted">Time unavailable</p>}
+      <span className="sc-card-action">Explore event <span aria-hidden="true">↗</span></span>
+    </div>
+  </Link></article>;
   return (
     <Link
       href={event.href}

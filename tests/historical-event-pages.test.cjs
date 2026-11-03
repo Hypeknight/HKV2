@@ -7,7 +7,7 @@ const {renderToStaticMarkup}=require('react-dom/server');
 function load(file,mocks={},extra='') {
   const exports={};
   const source=ts.transpileModule(fs.readFileSync(file,'utf8')+extra,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-  new Function('exports','require',source)(exports,name=>Object.hasOwn(mocks,name)?mocks[name]:name.startsWith('@/')?{}:require(name));
+  new Function('exports','require',source)(exports,name=>Object.hasOwn(mocks,name)?mocks[name]:name.endsWith('.css')?{}:name.startsWith('@/')?{}:require(name));
   return exports;
 }
 const base={id:'event',slug:'canonical-event',name:'Existing event',status:'scheduled',is_public:true,is_approved:true,hidden_by_admin:false,removed_at:null,owner_id:'owner',event_start_at:'2099-01-01T19:00:00Z',event_end_at:'2099-01-01T23:00:00Z',promotion_start_at:'2000-01-01T00:00:00Z',promotion_end_at:'2100-01-01T00:00:00Z'};
