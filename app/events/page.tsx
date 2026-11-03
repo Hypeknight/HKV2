@@ -4,6 +4,8 @@ import DataNotice from '@/components/interface-state/DataNotice';
 import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord, hasWholeTerm, type DiscoveryCategory } from '@/lib/discovery/classification';
 import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
+import '../preview/simply-complex/preview.css';
+import './discovery.css';
 import { createClient } from '@/lib/supabase/server';
 import { expandCitySearch } from '@/lib/city-aliases';
 import { getLookupMap, type LookupValue } from '@/lib/config/lookups';
@@ -19,7 +21,6 @@ import {
   EmptyState,
   EventCard,
   EventRail,
-  MetricCard,
   SectionHeader,
 } from '@/components/ui';
 
@@ -71,6 +72,7 @@ const ALL_PREVIEW_LIMIT = 24;
 
 export default async function EventsPage({ searchParams }: Props) {
   const query = searchParams ? await searchParams : {};
+  const telemetry = process.env.HYPEKNIGHT_HOMEPAGE_PREVIEW !== '1';
 
   const category = cleanLower(query.category);
   const search = cleanLower(query.q);
@@ -333,19 +335,20 @@ export default async function EventsPage({ searchParams }: Props) {
 
   return (
     <>
-      <TrackView
+      {telemetry ? <TrackView
         pageType="events_index"
         path="/events"
         city={query.city || null}
         state={query.state || null}
-      />
+      /> : null}
 
-      <section className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-10 lg:px-8">
+      <section className="sc-home sc-discovery">
         {!complete ? <DataNotice message={locationUnavailable ? 'Location-based results are temporarily unavailable. Try again before changing your search.' : inventoryState === 'partial' ? 'Some event sources are temporarily unavailable. Showing available results; totals are unavailable.' : 'Event results are temporarily unavailable. Please try again.'} /> : null}
         {lookupResult.status === 'unavailable' ? <DataNotice message="Filter choices are temporarily unavailable. Your existing filters are retained." /> : null}
         {!geographyAvailable && !locationUnavailable ? <DataNotice message={keywordOnly ? "Market expansion is temporarily unavailable. Showing keyword matches only." : "Market information is temporarily unavailable. Available events are still shown."} /> : null}
         <DiscoveryHero
           query={query}
+          tracking={telemetry}
           state={state}
           music={music}
           eventType={eventType}
@@ -367,140 +370,8 @@ export default async function EventsPage({ searchParams }: Props) {
           }}
         />
 
-        <QuickDiscovery
-          eventTypes={lookups.event_types}
-          musicGenres={lookups.music_genres}
-        />
-
-        {cityCounts.length ? (
-          <CityRail cities={cityCounts} complete={hypeResult.status === 'success' && externalResult.status === 'success'} />
-        ) : null}
-
-        {hasActiveFilters ? (
-          <section className="rounded-[2rem] border border-accent/20 bg-accent/10 p-5 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-accent">
-                  Filtered Discovery
-                </p>
-
-                <h2 className="mt-2 text-2xl font-black text-white">
-                  {complete ? `${cards.length} ${keywordOnly ? `keyword match${cards.length === 1 ? '' : 'es'}` : `matching event${cards.length === 1 ? '' : 's'}`}` : 'Results unavailable or incomplete'}
-                </h2>
-
-                <p className="mt-2 text-sm text-white/60">
-                  {activeFilterCount} filter
-                  {activeFilterCount === 1 ? '' : 's'} applied.
-                </p>
-              </div>
-
-              <Link
-                href="/events"
-                className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-semibold text-white hover:border-accent/40"
-              >
-                Clear All Filters
-              </Link>
-            </div>
-          </section>
-        ) : null}
-
-        {!when || when === 'live' ? (
-          <EventRail
-            signalSurface="events_index"
-            id="live"
-            eyebrow="Here & Now"
-            title="Live right now"
-            text="Events currently happening."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={liveEvents}
-          />
-        ) : null}
-
-        {!when || when === 'soon' ? (
-          <EventRail
-            signalSurface="events_index"
-            id="soon"
-            eyebrow="Next Up"
-            title="Starting soon"
-            text="Events starting in the next three hours."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={startingSoonEvents}
-          />
-        ) : null}
-
-        {!when || when === 'tonight' ? (
-          <EventRail
-            signalSurface="events_index"
-            id="tonight"
-            eyebrow="Tonight"
-            title="Tonight’s events"
-            text="Events scheduled for today and tonight."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={tonightEvents}
-          />
-        ) : null}
-
-        {!hasActiveFilters ? (
-          <EventRail
-            signalSurface="events_index"
-            id="fresh"
-            eyebrow="Fresh"
-            title="Recently added"
-            text="New listings added into HypeKnight discovery."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={recentlyAddedEvents}
-          />
-        ) : null}
-
-        {!when || when === 'weekend' ? (
-          <EventRail
-            signalSurface="events_index"
-            id="weekend"
-            eyebrow="Weekend"
-            title="This weekend"
-            text="Friday through Sunday events."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={weekendEvents}
-          />
-        ) : null}
-
-        {!when || when === 'tomorrow' ? (
-          <EventRail
-            signalSurface="events_index"
-            id="tomorrow"
-            eyebrow="Tomorrow"
-            title="Tomorrow’s move"
-            text="Events happening tomorrow."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={tomorrowEvents}
-          />
-        ) : null}
-
-        {!when || when === 'week' ? (
-          <EventRail
-            signalSurface="events_index"
-            id="week"
-            eyebrow="This Week"
-            title="Coming up this week"
-            text="Events after tomorrow through the next seven days."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={thisWeekEvents}
-          />
-        ) : null}
-
-        {!hasActiveFilters ? (
-          <EventRail
-            signalSurface="events_index"
-            id="next-week"
-            eyebrow="Next Week"
-            title="Next week’s lineup"
-            text="Events scheduled seven to fourteen days out."
-            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
-            events={nextWeekEvents}
-          />
-        ) : null}
-
-        <section id="all" className="scroll-mt-24">
+        <section id="all" className="sc-results scroll-mt-24">
+          {hasActiveFilters ? <p className="sc-filter-context">{complete ? `${cards.length} ${keywordOnly ? `keyword match${cards.length === 1 ? '' : 'es'}` : `matching event${cards.length === 1 ? '' : 's'}`}` : 'Results unavailable or incomplete'} · {activeFilterCount} filters applied.</p> : null}
           <SectionHeader
             eyebrow={hasActiveFilters ? 'Results' : 'All Events'}
             title={
@@ -512,12 +383,13 @@ export default async function EventsPage({ searchParams }: Props) {
           />
 
           {allPreviewEvents.length ? (
-            <div className="mt-5 grid gap-4 sm:mt-8 md:grid-cols-2 xl:grid-cols-3">
+            <div className="sc-cards">
               {allPreviewEvents.map((event) => (
                 <EventCard
+                  editorial
                   key={`${event.source_label}-${event.id}`}
                   event={event}
-                  impression={{ surface: 'events_index', placement: 'all_results' }}
+                  impression={telemetry ? { surface: 'events_index', placement: 'all_results' } : undefined}
                 />
               ))}
             </div>
@@ -527,13 +399,118 @@ export default async function EventsPage({ searchParams }: Props) {
             </div>
           )}
         </section>
+        <details className="sc-browse-paths">
+          <summary>More ways to explore <span aria-hidden="true">＋</span></summary>
+          <QuickDiscovery query={query} eventTypes={lookups.event_types} musicGenres={lookups.music_genres} />
+          {cityCounts.length ? <CityRail query={query} cities={cityCounts} complete={hypeResult.status === 'success' && externalResult.status === 'success'} /> : null}
+        </details>
+        <details className="sc-time-sections">
+          <summary>Browse by time <span aria-hidden="true">＋</span></summary>
+        {!when || when === 'live' ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="live"
+            eyebrow="Here & Now"
+            title="Live right now"
+            text="Events currently happening."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={liveEvents}
+          />
+        ) : null}
+
+        {!when || when === 'soon' ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="soon"
+            eyebrow="Next Up"
+            title="Starting soon"
+            text="Events starting in the next three hours."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={startingSoonEvents}
+          />
+        ) : null}
+
+        {!when || when === 'tonight' ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="tonight"
+            eyebrow="Tonight"
+            title="Tonight’s events"
+            text="Events scheduled for today and tonight."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={tonightEvents}
+          />
+        ) : null}
+
+        {!hasActiveFilters ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="fresh"
+            eyebrow="Fresh"
+            title="Recently added"
+            text="New listings added into HypeKnight discovery."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={recentlyAddedEvents}
+          />
+        ) : null}
+
+        {!when || when === 'weekend' ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="weekend"
+            eyebrow="Weekend"
+            title="This weekend"
+            text="Friday through Sunday events."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={weekendEvents}
+          />
+        ) : null}
+
+        {!when || when === 'tomorrow' ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="tomorrow"
+            eyebrow="Tomorrow"
+            title="Tomorrow’s move"
+            text="Events happening tomorrow."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={tomorrowEvents}
+          />
+        ) : null}
+
+        {!when || when === 'week' ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="week"
+            eyebrow="This Week"
+            title="Coming up this week"
+            text="Events after tomorrow through the next seven days."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={thisWeekEvents}
+          />
+        ) : null}
+
+        {!hasActiveFilters ? (
+          <EventRail
+            signalSurface={telemetry ? "events_index" : undefined}
+            id="next-week"
+            eyebrow="Next Week"
+            title="Next week’s lineup"
+            text="Events scheduled seven to fourteen days out."
+            emptyText={complete ? undefined : "Event data is temporarily unavailable for this section."}
+            events={nextWeekEvents}
+          />
+        ) : null}
+
+
+        </details>
       </section>
     </>
   );
 }
 
 function DiscoveryHero({
-  query,
+  query, tracking,
   state,
   music,
   eventType,
@@ -548,6 +525,7 @@ function DiscoveryHero({
   counts,
 }: {
   query: Awaited<NonNullable<Props['searchParams']>>;
+  tracking: boolean;
   state: string;
   music: string;
   eventType: string;
@@ -568,217 +546,49 @@ function DiscoveryHero({
     all: number | 'Unavailable';
   };
 }) {
-  return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-5 sm:rounded-[3rem] sm:p-10">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_28%)]" />
-
-      <div className="relative">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.32em] text-accent sm:text-sm">
-              HypeKnight Discovery
-            </p>
-
-            <h1 className="mt-3 max-w-4xl text-4xl font-black leading-[0.95] text-white sm:text-6xl lg:text-7xl">
-              Find the night that fits you.
-            </h1>
-
-            <p className="mt-5 max-w-3xl text-sm leading-6 text-white/70 sm:text-base">
-              Search by city, sound, experience, energy, age, amenities,
-              time, venue, or event name.
-            </p>
-          </div>
-
-          <Link
-            href="/promote"
-            className="inline-flex shrink-0 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10 px-5 py-3 font-semibold text-accent hover:bg-accent/15"
-          >
-            Promote an Event
-          </Link>
-        </div>
-
-        <DiscoverySearchForm className="mt-8 rounded-[1.75rem] border border-white/10 bg-black/40 p-4 backdrop-blur sm:p-5">
-          {query.category ? <>
-            <input type="hidden" name="category" value={query.category} />
-            <p className="mb-3 text-sm text-white/70">Category: {query.category}</p>
-          </> : null}
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_170px_auto]">
-            <FilterInput
-              name="q"
-              defaultValue={query.q || ''}
-              placeholder="Event, venue, music, or keyword"
-            />
-
-            <FilterInput
-              name="city"
-              defaultValue={query.city || ''}
-              placeholder="City or local nickname"
-            />
-
-            <select
-              name="state"
-              defaultValue={state}
-              className={fieldClass}
-            >
-              <option value="">All States</option>
-              {US_STATES.map(([abbr, name]) => (
-                <option key={abbr} value={abbr}>
-                  {name}
-                </option>
-              ))}
-            </select>
-
-            <button className="rounded-2xl bg-accent px-6 py-3 font-black text-black hover:opacity-90">
-              Find Events
-            </button>
-          </div>
-
-          <details
-            className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03]"
-            open={hasActiveFilters}
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4">
-              <span className="font-semibold text-white">
-                More filters
-              </span>
-
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/60">
-                {activeFilterCount} active
-              </span>
-            </summary>
-
-            <div className="grid gap-3 border-t border-white/10 p-4 sm:grid-cols-2 xl:grid-cols-4">
-              <LookupSelect
-                name="music"
-                label="Music"
-                value={music}
-                options={lookups.music_genres}
-              />
-
-              <LookupSelect
-                name="event_type"
-                label="Event Type"
-                value={eventType}
-                options={lookups.event_types}
-              />
-
-              <LookupSelect
-                name="vibe"
-                label="Vibe"
-                value={vibe}
-                options={lookups.vibe_tags}
-              />
-
-              <LookupSelect
-                name="amenity"
-                label="Amenity"
-                value={amenity}
-                options={lookups.event_amenities}
-              />
-
-              <LookupSelect
-                name="age"
-                label="Age"
-                value={age}
-                options={lookups.age_requirements}
-              />
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
-                  When
-                </span>
-
-                <select
-                  name="when"
-                  defaultValue={when}
-                  className={fieldClass}
-                >
-                  <option value="">Any Time</option>
-                  <option value="live">Live Now</option>
-                  <option value="soon">Starting Soon</option>
-                  <option value="tonight">Tonight</option>
-                  <option value="tomorrow">Tomorrow</option>
-                  <option value="weekend">Weekend</option>
-                  <option value="week">This Week</option>
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
-                  Source
-                </span>
-
-                <select
-                  name="source"
-                  defaultValue={source}
-                  className={fieldClass}
-                >
-                  <option value="">All Sources</option>
-                  <option value="hypeknight">HypeKnight</option>
-                  <option value="external">External</option>
-                </select>
-              </label>
-
-              <div className="flex items-end">
-                <button className="w-full rounded-2xl border border-accent/30 bg-accent/10 px-5 py-3 font-semibold text-accent hover:bg-accent/15">
-                  Apply Filters
-                </button>
-              </div>
-            </div>
-          </details>
-
-          {hasActiveFilters ? (
-            <Link
-              href="/events"
-              className="mt-4 inline-flex text-sm font-semibold text-white/55 hover:text-accent"
-            >
-              Clear all filters
-            </Link>
-          ) : null}
-        </DiscoverySearchForm>
-
-        <div className="mt-6 grid grid-cols-3 gap-3 sm:mt-8 xl:grid-cols-6">
-          <MetricCard
-            label="Live"
-            value={counts.live === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.live}
-            href={discoveryFilterDestination(query, { when: "live" })}
-          />
-          <MetricCard
-            label="Soon"
-            value={counts.soon === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.soon}
-            href={discoveryFilterDestination(query, { when: "soon" })}
-          />
-          <MetricCard
-            label="Tonight"
-            value={counts.tonight === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.tonight}
-            href={discoveryFilterDestination(query, { when: "tonight" })}
-          />
-          <MetricCard
-            label="Tomorrow"
-            value={counts.tomorrow === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.tomorrow}
-            href={discoveryFilterDestination(query, { when: "tomorrow" })}
-          />
-          <MetricCard
-            label="Weekend"
-            value={counts.weekend === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.weekend}
-            href={discoveryFilterDestination(query, { when: "weekend" })}
-          />
-          <MetricCard
-            label="All"
-            value={counts.all === 'Unavailable' ? <span className="text-sm">Unavailable</span> : counts.all}
-            href="#all"
-            accent
-          />
-        </div>
+  const extraFilters = Boolean(music || eventType || vibe || amenity || age || when || source);
+  return <header className="sc-discovery-hero">
+    <div className="sc-discovery-title"><div><p className="sc-eyebrow">HypeKnight · Event Discovery</p>
+      <h1>Find your <em>kind of night.</em></h1>
+      <p className="sc-muted">A familiar favorite. Something unexpected. Start with a place, a sound, or a feeling.</p></div>
+      <Link href="/surprise" className="sc-discovery-surprise">Leave room for surprise <span aria-hidden="true">↗</span></Link>
+    </div>
+    <DiscoverySearchForm tracking={tracking} className="sc-discovery-form">
+      {query.category ? <><input type="hidden" name="category" value={query.category} /><p className="sc-filter-context">Category: {query.category}</p></> : null}
+      <div className="sc-primary-filters">
+        <FilterInput name="q" label="What are you in the mood for?" defaultValue={query.q || ''} placeholder="Events, artists or venues" />
+        <FilterInput name="city" label="Your city" defaultValue={query.city || ''} placeholder="City or local nickname" />
+        <label className="sc-filter-field" htmlFor="discovery-state"><span>State</span><select id="discovery-state" name="state" defaultValue={state} className={fieldClass}><option value="">All states</option>{US_STATES.map(([abbr,name]) => <option key={abbr} value={abbr}>{name}</option>)}</select></label>
+        <button className="sc-button" type="submit">Find events <span aria-hidden="true">↗</span></button>
       </div>
-    </section>
-  );
+      <details className="sc-advanced-filters" open={extraFilters}>
+        <summary>Fine-tune your night <span>{activeFilterCount} active <span aria-hidden="true">＋</span></span></summary>
+        <div className="sc-advanced-grid">
+          <LookupSelect name="music" label="Music" value={music} options={lookups.music_genres} />
+          <LookupSelect name="event_type" label="Event Type" value={eventType} options={lookups.event_types} />
+          <LookupSelect name="vibe" label="Vibe" value={vibe} options={lookups.vibe_tags} />
+          <LookupSelect name="amenity" label="Amenity" value={amenity} options={lookups.event_amenities} />
+          <LookupSelect name="age" label="Age" value={age} options={lookups.age_requirements} />
+          <label className="sc-filter-field" htmlFor="discovery-when"><span>When</span><select id="discovery-when" name="when" defaultValue={when} className={fieldClass}><option value="">Any Time</option><option value="live">Live Now</option><option value="soon">Starting Soon</option><option value="tonight">Tonight</option><option value="tomorrow">Tomorrow</option><option value="weekend">Weekend</option><option value="week">This Week</option></select></label>
+          <label className="sc-filter-field" htmlFor="discovery-source"><span>Source</span><select id="discovery-source" name="source" defaultValue={source} className={fieldClass}><option value="">All Sources</option><option value="hypeknight">HypeKnight</option><option value="external">External</option></select></label>
+          <button type="submit" className="sc-button sc-button-secondary">Apply filters ↗</button>
+        </div>
+      </details>
+      {hasActiveFilters ? <Link href="/events" className="sc-clear-filters">Clear all filters ↗</Link> : null}
+    </DiscoverySearchForm>
+    <nav className="sc-time-links" aria-label="Explore by time">
+      {([['live','Live',counts.live],['soon','Soon',counts.soon],['tonight','Tonight',counts.tonight],['tomorrow','Tomorrow',counts.tomorrow],['weekend','Weekend',counts.weekend]] as const).map(([value,label,count]) => <Link key={value} href={discoveryFilterDestination(query,{when:value})} aria-current={when === value ? 'page' : undefined}>{label} <span>{count}</span></Link>)}
+      <Link href="#all">Results <span>{counts.all}</span></Link>
+    </nav>
+  </header>;
 }
 
 function QuickDiscovery({
+  query,
   eventTypes,
   musicGenres,
 }: {
+  query: Awaited<NonNullable<Props['searchParams']>>;
   eventTypes: LookupValue[];
   musicGenres: LookupValue[];
 }) {
@@ -791,6 +601,7 @@ function QuickDiscovery({
     <section className="space-y-5">
       {typeOptions.length ? (
         <DiscoveryChipRail
+          query={query}
           eyebrow="Choose an Experience"
           options={typeOptions}
           param="event_type"
@@ -799,6 +610,7 @@ function QuickDiscovery({
 
       {musicOptions.length ? (
         <DiscoveryChipRail
+          query={query}
           eyebrow="Choose Your Sound"
           options={musicOptions}
           param="music"
@@ -809,10 +621,12 @@ function QuickDiscovery({
 }
 
 function DiscoveryChipRail({
+  query,
   eyebrow,
   options,
   param,
 }: {
+  query: Awaited<NonNullable<Props['searchParams']>>;
   eyebrow: string;
   options: LookupValue[];
   param: string;
@@ -827,7 +641,7 @@ function DiscoveryChipRail({
         {options.map((option) => (
           <Link
             key={option.id}
-            href={`/events?${param}=${encodeURIComponent(option.value)}`}
+            href={discoveryFilterDestination(query, { [param]: option.value })}
             className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white/75 transition hover:border-accent/40 hover:text-accent"
           >
             {option.icon ? <span>{option.icon}</span> : null}
@@ -840,28 +654,27 @@ function DiscoveryChipRail({
 }
 
 function CityRail({
-  cities, complete,
+  cities, complete, query,
 }: {
+  query: Awaited<NonNullable<Props['searchParams']>>;
   cities: Array<{ city: string; state: string; count: number }>;
   complete: boolean;
 }) {
   return (
     <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 sm:p-6">
       <p className="text-xs uppercase tracking-[0.25em] text-accent">
-        Active Cities
+        Available locations
       </p>
 
       <h2 className="mt-2 text-2xl font-black text-white">
-        See where the night is moving.
+        Explore a different city.
       </h2>
 
       <div className="-mx-1 mt-5 flex gap-3 overflow-x-auto px-1 pb-2">
         {cities.slice(0, 20).map((item) => (
           <Link
             key={`${item.city}-${item.state}`}
-            href={`/events?city=${encodeURIComponent(
-              item.city
-            )}&state=${encodeURIComponent(item.state)}`}
+            href={discoveryFilterDestination(query, { city: item.city, state: item.state })}
             className="shrink-0 rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white/70 hover:border-accent/40 hover:text-accent"
           >
             {item.city}, {item.state}
@@ -878,21 +691,16 @@ function CityRail({
 
 function FilterInput({
   name,
+  label,
   defaultValue,
   placeholder,
 }: {
   name: string;
+  label: string;
   defaultValue?: string;
   placeholder: string;
 }) {
-  return (
-    <input
-      name={name}
-      defaultValue={defaultValue || ''}
-      placeholder={placeholder}
-      className={fieldClass}
-    />
-  );
+  return <label className="sc-filter-field" htmlFor={'discovery-' + name}><span>{label}</span><input id={'discovery-' + name} name={name} defaultValue={defaultValue || ''} placeholder={placeholder} className={fieldClass} /></label>;
 }
 
 function LookupSelect({
@@ -907,12 +715,13 @@ function LookupSelect({
   options: LookupValue[];
 }) {
   return (
-    <label className="block">
+    <label className="sc-filter-field" htmlFor={'discovery-' + name}>
       <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
         {label}
       </span>
 
       <select
+        id={'discovery-' + name}
         name={name}
         defaultValue={value}
         className={fieldClass}
@@ -932,7 +741,7 @@ function LookupSelect({
 }
 
 const fieldClass =
-  'w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/40 focus:border-accent/50';
+  'sc-discovery-field';
 
 async function loadHypeKnightEvents(supabase: any) {
   const now = new Date().toISOString();
