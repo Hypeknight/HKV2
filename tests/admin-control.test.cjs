@@ -31,3 +31,12 @@ test('data-free Admin preview is unavailable by default and never reads producti
  try {delete process.env.HYPEKNIGHT_HOMEPAGE_PREVIEW;await assert.rejects(Page({searchParams:Promise.resolve({})}),/preview-disabled/);process.env.HYPEKNIGHT_HOMEPAGE_PREVIEW='1';const html=render(await Page({searchParams:Promise.resolve({frame:'1'})}));assert.ok(html.includes('DESIGN FIXTURE'));assert.ok(html.includes('not an authenticated admin session'));assert.ok(html.includes('Unavailable fixture'));}
  finally {if(previous===undefined)delete process.env.HYPEKNIGHT_HOMEPAGE_PREVIEW;else process.env.HYPEKNIGHT_HOMEPAGE_PREVIEW=previous;}
 });
+
+test('overview retry uses full navigation so same-route cache cannot skip retrieval',()=>{
+ const Overview=load('components/admin/AdminOverview.tsx',{'next/link':{default:Link},'./AdminMeasurement':{default:Measurement.default}}).default;
+ const measures=moduleFor(null).OPERATION_MEASURES.map(item=>({...item,value:null}));
+ const tree=Overview({measures});let retry;
+ function visit(node){if(Array.isArray(node))return node.forEach(visit);if(!node||typeof node!=='object')return;if(node.props?.children==='Retry overview')retry=node;visit(node.props?.children);}
+ visit(tree);assert.ok(retry);assert.equal(retry.type,'a');assert.equal(retry.props.href,'/admin');
+ assert.ok(fs.readFileSync('app/admin/signals/page.tsx','utf8').includes('<a href="/admin/signals">Retry measurements</a>'));
+});

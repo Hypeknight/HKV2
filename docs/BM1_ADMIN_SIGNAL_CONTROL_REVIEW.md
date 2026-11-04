@@ -18,9 +18,11 @@ Real authenticated administrator browser testing is still required before releas
 Consumer direction: standard Discovery focuses on current events and the next 14 days. External horizon correction is kept in a separate change. Native Extended Discovery entitlements are not silently revoked.
 
 ## Validation evidence
-- 290/290 application tests pass (nine new focused regressions).
+- 291/291 application tests pass (ten new focused regressions).
 - TypeScript, git diff checks and full production-configured build pass.
 - No previous Admin navigation destinations removed (source-set comparison).
 - Browser fixtures: 320px viewport has 305px content/305px scroll width; 390px has 375/375; desktop 1265/1265. Native mobile disclosure and keyboard activation work. Tool search remains available.
 - Production-default local server renders Not Found for the fixture route, without fixture content. Next streamed Not Found returned HTTP 200 with the 404 fallback marker; this is not proof of a hard HTTP 404. Signed-out /admin/signals returns a 307 authentication redirect.
 - Actual authenticated administrator data/operations and real production RLS queries have not been exercised in this checkpoint. Release remains gated on that review.
+
+Retry controls use full navigation anchors to reattempt same-route queries instead of relying on the client router cache.
