@@ -62,8 +62,8 @@ export async function GET(request: Request) {
   const now = new Date().toISOString();
 
   const [hypeResult, externalResult, marketResult, areaResult, preferenceResult] = await Promise.all([
-    supabase.from('events').select('id,name,slug,city,state,description,event_start_at,flyer_url,venue_name,event_type,music_selection,vibe_tags,amenities,market_id').in('status', ['scheduled', 'active']).eq('is_public', true).is('removed_at', null).gte('event_start_at', now).order('event_start_at', { ascending: true }).limit(250),
-    supabase.from('external_events').select('id,name,city,state,description,event_start_at,image_url,venue_name,genre,classification,segment,market_id,source_code').eq('status', 'active').gte('event_start_at', now).order('event_start_at', { ascending: true }).limit(250),
+    supabase.from('events').select('id,name,slug,city,state,description,event_start_at,flyer_url,venue_name,event_type,music_selection,vibe_tags,amenities,market_id').in('status', ['scheduled', 'active']).eq('is_public', true).is('removed_at', null).gte('event_start_at', now).lte('promotion_start_at', now).gte('promotion_end_at', now).order('event_start_at', { ascending: true }).limit(250),
+    supabase.from('external_events').select('id,name,city,state,description,event_start_at,image_url,venue_name,genre,classification,segment,market_id,source_code').eq('status', 'active').gte('event_start_at', now).lte('event_start_at', new Date(Date.parse(now) + 14 * 86400000).toISOString()).order('event_start_at', { ascending: true }).limit(250),
     supabase.from('markets').select('id,market_key,name,primary_city,primary_state,status').neq('status', 'retired'),
     supabase.from('market_areas').select('id,market_id,city,state,normalized_city,normalized_state,area_type,is_primary,priority,is_active').eq('is_active', true),
     user ? supabase.from('user_event_preferences').select('*').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null, error: null }),

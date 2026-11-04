@@ -93,6 +93,8 @@ export async function getRecommendedEventsForUser(userId: string) {
           .eq('status', 'active')
           .eq('is_public', true)
           .is('removed_at', null)
+          .lte('promotion_start_at', nowIso)
+          .gte('promotion_end_at', nowIso)
           .gte('event_start_at', nowIso)
           .order('event_start_at', { ascending: true })
       : Promise.resolve({ data: [], error: null }),
@@ -102,7 +104,8 @@ export async function getRecommendedEventsForUser(userId: string) {
           .from('external_events')
           .select('*')
           .eq('status', 'active')
-          .or(`event_start_at.gte.${nowIso},event_start_at.is.null`)
+          .gte('event_start_at', nowIso)
+          .lte('event_start_at', new Date(Date.parse(nowIso) + 14 * 86400000).toISOString())
           .order('event_start_at', { ascending: true, nullsFirst: false })
       : Promise.resolve({ data: [], error: null }),
   ]);
