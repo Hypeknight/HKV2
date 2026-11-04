@@ -1,3 +1,4 @@
+import './admin.css';
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import AdminControlShell from '@/components/admin/AdminControlShell';

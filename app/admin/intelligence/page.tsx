@@ -231,7 +231,7 @@ export default async function AdminIntelligencePage() {
           Signals, metro markets, baselines, and experimental event intelligence
         </h1>
         <p className="mt-4 max-w-4xl text-white/70">
-          Development-only intelligence. V2 separates physical city from metro market,
+          Experimental diagnostics, not a factual production score or recommendation. Queries may return capped samples. Actor/session identifiers are not people; save and Going actions are not current state. For complete canonical action counts use Signal Evidence. V2 separates physical city from metro market,
           automatically observes unknown cities, and tracks baseline readiness. Public
           Hype scores and predictive recommendations remain withheld.
         </p>
@@ -247,7 +247,7 @@ export default async function AdminIntelligencePage() {
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Metric label="Signals / 7 days" value={currentSignals.length} />
-        <Metric label="Unique participants" value={uniqueParticipants} />
+        <Metric label="Observed actor/session identifiers" value={uniqueParticipants} />
         <Metric label="Market searches / 7d" value={currentMarketSearches} />
         <Metric label="Markets registered" value={marketRegistry.marketsById.size} />
         <Metric label="Events with signals" value={grouped.size} />
@@ -276,10 +276,10 @@ export default async function AdminIntelligencePage() {
                 <th className="pb-3">Baseline</th>
                 <th className="pb-3">Searches 7d</th>
                 <th className="pb-3">vs prior 7d</th>
-                <th className="pb-3">Searchers</th>
+                <th className="pb-3">Searcher identifiers</th>
                 <th className="pb-3">Event views</th>
-                <th className="pb-3">Saves</th>
-                <th className="pb-3">Going</th>
+                <th className="pb-3">Save actions</th>
+                <th className="pb-3">Going actions</th>
                 <th className="pb-3">Directions</th>
                 <th className="pb-3">HK / External</th>
                 <th className="pb-3">HK coverage</th>
@@ -388,7 +388,7 @@ export default async function AdminIntelligencePage() {
                 <th className="pb-3">State</th>
                 <th className="pb-3">Confidence</th>
                 <th className="pb-3">Signals</th>
-                <th className="pb-3">Unique</th>
+                <th className="pb-3">Actor/session identifiers</th>
                 <th className="pb-3">Weighted pts</th>
               </tr>
             </thead>
