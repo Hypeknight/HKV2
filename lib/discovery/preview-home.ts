@@ -52,6 +52,7 @@ export async function loadPreviewInventory(client: any, now = new Date()): Promi
       .order('event_start_at', { ascending: true }).limit(80), isEventRecord),
     readRows('preview.external', () => client.from('external_events').select('*').eq('status', 'active')
       .not('event_start_at', 'is', null)
+      .lte('event_start_at', new Date(now.getTime() + 14 * 86400000).toISOString())
       .or('event_end_at.gte.' + iso + ',and(event_end_at.is.null,event_start_at.gte.' + recent + ')')
       .order('event_start_at', { ascending: true }).limit(80), isEventRecord),
   ]);

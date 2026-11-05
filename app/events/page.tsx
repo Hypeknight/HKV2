@@ -777,6 +777,7 @@ async function loadExternalEvents(supabase: any) {
     .select('*')
     .eq('status', 'active')
     .not('event_start_at', 'is', null)
+      .lte('event_start_at', new Date(serverNow.getTime() + 14 * 86400000).toISOString())
     .or(
       `event_end_at.gte.${serverNow.toISOString()},and(event_end_at.is.null,event_start_at.gte.${fourHoursAgo.toISOString()})`
     )
