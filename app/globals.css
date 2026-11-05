@@ -141,3 +141,12 @@ button:focus-visible,
   outline: 2px solid var(--hk-accent);
   outline-offset: 4px;
 }
+
+/* Avoid iOS input auto-zoom and keep narrow portrait authentication usable. */
+@media (max-width: 639px) {
+  .hk-auth input:not([type="hidden"]) {
+    min-height: 48px;
+    font-size: 16px;
+  }
+  .hk-auth button[type="submit"] { min-height: 48px; }
+}
