@@ -1,0 +1,14 @@
+import Link from 'next/link';
+import { requireAdministrator, getAdminSignalCounts, SIGNAL_MEASURES } from '@/lib/admin/control-center';
+import AdminMeasurement from '@/components/admin/AdminMeasurement';
+export default async function AdminSignalsPage() {
+  const client = await requireAdministrator();
+  const summary = await getAdminSignalCounts(client);
+  return <div className="hk-admin-page">
+    <header className="hk-admin-heading"><p className="hk-admin-eyebrow">Reporting · Canonical evidence</p><h1>What was actually recorded.</h1><p>Historical signal observations across the platform, retrieved with your administrator session. These are action counts, not unique people, current saved/Going totals or verified attendance.</p><p className="hk-admin-detail">Rolling seven days · UTC · {summary.since} to {summary.until}. Counts are read independently, not a transaction snapshot.</p></header>
+    <p className="hk-admin-notice">Legacy logs are excluded from every canonical total below. Featured delivery is not instrumented; a purchase is not evidence of exposure. Unknown acquisition remains unknown.</p>
+    {Object.values(summary.counts).some(value => value === null) ? <p role="status" className="hk-admin-notice">Some queries could not be completed. <a href="/admin/signals">Retry measurements</a></p> : null}
+    <section className="hk-admin-grid" aria-label="Canonical recorded actions">{SIGNAL_MEASURES.map(item => <AdminMeasurement key={item.key} label={item.label} detail={item.detail} value={summary.counts[item.key]} />)}</section>
+    <section className="hk-admin-panel"><h2>Measurement boundaries</h2><dl className="hk-admin-definitions"><div><dt>Current saved / Going</dt><dd>Use authorized Event Mission Control snapshots; never derive current state by adding historical actions.</dd></div><div><dt>Pulse effective responses</dt><dd>Use Patron Pulse factual results. Revisions are not extra participants. Organizer aggregate displays withhold small samples below five; administrator diagnostics retain authorized factual access. This safeguard does not promise confidentiality.</dd></div><div><dt>Organic and acquisition</dt><dd>This summary does not classify sources. Canonical context is required before attributing organic Discovery, direct or referral activity.</dd></div><div><dt>Featured exposure</dt><dd>Not instrumented. No purchase-based delivery estimate.</dd></div><div><dt>Unique identifiers</dt><dd>Not calculated here. Actor and anonymous-session identifiers are not people counts; no identifiers or raw response content are loaded by these queries.</dd></div></dl><div className="hk-admin-actions"><Link href="/admin/patron-pulse">Pulse diagnostics →</Link><Link href="/admin/analytics">Legacy view logs →</Link><Link href="/admin/intelligence">Experimental Intelligence Lab →</Link></div></section>
+  </div>;
+}

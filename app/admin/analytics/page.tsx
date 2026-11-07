@@ -42,7 +42,8 @@ export default async function AdminAnalyticsPage() {
 
   if (eventsError) throw new Error(eventsError.message);
 
-  const allViews = views ?? [];
+  if (!Array.isArray(views) || !Array.isArray(events)) throw new Error('Legacy diagnostic sample unavailable.');
+  const allViews = views;
 
   const thisWeekViews = allViews.filter(
     (view) => new Date(view.created_at) >= startOfThisWeek
@@ -101,17 +102,17 @@ export default async function AdminAnalyticsPage() {
         </p>
 
         <h1 className="mt-3 text-4xl font-black text-white">
-          City Pulse + View Tracking
+          Legacy view-log diagnostics
         </h1>
 
         <p className="mt-3 max-w-3xl text-white/70">
-          Track event discovery activity by city, page type, and event source.
-          This helps HypeKnight understand where attention is building.
+          Legacy event_view_logs only. These records are not canonical signal totals, unique people, city activity or attendance. API row limits may truncate this diagnostic sample; do not use it for complete platform reporting.
         </p>
 
+        <p className="mt-4 text-sm text-white/70"><Link href="/admin/signals" className="text-accent underline">Open canonical Signal Evidence →</Link></p>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Views This Week" value={String(thisWeekViews.length)} />
-          <Metric label="Views Last Week" value={String(lastWeekViews.length)} />
+          <Metric label="Retrieved logs / current 7 days" value={String(thisWeekViews.length)} />
+          <Metric label="Retrieved logs / prior 7 days" value={String(lastWeekViews.length)} />
           <Metric
             label="Top City This Week"
             value={
@@ -132,18 +133,18 @@ export default async function AdminAnalyticsPage() {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Homepage Views" value={String(homepageViews)} />
-        <Metric label="Events Page Views" value={String(eventsIndexViews)} />
-        <Metric label="HypeKnight Event Views" value={String(internalEventViews)} />
-        <Metric label="External Event Views" value={String(externalEventViews)} />
+        <Metric label="Homepage log records" value={String(homepageViews)} />
+        <Metric label="Events-page log records" value={String(eventsIndexViews)} />
+        <Metric label="Native event log records" value={String(internalEventViews)} />
+        <Metric label="External event log records" value={String(externalEventViews)} />
       </section>
 
       <section className="grid gap-8 lg:grid-cols-2">
-        <Panel title="Views This Week by City">
+        <Panel title="Retrieved logs / current 7 days by City">
           <CityViewTable rows={thisWeekCityViews} />
         </Panel>
 
-        <Panel title="Views Last Week by City">
+        <Panel title="Retrieved logs / prior 7 days by City">
           <CityViewTable rows={lastWeekCityViews} />
         </Panel>
 
@@ -268,7 +269,7 @@ function CityViewTable({
               {row.city}
               {row.state ? `, ${row.state}` : ''}
             </p>
-            <p className="text-sm text-white/45">{pulseLabel(row.views)}</p>
+            <p className="text-sm text-white/45">Legacy log records in retrieved sample</p>
           </div>
 
           <p className="text-2xl font-black text-white">{row.views}</p>
@@ -309,14 +310,6 @@ function CityEventTable({
       ))}
     </div>
   );
-}
-
-function pulseLabel(value: number) {
-  if (value >= 100) return 'On fire';
-  if (value >= 50) return 'Busy';
-  if (value >= 15) return 'Picking up';
-  if (value >= 1) return 'Warming up';
-  return 'Quiet';
 }
 
 function Panel({
