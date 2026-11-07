@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import AdminMeasurement, { adminCount } from '@/components/admin/AdminMeasurement';
 import { createClient } from '@/lib/supabase/server';
 import { calculateExperimentalEventScore } from '@/lib/intelligence/event-score';
 import {
@@ -52,8 +53,8 @@ export default async function AdminIntelligencePage() {
   const nowIso = now.toISOString();
 
   // MARKET INTELLIGENCE V1.5:
-  // Pull 14 days so we can compare current 7-day search demand with the prior
-  // 7 days. Raw actor identifiers never leave this admin-only calculation.
+  // The market calculation compares the latest seven days with the prior seven.
+  // Actor and session identifiers stay in this admin-only calculation.
   const [
     signalResult,
     legacySearchResult,
@@ -210,250 +211,160 @@ export default async function AdminIntelligencePage() {
   }
 
   const topTypes = Array.from(typeCounts.entries()).sort((a, b) => b[1] - a[1]);
-  const uniqueParticipants = new Set(
+  const observedIdentifiers = new Set(
     currentSignals
       .map((row) => row.actor_id || row.anonymous_session_id)
       .filter(Boolean)
   ).size;
   const currentMarketSearches = marketRows.reduce((sum, row) => sum + row.searches7d, 0);
 
+  const displayedMarkets = marketRows.slice(0, 50);
+  const displayedEvents = eventScores.slice(0, 50);
+
   return (
-    <section className="mx-auto max-w-7xl space-y-8 px-4 py-12 sm:px-6 lg:px-8">
-      <Link href="/admin" className="text-sm text-white/60 hover:text-accent">
-        ← Back to Admin
-      </Link>
+    <div className="hk-admin-page">
+      <header className="hk-admin-heading">
+        <p className="hk-admin-eyebrow">Admin · Experimental analysis</p>
+        <h1>Intelligence Lab</h1>
+        <p>See where recorded activity is concentrated, what searches returned, and which markets have enough history for a baseline.</p>
+        <div className="hk-admin-actions">
+          <Link href="/admin/signals">Open Signal Evidence</Link>
+          <Link href="/admin/intelligence/markets">Open Market Registry</Link>
+        </div>
+      </header>
 
-      <section className="rounded-[2.5rem] border border-accent/20 bg-accent/10 p-8">
-        <p className="text-sm uppercase tracking-[0.35em] text-accent">
-          Intelligence Lab V2
+      <section aria-labelledby="intelligence-snapshot">
+        <h2 id="intelligence-snapshot">Activity snapshot</h2>
+        <p className="hk-admin-detail">
+          Activity figures use the latest seven days of the returned sample. Query limits may omit records.
+          Use Signal Evidence for exact canonical action counts.
         </p>
-        <h1 className="mt-3 text-4xl font-black text-white">
-          Signals, metro markets, baselines, and experimental event intelligence
-        </h1>
-        <p className="mt-4 max-w-4xl text-white/70">
-          Experimental diagnostics, not a factual production score or recommendation. Queries may return capped samples. Actor/session identifiers are not people; save and Going actions are not current state. For complete canonical action counts use Signal Evidence. V2 separates physical city from metro market,
-          automatically observes unknown cities, and tracks baseline readiness. Public
-          Hype scores and predictive recommendations remain withheld.
+        <div className="hk-admin-grid">
+          <AdminMeasurement label="Recorded signals" value={currentSignals.length} detail="Action records in the sample. Repeat actions can be counted." />
+          <AdminMeasurement label="Market-linked searches" value={currentMarketSearches} detail="Search actions that could be assigned to a market." />
+          <AdminMeasurement label="Events with signals" value={grouped.size} detail="Distinct event records linked to at least one sampled signal." />
+          <AdminMeasurement label="Observed identifiers" value={observedIdentifiers} detail="Distinct account or anonymous-session identifiers. One person can have multiple identifiers." />
+          <AdminMeasurement label="Registered markets" value={marketRegistry.marketsById.size} detail="Registry records returned by the query, excluding retired markets." />
+        </div>
+      </section>
+
+      <section aria-labelledby="intelligence-markets">
+        <h2 id="intelligence-markets">Market activity</h2>
+        <p className="hk-admin-detail">
+          Linked cities and suburbs roll up into a metro market. Search comparisons use the previous seven days.
+          Baseline readiness uses the last 28 days of daily evidence. Inventory counts come from a separate listing query.
         </p>
-        <div className="mt-5">
-          <Link
-            href="/admin/intelligence/markets"
-            className="inline-flex rounded-2xl border border-accent/30 bg-black/20 px-4 py-2 text-sm font-semibold text-white hover:border-accent/60"
-          >
-            Open Market Registry →
-          </Link>
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Metric label="Signals / 7 days" value={currentSignals.length} />
-        <Metric label="Observed actor/session identifiers" value={uniqueParticipants} />
-        <Metric label="Market searches / 7d" value={currentMarketSearches} />
-        <Metric label="Markets registered" value={marketRegistry.marketsById.size} />
-        <Metric label="Events with signals" value={grouped.size} />
-      </section>
-
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-accent">
-              Market Intelligence V2
+        {displayedMarkets.length ? (
+          <>
+            <p className="hk-admin-detail mt-2">
+              Showing {adminCount(displayedMarkets.length)} of {adminCount(marketRows.length)} market rows, ordered by sampled searches first.
             </p>
-            <h2 className="mt-2 text-2xl font-bold text-white">Metro demand, coverage, and baseline readiness</h2>
-            <p className="mt-2 max-w-3xl text-sm text-white/55">
-              Cities and suburbs roll into their registered metro market while events
-              retain their true location. June logs remain legacy evidence only.
-            </p>
-          </div>
-        </div>
+            <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
+              {displayedMarkets.map((row) => {
+                const baseline = row.id ? baselineByMarketId.get(row.id) : undefined;
+                const hasResults = row.searchesWithObservedResults7d > 0;
 
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-left text-sm">
-            <thead className="text-white/50">
-              <tr>
-                <th className="pb-3">Market</th>
-                <th className="pb-3">Areas</th>
-                <th className="pb-3">Baseline</th>
-                <th className="pb-3">Searches 7d</th>
-                <th className="pb-3">vs prior 7d</th>
-                <th className="pb-3">Searcher identifiers</th>
-                <th className="pb-3">Event views</th>
-                <th className="pb-3">Save actions</th>
-                <th className="pb-3">Going actions</th>
-                <th className="pb-3">Directions</th>
-                <th className="pb-3">HK / External</th>
-                <th className="pb-3">HK coverage</th>
-                <th className="pb-3">Peak search</th>
-                <th className="pb-3">Confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {marketRows.length ? (
-                marketRows.slice(0, 50).map((row) => (
-                  <tr key={row.key} className="border-t border-white/10 text-white/80">
-                    <td className="py-4">
-                      <p className="font-semibold text-white">
-                        {row.name || `${row.city}, ${row.state}`}
-                      </p>
-                      <p className="mt-1 text-xs text-white/40">
-                        {row.legacySearches
-                          ? `${row.legacySearches} legacy search${row.legacySearches === 1 ? '' : 'es'}`
-                          : 'No legacy city searches'}
-                      </p>
-                    </td>
-                    <td className="py-4">
-                      {row.id ? getMarketAreas(marketRegistry, row.id).length : '—'}
-                    </td>
-                    <td className="py-4">
-                      {row.id ? baselineByMarketId.get(row.id)?.readiness ?? 'Insufficient' : 'Insufficient'}
-                    </td>
-                    <td className="py-4 font-bold text-white">{row.searches7d}</td>
-                    <td className="py-4">{formatTrend(row.searchChangePercent, row.searches7d, row.previousSearches7d)}</td>
-                    <td className="py-4">{row.uniqueSearchers7d}</td>
-                    <td className="py-4">{row.eventViews7d}</td>
-                    <td className="py-4">{row.saves7d}</td>
-                    <td className="py-4">{row.going7d}</td>
-                    <td className="py-4">{row.directions7d}</td>
-                    <td className="py-4">
-                      {row.hypeknightEvents} / {row.externalEvents}
-                    </td>
-                    <td className="py-4">
-                      {row.hypeknightCoveragePercent === null
-                        ? '—'
-                        : `${row.hypeknightCoveragePercent}%`}
-                    </td>
-                    <td className="py-4">{formatHour(row.peakDiscoveryHour)}</td>
-                    <td className="py-4">{row.confidenceLabel}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={14} className="border-t border-white/10 py-8 text-white/50">
-                    No market-attributable observations yet. City searches and market-linked
-                    event activity will begin populating this table as signals arrive.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        {marketRows.slice(0, 6).map((row) => (
-          <article key={row.key} className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-            <p className="text-xs uppercase tracking-[0.22em] text-accent">{row.key}</p>
-            <h3 className="mt-2 text-2xl font-black text-white">
-              {row.name || `${row.city}, ${row.state}`}
-            </h3>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <MiniMetric label="Searches 24h" value={row.searches24h} />
-              <MiniMetric label="Searches 7d" value={row.searches7d} />
-              <MiniMetric label="Zero results" value={row.zeroResultSearches7d} />
-              <MiniMetric label="Low results" value={row.lowResultSearches7d} />
-              <MiniMetric
-                label="Avg results/search"
-                value={row.averageResultsPerSearch7d ?? '—'}
-              />
-              <MiniMetric label="Observations" value={row.observations7d} />
-              <MiniMetric
-                label="Linked areas"
-                value={row.id ? getMarketAreas(marketRegistry, row.id).length : '—'}
-              />
-              <MiniMetric
-                label="Baseline readiness"
-                value={row.id ? baselineByMarketId.get(row.id)?.readiness ?? 'Insufficient' : 'Insufficient'}
-              />
-              <MiniMetric
-                label="Evidence days / 28d"
-                value={row.id ? baselineByMarketId.get(row.id)?.evidenceDays28d ?? 0 : 0}
-              />
+                return (
+                  <article key={row.key} className="hk-admin-panel">
+                    <p className="hk-admin-eyebrow">{row.id ? 'Registered market' : 'Observed area'}</p>
+                    <h3 className="mb-3 mt-2 text-lg font-bold">{row.name || `${row.city}, ${row.state}`}</h3>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                      <IntelligenceMetric label="Searches · 7 days" value={row.searches7d} />
+                      <IntelligenceMetric label="Compared with prior 7 days" value={formatTrend(row.searchChangePercent, row.searches7d, row.previousSearches7d)} />
+                      <IntelligenceMetric label="Searches with zero results" value={hasResults ? row.zeroResultSearches7d : 'No result counts observed'} />
+                      <IntelligenceMetric label="Baseline readiness" value={baseline?.readiness ?? (row.id ? 'No baseline data' : 'No registered market')} />
+                    </dl>
+                    <details className="mt-4 border-t border-white/10 pt-2">
+                      <summary className="min-h-11 cursor-pointer py-2 font-semibold text-accent">Show market evidence</summary>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pb-2">
+                        <IntelligenceMetric label="Searches · 24 hours" value={row.searches24h} />
+                        <IntelligenceMetric label="Prior 7-day searches" value={row.previousSearches7d} />
+                        <IntelligenceMetric label="Searcher identifiers · 7 days" value={row.uniqueSearchers7d} />
+                        <IntelligenceMetric label="Recorded observations · 7 days" value={row.observations7d} />
+                        <IntelligenceMetric label="Searches with a recorded result count" value={row.searchesWithObservedResults7d} />
+                        <IntelligenceMetric label="Searches with fewer than 3 results, including zero" value={hasResults ? row.lowResultSearches7d : 'No result counts observed'} />
+                        <IntelligenceMetric label="Average results per measured search" value={row.averageResultsPerSearch7d ?? 'No result counts observed'} />
+                        <IntelligenceMetric label="Most common search hour (server time)" value={formatHour(row.peakDiscoveryHour)} />
+                        <IntelligenceMetric label="Event view actions · 7 days" value={row.eventViews7d} />
+                        <IntelligenceMetric label="Save actions · 7 days" value={row.saves7d} />
+                        <IntelligenceMetric label="Going actions · 7 days" value={row.going7d} />
+                        <IntelligenceMetric label="Directions requests · 7 days" value={row.directions7d} />
+                        <IntelligenceMetric label="Native / external listing records" value={`${adminCount(row.hypeknightEvents)} / ${adminCount(row.externalEvents)}`} />
+                        <IntelligenceMetric label="Native share of queried inventory" value={row.hypeknightCoveragePercent === null ? 'No listings in sample' : `${row.hypeknightCoveragePercent}%`} />
+                        <IntelligenceMetric label="Linked registry areas" value={row.id ? getMarketAreas(marketRegistry, row.id).length : 'No registered market'} />
+                        <IntelligenceMetric label="Days with evidence · 28 days" value={baseline?.evidenceDays28d ?? 'No baseline data'} />
+                        <IntelligenceMetric label="Sample strength" value={row.confidenceLabel} />
+                        <IntelligenceMetric label="Legacy searches · separate history" value={row.legacySearches} />
+                      </dl>
+                    </details>
+                  </article>
+                );
+              })}
             </div>
-          </article>
-        ))}
+          </>
+        ) : (
+          <p className="hk-admin-notice mt-4">The returned data contains no market rows.</p>
+        )}
       </section>
 
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-        <h2 className="text-2xl font-bold text-white">Event signal ranking</h2>
-        <p className="mt-2 text-sm text-white/55">
-          Original V1 test bench. This is still not the public Hype Score.
-        </p>
+      <section className="hk-admin-panel" aria-labelledby="intelligence-signal-mix">
+        <h2 id="intelligence-signal-mix">Recorded action types</h2>
+        <p>Counts by action type in the seven-day sample. Save and Going actions may include activity that was later reversed.</p>
+        {topTypes.length ? (
+          <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+            {topTypes.map(([type, count]) => (
+              <IntelligenceMetric key={type} label={type.replaceAll('_', ' ')} value={count} />
+            ))}
+          </dl>
+        ) : (
+          <p className="mt-3">The returned sample contains no recorded actions in this window.</p>
+        )}
+      </section>
 
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[850px] text-left text-sm">
-            <thead className="text-white/50">
-              <tr>
-                <th className="pb-3">Event</th>
-                <th className="pb-3">Index</th>
-                <th className="pb-3">State</th>
-                <th className="pb-3">Confidence</th>
-                <th className="pb-3">Signals</th>
-                <th className="pb-3">Actor/session identifiers</th>
-                <th className="pb-3">Weighted pts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {eventScores.slice(0, 50).map((row) => (
-                <tr key={row.eventId} className="border-t border-white/10 text-white/80">
-                  <td className="py-4">
-                    {row.event?.slug ? (
-                      <Link
-                        href={`/events/${row.event.slug}`}
-                        className="font-semibold text-white hover:text-accent"
-                      >
-                        {row.event.name}
-                      </Link>
-                    ) : (
-                      row.eventId
-                    )}
-                    {row.event ? (
-                      <div className="mt-1 text-xs text-white/40">
-                        {row.event.city}, {row.event.state}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="py-4 text-xl font-black text-accent">{row.score}</td>
-                  <td className="py-4">{row.label}</td>
-                  <td className="py-4">{Math.round(row.confidence * 100)}%</td>
-                  <td className="py-4">{row.signalCount}</td>
-                  <td className="py-4">{row.uniqueActors}</td>
-                  <td className="py-4">{row.weightedPoints}</td>
-                </tr>
+      <section className="hk-admin-panel" aria-labelledby="intelligence-event-index">
+        <h2 id="intelligence-event-index">Experimental event index</h2>
+        <p>
+          An internal test of how action weights and recency affect event comparisons.
+          Evidence strength reflects the number of signals and observed identifiers in the sample.
+          Use factual reporting for attendance and exposure questions.
+        </p>
+        {displayedEvents.length ? (
+          <details className="mt-3">
+            <summary className="min-h-11 cursor-pointer py-2 font-semibold text-accent">
+              Show {adminCount(displayedEvents.length)} of {adminCount(eventScores.length)} experimental event results
+            </summary>
+            <ul className="divide-y divide-white/10">
+              {displayedEvents.map((row) => (
+                <li key={row.eventId} className="py-4">
+                  <h3 className="break-words font-semibold">
+                    {row.event?.slug ? <Link className="hover:text-accent" href={`/events/${row.event.slug}`}>{row.event.name}</Link> : row.eventId}
+                  </h3>
+                  {row.event ? <p className="hk-admin-detail">{row.event.city}, {row.event.state}</p> : null}
+                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                    <IntelligenceMetric label="Experimental index" value={`${row.score} / 100`} />
+                    <IntelligenceMetric label="Index label" value={row.label} />
+                    <IntelligenceMetric label="Evidence strength" value={`${Math.round(row.confidence * 100)}%`} />
+                    <IntelligenceMetric label="Sampled signals" value={row.signalCount} />
+                    <IntelligenceMetric label="Observed identifiers" value={row.uniqueActors} />
+                    <IntelligenceMetric label="Weighted points" value={row.weightedPoints} />
+                  </dl>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </details>
+        ) : (
+          <p className="mt-3">No events have linked signals in the returned seven-day sample.</p>
+        )}
       </section>
-
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-        <h2 className="text-2xl font-bold text-white">Signal mix</h2>
-        <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {topTypes.map(([type, count]) => (
-            <div key={type} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="font-semibold text-white">{type}</p>
-              <p className="mt-1 text-sm text-white/55">{count} signals</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </section>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-      <p className="text-xs uppercase tracking-[0.22em] text-white/45">{label}</p>
-      <p className="mt-3 text-3xl font-black text-white">{value}</p>
     </div>
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: number | string }) {
+function IntelligenceMetric({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-xs text-white/45">{label}</p>
-      <p className="mt-2 text-xl font-black text-white">{value}</p>
+    <div className="min-w-0">
+      <dt className="hk-admin-detail">{label}</dt>
+      <dd className="mt-1 break-words font-semibold">{typeof value === 'number' ? adminCount(value) : value}</dd>
     </div>
   );
 }
@@ -466,7 +377,7 @@ function formatTrend(change: number | null, current: number, previous: number) {
 }
 
 function formatHour(hour: number | null) {
-  if (hour === null) return '—';
+  if (hour === null) return 'No search hour observed';
   const date = new Date(2000, 0, 1, hour, 0, 0);
   return date.toLocaleTimeString([], { hour: 'numeric' });
 }
