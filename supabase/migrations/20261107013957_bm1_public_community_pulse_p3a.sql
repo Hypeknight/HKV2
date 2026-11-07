@@ -39,6 +39,7 @@ create table bm1_community_pulse.guest_grants (
   token_digest text not null unique check (token_digest ~ '^[0-9a-f]{64}$'),
   abuse_bucket text not null check (abuse_bucket ~ '^[0-9a-f]{64}$'),
   bound_account uuid,
+  expires_at timestamptz not null,
   created_at timestamptz not null default clock_timestamp(),
   primary key (question_id, id)
 );
@@ -257,7 +258,8 @@ begin
     or (select count(*) from bm1_community_pulse.guest_grants where question_id = q.id
       and abuse_bucket = p_bucket and created_at > clock_timestamp() - interval '1 hour') >= 3
   then return false; end if;
-  insert into bm1_community_pulse.guest_grants(question_id,token_digest,abuse_bucket) values(q.id,p_digest,p_bucket)
+  insert into bm1_community_pulse.guest_grants(question_id,token_digest,abuse_bucket,expires_at)
+    values(q.id,p_digest,p_bucket,q.closes_at)
     on conflict(token_digest) do nothing;
   return found;
 end;
@@ -266,7 +268,7 @@ $$;
 create function bm1_community_pulse.guest_key(p_question uuid,p_digest text)
 returns text language sql stable set search_path = '' as $$
   select 'guest:' || id::text from bm1_community_pulse.guest_grants
-    where question_id = p_question and token_digest = p_digest;
+    where question_id = p_question and token_digest = p_digest and expires_at > statement_timestamp();
 $$;
 
 -- All writers (including editorial transitions) take the question lock first.

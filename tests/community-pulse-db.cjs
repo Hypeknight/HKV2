@@ -150,6 +150,8 @@ async function run(db, parallelSubmit) {
   assert.deepEqual(await write(published,a,507,0,members[0],'1'.repeat(64)),{state:'guest_response_exists'});
   assert.deepEqual(await write(published,a,508,0,members[0],'2'.repeat(64)),{state:'accepted',revision:1});
   assert.deepEqual(await write(published,a,509,0,null,'2'.repeat(64)),{state:'ineligible'});
+  await db.query("update bm1_community_pulse.guest_grants set expires_at=now()-interval '1 second' where token_digest=$1",['3'.repeat(64)]);
+  assert.deepEqual(await write(published,a,510,0,null,'3'.repeat(64)),{state:'ineligible'});
   assert.deepEqual(await write(published,a,508,0,members[0],'2'.repeat(64)),{state:'accepted',revision:1});
   assert.deepEqual(await write(published,b,508,0,members[0]),{state:'operation_conflict'});
   assert.deepEqual(await write(published,b,510,0,members[0]),{state:'revision_conflict',revision:1});
