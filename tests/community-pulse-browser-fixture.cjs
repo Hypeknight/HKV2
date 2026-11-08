@@ -55,7 +55,7 @@ async function rpc(client, name, args) {
     cwd: process.cwd(), detached: true, stdio: ['ignore', log, log],
     env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: endpoint, NEXT_PUBLIC_SUPABASE_ANON_KEY: anon,
       SUPABASE_SERVICE_ROLE_KEY: key, NEXT_PUBLIC_SITE_URL: site.origin,
-      HYPEKNIGHT_COMMUNITY_PULSE_ENABLED: '1', HYPEKNIGHT_HOMEPAGE_PREVIEW: '1', NEXT_TELEMETRY_DISABLED: '1' },
+      HYPEKNIGHT_COMMUNITY_PULSE_ENABLED: '1', HYPEKNIGHT_COMMUNITY_PULSE_LOCAL_REVIEW: '1', HYPEKNIGHT_HOMEPAGE_PREVIEW: '1', NEXT_TELEMETRY_DISABLED: '1' },
   });
   fs.closeSync(log);
   fs.writeFileSync('/tmp/hkv2-p3b-browser.pid', String(server.pid), { mode: 0o600 });

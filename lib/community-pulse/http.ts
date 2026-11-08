@@ -10,7 +10,16 @@ export function sameOriginJson(request: Request) {
   try {
     const site = process.env.NEXT_PUBLIC_SITE_URL || (process.env.NODE_ENV === 'production' ? '' : request.url);
     const expected = new URL(site);
-    return ['https:', 'http:'].includes(expected.protocol) && request.headers.get('origin') === expected.origin &&
+    const origin = request.headers.get('origin');
+    const localReviewOrigin = process.env.NODE_ENV === 'development' &&
+      process.env.HYPEKNIGHT_COMMUNITY_PULSE_LOCAL_REVIEW === '1' &&
+      /^[a-z0-9-]+$/.test(process.env.CODESPACE_NAME || '') &&
+      process.env.NEXT_PUBLIC_SITE_URL === `https://${process.env.CODESPACE_NAME}-3234.app.github.dev` &&
+      process.env.NEXT_PUBLIC_SUPABASE_URL === 'http://127.0.0.1:55471' &&
+      origin === 'http://localhost:3234' &&
+      request.headers.get('x-forwarded-host') === expected.host &&
+      request.headers.get('sec-fetch-site') === 'same-origin';
+    return ['https:', 'http:'].includes(expected.protocol) && (origin === expected.origin || localReviewOrigin) &&
       (!request.headers.has('sec-fetch-site') || request.headers.get('sec-fetch-site') === 'same-origin') &&
       /^application\/json(?:;|$)/i.test(request.headers.get('content-type') || '');
   } catch { return false; }
