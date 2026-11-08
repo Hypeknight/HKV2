@@ -48,3 +48,24 @@ Turning the flag off disables the new app collector and restores the preview. Pa
 ## Next checkpoint
 
 Approve the signed-in release only after the listed integration and operational gates. Governed guest participation needs its own reviewed challenge, trusted ingress, keyed scoped abuse bucket, secure cookie adapter and failure/rate-limit acceptance tests. It can follow without rewriting the public community question or event-specific Patron Pulse contracts.
+
+## Review evidence — November 8, 2026
+
+| Check | Result |
+| --- | --- |
+| GitHub main and Render Live | Both `31e3e1aef0657a30f58b30b90eae1a7cedf04b07`; Render live deployment `dep-dbo9q095efls73d8ost0` |
+| Protected draft PR #5 | Unchanged at `8761f254c0b98309f2f84fd127aa9f20d7234de4` |
+| Production Supabase | Hypeknight `eyolwkeprivhazeeyjoz`, healthy; read-only catalog check confirms P3-A schema and P3-B home RPC absent |
+| Full application suite | 324 passing, including existing event Patron Pulse and discovery/commerce regressions |
+| TypeScript and diff checks | Pass |
+| Optimized production-mode build | Pass with activation flag unset and with `1`; deployed public URLs and placeholder build credentials, without production data writes |
+| PGlite SQL checks | Pass P3-A and P3-B lifecycle, identity, scope precedence/ambiguity, role grants, thresholds, suppression, retention and rate budgets |
+| Native PostgreSQL 17 | Pass P3-A/P3-B SQL checks and independent-session account-budget race |
+| Real disposable Supabase Auth/PostgREST + Next HTTP | Pass genuine local user JWTs, private cookie-derived identity, denied direct collector access, spoof rejection, duplicate replay, concurrent revisions, six-response frozen total, private own state, and authorized/unauthorized admin page handling |
+| Supabase security advisors | No WARN or ERROR; 11 INFO `rls_enabled_no_policy` findings reflect nine deliberately deny-direct-access private tables plus two deny-access registry fixtures |
+| Representative staging and mobile browser acceptance | Pending; disposable API/SSR tests do not establish production administrator or browser acceptance |
+| Production changes | No schema application, voting enablement, question publication, merge or deployment |
+
+The transport test respects the existing ten-second revision cooldown. It also checks Next's streamed redirect response for denied members and asserts protected question/editor content is absent, rather than assuming every redirect uses an HTTP 307 before streaming begins. Registry ambiguity falls back to the platform question instead of selecting an arbitrary market.
+
+Recommendation: draft review is appropriate. Public activation still depends on the staging/browser, approved migration/release and editorial/retention/erasure operations described above. No guest launch is claimed.
