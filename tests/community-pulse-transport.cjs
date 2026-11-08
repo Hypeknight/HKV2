@@ -67,7 +67,10 @@ async function main(){
  const result=await (await fetch(origin+'/api/community-pulse')).json();assert.equal(result.question.report.total,6);assert.equal(result.question.report.state,'available');assert.equal(result.question.report.options.reduce((n,o)=>n+o.count,0),6);
  const text=JSON.stringify(result);for(const person of people)assert.ok(!text.includes(person.id));assert.doesNotMatch(text,/participant_key|token|digest|response_id|service_role/);
  assert.equal((await fetch(origin+'/admin/community-pulse',{redirect:'manual'})).status,307);
- assert.equal((await fetch(origin+'/admin/community-pulse',{headers:{Cookie:people[1].cookie()},redirect:'manual'})).status,307);
+ const denied=await fetch(origin+'/admin/community-pulse',{headers:{Cookie:people[1].cookie()},redirect:'manual'});
+ const deniedHtml=await denied.text();assert.doesNotMatch(deniedHtml,/Ask the community|Disposable transport Friday/);
+ if(denied.status===307)assert.match(denied.headers.get('location'),/\/dashboard$/);
+ else{assert.equal(denied.status,200);assert.match(deniedHtml,/NEXT_REDIRECT[^<]*\/dashboard|http-equiv="refresh"[^>]*\/dashboard/i);}
  const admin=await fetch(origin+'/admin/community-pulse',{headers:{Cookie:people[0].cookie()}});assert.equal(admin.status,200);assert.match(await admin.text(),/Ask the community/);
  console.log('PASS real local Supabase Auth, PostgREST ACLs, Next cookie identity, no spoofing, duplicate replay, concurrent revisions, frozen aggregate, private state and admin access');
 }
