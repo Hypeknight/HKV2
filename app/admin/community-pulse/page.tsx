@@ -67,7 +67,7 @@ export default async function CommunityPulseAdmin({ searchParams }: { searchPara
         const inside = now >= Date.parse(q.opensAt) && now < Date.parse(q.closesAt);
         const before = now < Date.parse(q.opensAt);
         return <article key={q.id} className="hk-admin-panel">
-          <p className="hk-admin-eyebrow">{q.status} · Version {q.version}{q.selectedForHome ? ' · Selected for homepage' : ''}</p>
+          <p className="hk-admin-eyebrow">{q.status} · Version {q.version}{q.selectedForHome ? q.status === 'archived' ? ' · Homepage slot retained; archived question is hidden' : ' · Selected for homepage' : ''}</p>
           <h3 className="my-2 text-xl font-semibold">{q.prompt}</h3>
           {q.description ? <p>{q.description}</p> : null}
           <p className="hk-admin-detail">{q.marketId ? markets.find(m => m.id === q.marketId)?.name || 'Registry market' : 'Across HypeKnight'}{q.city ? ' · ' + q.city + ', ' + q.state : ''}</p>
@@ -81,7 +81,7 @@ export default async function CommunityPulseAdmin({ searchParams }: { searchPara
             {['draft', 'scheduled', 'paused'].includes(q.status) && inside ? <Transition id={q.id} status="open" label="Open responses" /> : null}
             {['scheduled', 'open'].includes(q.status) && now < Date.parse(q.closesAt) ? <Transition id={q.id} status="paused" label="Pause responses" /> : null}
             {['draft', 'closed'].includes(q.status) || (['scheduled', 'paused'].includes(q.status) && before) ? <Transition id={q.id} status="archived" label="Archive question" /> : null}
-            {!q.guestsAllowed && !['draft', 'archived'].includes(q.status) ? <form action={selectCommunityHomeQuestion}>
+            {!q.guestsAllowed && (q.selectedForHome || !['draft', 'archived'].includes(q.status)) ? <form action={selectCommunityHomeQuestion}>
               <input type="hidden" name="questionId" value={q.id} /><input type="hidden" name="selected" value={q.selectedForHome ? 'no' : 'yes'} />
               <button type="submit">{q.selectedForHome ? 'Remove from homepage' : 'Select for homepage'}</button>
             </form> : null}

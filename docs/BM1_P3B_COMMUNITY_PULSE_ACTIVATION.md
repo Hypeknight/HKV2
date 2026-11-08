@@ -56,7 +56,7 @@ Approve the signed-in release only after the listed integration and operational 
 | GitHub main and Render Live | Both `31e3e1aef0657a30f58b30b90eae1a7cedf04b07`; Render live deployment `dep-dbo9q095efls73d8ost0` |
 | Protected draft PR #5 | Unchanged at `8761f254c0b98309f2f84fd127aa9f20d7234de4` |
 | Production Supabase | Hypeknight `eyolwkeprivhazeeyjoz`, healthy; read-only catalog check confirms P3-A schema and P3-B home RPC absent |
-| Full application suite | 324 passing, including existing event Patron Pulse and discovery/commerce regressions |
+| Full application suite | 327 passing, including existing event Patron Pulse and discovery/commerce regressions |
 | TypeScript and diff checks | Pass |
 | Optimized production-mode build | Pass with activation flag unset and with `1`; deployed public URLs and placeholder build credentials, without production data writes |
 | PGlite SQL checks | Pass P3-A and P3-B lifecycle, identity, scope precedence/ambiguity, role grants, thresholds, suppression, retention and rate budgets |
@@ -64,7 +64,8 @@ Approve the signed-in release only after the listed integration and operational 
 | Real disposable Supabase Auth/PostgREST + Next HTTP | Pass genuine local user JWTs, private cookie-derived identity, denied direct collector access, spoof rejection, duplicate replay, concurrent revisions, six-response frozen total, private own state, and authorized/unauthorized admin page handling |
 | Supabase security advisors | No WARN or ERROR; 11 INFO `rls_enabled_no_policy` findings reflect nine deliberately deny-direct-access private tables plus two deny-access registry fixtures |
 | Public responsive browser inspection | Pass on disposable published-question fixture at 320, 390, 768 and 1280 pixels; long text wraps without horizontal overflow |
-| Authenticated browser and representative staging acceptance | Pending; fixture read/API/SSR checks do not establish production administrator or signed-in browser acceptance |
+| Authenticated browser on disposable staging | Pass real registration/session, save/revision/refresh, publishing lifecycle, suppression, mobile admin and stale-form authorization rejection |
+| Production identity and representative production-data staging | Not claimed; no production administrator role was granted or tested and unrelated tables are absent in the minimal fixture |
 | Production changes | No schema application, voting enablement, question publication, merge or deployment |
 
 The transport test respects the existing ten-second revision cooldown. It also checks Next's streamed redirect response for denied members and asserts protected question/editor content is absent, rather than assuming every redirect uses an HTTP 307 before streaming begins. Registry ambiguity falls back to the platform question instead of selecting an arbitrary market.
@@ -92,3 +93,19 @@ The supported Next Server Actions origin configuration now permits exactly `loca
 The Community Pulse JSON collector handles the same development-only proxy rewrite and additionally requires the exact forwarded review host and `Sec-Fetch-Site: same-origin`. Foreign origins and cross-site requests remain denied. The normal production canonical-Origin check is preserved.
 
 The review helper sets the explicit local-review flag for its child server. Existing previews need a restart for the environment change. A credential-free multipart form transport check reached the login action and returned its expected validation redirect (303), while a foreign origin was rejected (500 by the framework). A proxied anonymous Pulse request reached the identity guard (401); foreign and cross-site requests remained 403. These checks do not claim successful user authentication. The fresh browser sign-in form loads after restart. All 326 application tests, TypeScript, diff checks and the optimized production build pass; regression checks verify the exception is absent in production and for nonlocal backends.
+
+## Completed authenticated browser checks — disposable staging
+
+The user completed registration through the normal staging sign-up form. Fresh browser UI showed a signed-in session and real response controls. No password, session cookie or access token was read by the reviewer. A temporary administrator profile role was enabled only in the loopback disposable database to exercise the editor, then restored to member. This proves the isolated browser flow and current database-role enforcement; it does not prove an existing production administrator's identity or change production authority.
+
+A separate question, **Staging QA: response save and revision**, explicitly described its options as mechanical test data. Browser actions created its draft, opened collection, and selected it for the staging homepage. The draft did not appear publicly before those explicit actions. Browser submission saved Test option A, refresh loaded the saved state, and a later revision saved Test option B. A private disposable-database aggregate confirmed one effective response row, two accepted operations and revision two. No answer was recorded against the nightlife-preference question.
+
+This caught an additional proxy detail: browser fetch requests preserved HTTPS in the rewritten `https://localhost:3234` Origin, while the earlier transport fixture used HTTP. The development-only collector guard now accepts either exact loopback scheme under the existing local-backend, exact-tunnel and same-origin-fetch conditions. Production, foreign origins, alternate ports and lookalike hosts remain denied. Temporary diagnostic logging was removed after the finding.
+
+Actual editor browser actions then paused and resumed collection, permanently closed the QA question and archived it. The paused page removed the response form. Closure showed the insufficient-sample explanation with no counts, percentages or reconstructable total. Archive withdrew the question from the public selection. A minor editorial state gap was corrected: an archived question retaining a homepage slot is now explicitly labeled hidden and offers **Remove from homepage**. That removal was verified through the real browser and has regression coverage.
+
+The authenticated admin page was inspected in a 390-pixel phone iframe using the same real staging session and unchanged authorization guards. Its document width equaled its client width after hydration, long editorial text remained within its cards, and the admin tool directory opened and closed. The temporary local review wrapper was removed afterward.
+
+The original preview question was reselected. After restoring the reviewer's member role, a stale administrator **Remove from homepage** form was submitted. It redirected to the ordinary dashboard and did not change the homepage selection. A final private check confirmed the member role, archived QA question, unchanged preview selection and zero reviewer responses to non-QA questions. No temporary route or diagnostic source remains.
+
+Final application verification: **327 tests passing**, TypeScript passing, diff checks passing and the optimized production build passing, including the production configuration with the local-review flag present. SQL migrations and their role privileges were unchanged. Representative production-data regression checks remain outside this minimal fixture, whose unrelated discovery/settings tables are intentionally absent. No production migration, merge, deployment, question publication or voting activation occurred. The candidate is ready for review of the signed-in release and its remaining backend/operational activation dependencies; guest collection is still deferred.

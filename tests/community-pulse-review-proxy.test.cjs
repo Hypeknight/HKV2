@@ -17,8 +17,8 @@ test('Pulse JSON proxy exception requires local backend, exact tunnel, explicit 
  const http=load('lib/community-pulse/http.ts');
  const request=headers=>new Request('http://localhost:3234/api/community-pulse',{method:'POST',headers:{origin:'http://localhost:3234','x-forwarded-host':'review-space-3234.app.github.dev','sec-fetch-site':'same-origin','content-type':'application/json',...headers},body:'{}'});
  try{
- Object.assign(process.env,fixture);assert.equal(http.sameOriginJson(request()),true);
- for(const headers of [{origin:'https://evil.test'},{'x-forwarded-host':'other.app.github.dev'},{'sec-fetch-site':'cross-site'},{'sec-fetch-site':''},{'content-type':'text/plain'}])assert.equal(http.sameOriginJson(request(headers)),false);
+ Object.assign(process.env,fixture);assert.equal(http.sameOriginJson(request()),true);assert.equal(http.sameOriginJson(request({origin:'https://localhost:3234'})),true);
+ for(const headers of [{origin:'https://evil.test'},{origin:'https://localhost:3235'},{origin:'https://localhost:3234.evil.test'},{'x-forwarded-host':'other.app.github.dev'},{'sec-fetch-site':'cross-site'},{'sec-fetch-site':''},{'content-type':'text/plain'}])assert.equal(http.sameOriginJson(request(headers)),false);
  for(const change of [{NODE_ENV:'production'},{HYPEKNIGHT_COMMUNITY_PULSE_LOCAL_REVIEW:''},{NEXT_PUBLIC_SUPABASE_URL:'https://production.supabase.co'},{NEXT_PUBLIC_SITE_URL:'https://hypeknight.fun'},{CODESPACE_NAME:''}]){Object.assign(process.env,fixture,change);assert.equal(http.sameOriginJson(request()),false);}
  }finally{for(const key of keys){if(old[key]===undefined)delete process.env[key];else process.env[key]=old[key];}}
 });

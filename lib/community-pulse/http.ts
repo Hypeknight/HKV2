@@ -16,7 +16,7 @@ export function sameOriginJson(request: Request) {
       /^[a-z0-9-]+$/.test(process.env.CODESPACE_NAME || '') &&
       process.env.NEXT_PUBLIC_SITE_URL === `https://${process.env.CODESPACE_NAME}-3234.app.github.dev` &&
       process.env.NEXT_PUBLIC_SUPABASE_URL === 'http://127.0.0.1:55471' &&
-      origin === 'http://localhost:3234' &&
+      ['http://localhost:3234', 'https://localhost:3234'].includes(origin || '') &&
       request.headers.get('x-forwarded-host') === expected.host &&
       request.headers.get('sec-fetch-site') === 'same-origin';
     return ['https:', 'http:'].includes(expected.protocol) && (origin === expected.origin || localReviewOrigin) &&
