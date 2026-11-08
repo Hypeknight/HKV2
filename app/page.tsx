@@ -3,6 +3,8 @@ import DataNotice from '@/components/interface-state/DataNotice';
 import { classifyDiscoveryEvent, isPublicNativeDiscoveryRecord } from '@/lib/discovery/classification';
 import { nativeEventDestination, externalEventDestination } from '@/lib/discovery/destinations';
 import Link from 'next/link';
+import { Suspense } from 'react';
+import CommunityPulseSection, { CommunityPulseLoading } from '@/components/community-pulse/CommunityPulseSection';
 import { createClient } from '@/lib/supabase/server';
 import { getPlatformSettings } from '@/lib/settings';
 import { normalizeState } from '@/lib/states';
@@ -96,7 +98,8 @@ export default async function HomePage(props: { searchParams?: Promise<Record<st
   const withMarket = (href:string) => href + (city || state ? (href.includes('?') ? '&' : '?') + new URLSearchParams({city,state}) : '');
   return <>
     {telemetry ? <TrackView pageType="homepage" path="/" /> : null}
-    <SimplyComplexHome inventory={inventory} city={city} state={state} production tracking={telemetry}>
+    <SimplyComplexHome inventory={inventory} city={city} state={state} production tracking={telemetry}
+      communityPulse={process.env.HYPEKNIGHT_COMMUNITY_PULSE_ENABLED === '1' ? <Suspense fallback={<CommunityPulseLoading />}><CommunityPulseSection city={city} state={state} /></Suspense> : undefined}>
       {personalized?.status === 'unavailable' ? <DataNotice message="Personal recommendations are temporarily unavailable." /> : null}
       {personalizedEvents.length ? <section className="sc-section"><EventRail signalSurface={telemetry ? "homepage" : undefined} eyebrow="For you" title="From your preferences" text="Your existing personalized recommendations, across locations." events={personalizedEvents} href="/events/recommended" action="See all recommendations" /></section> : null}
       <section className="sc-section sc-additional-discovery" aria-labelledby="sc-more-discovery">

@@ -226,7 +226,9 @@ async function run(db, parallelSubmit) {
   process.stdout.write(parallelSubmit ? 'Independent PostgreSQL sessions raced the same participant.\n' : 'Single-session execution; independent-session race requires PostgreSQL mode.\n');
 }
 
-(async () => {
+module.exports = { run };
+
+if (require.main === module) (async () => {
   const url = process.env.COMMUNITY_PULSE_TEST_DATABASE_URL;
   if (url) {
     const parsed = new URL(url);

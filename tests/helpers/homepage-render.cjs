@@ -1,5 +1,6 @@
 const fs=require('node:fs');
 const ts=require('typescript');
+const path=require('node:path');
 const React=require('react');
 function load(file,mocks={}) {
  const out={};
@@ -7,7 +8,7 @@ function load(file,mocks={}) {
  new Function('exports','require',js)(out,name=>{
   if(Object.hasOwn(mocks,name))return mocks[name];
   if(name.endsWith('.css')||name==='server-only')return {};
-  if(name.startsWith('@/')){const base=name.slice(2);const path=[base+'.ts',base+'.tsx',base+'/index.ts'].find(fs.existsSync);if(!path)throw Error('Missing fixture module '+name);return load(path,mocks);}
+  if(name.startsWith('@/')||name.startsWith('./')||name.startsWith('../')){const base=name.startsWith('@/')?name.slice(2):path.resolve(path.dirname(file),name);const resolved=[base+'.ts',base+'.tsx',base+'/index.ts'].find(fs.existsSync);if(!resolved)throw Error('Missing fixture module '+name);return load(resolved,mocks);}
   return require(name);
  });return out;
 }

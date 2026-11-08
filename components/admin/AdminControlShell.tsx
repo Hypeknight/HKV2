@@ -43,6 +43,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Participation & Intelligence',
     items: [
+      { label: 'Community Pulse', href: '/admin/community-pulse', icon: '♥', description: 'Publish independent community questions and manage their homepage selection.' },
       { label: 'Patron Pulse', href: '/admin/patron-pulse', icon: '♥', description: 'Operate live patron feedback and Pulse sessions.' },
       { label: 'Linkd’N', href: '/admin/linkdn', icon: '⇄', description: 'Manage venue connections, rooms, and opportunities.' },
       { label: 'Intelligence Lab', href: '/admin/intelligence', icon: '◇', description: 'Review signals, market behavior, and developing intelligence.' },
