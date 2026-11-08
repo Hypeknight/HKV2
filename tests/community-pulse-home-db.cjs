@@ -49,6 +49,10 @@ async function check(db, race) {
   assert.equal((await home('Kansas City','MO')).id,market);
   assert.equal((await home('Kansas City','MO')).scopeLabel,'Kansas City metro');
   assert.equal((await home('Unknown','MO')).id,platform);
+  await db.query("insert into public.markets values($1,'active','Ambiguous test market')",[id(710)]);
+  await db.query("insert into public.market_areas values($1,'Kansas City','MO',true)",[id(710)]);
+  assert.equal((await home('Kansas City','MO')).id,platform,'Ambiguous registry cities must not select an arbitrary market');
+  await db.query('delete from public.market_areas where market_id=$1',[id(710)]);
   const area=await create({market:id(21),city:'Kansas City',state:'MO'});
   await transition(area,'open'); await select(area);
   assert.equal((await home(' kansas city ','mo')).id,area);

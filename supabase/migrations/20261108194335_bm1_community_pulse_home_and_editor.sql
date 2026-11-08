@@ -53,12 +53,15 @@ $$;
 
 create function public.community_pulse_home(p_city text,p_state text)
 returns jsonb language sql stable security definer set search_path = '' as $$
-  with selected_area as (
+  with matching_areas as (
     select a.market_id,a.city,a.state from public.market_areas a
     join public.markets m on m.id=a.market_id
     where a.is_active and m.status in ('active','supported')
       and lower(btrim(a.city))=lower(btrim(p_city))
       and lower(btrim(a.state))=lower(btrim(p_state))
+  ), selected_area as (
+    select * from matching_areas
+    where (select count(distinct market_id) from matching_areas)=1
   ), candidates as (
     select q.*,case when q.city is not null then 2 when q.market_id is not null then 1 else 0 end as priority
     from bm1_community_pulse.home_slots h
