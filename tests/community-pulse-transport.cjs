@@ -59,6 +59,8 @@ async function main(){
  assert.deepEqual(await (await submit(people[1],payload)).json(),{state:'accepted',revision:1});
  const own=await fetch(origin+'/api/community-pulse/state?question='+question,{headers:{Cookie:people[1].cookie()}});assert.match(own.headers.get('cache-control'),/no-store/);assert.equal((await own.json()).optionId,option);
  const unrelated=await fetch(origin+'/api/community-pulse/state?question='+question,{headers:{Cookie:people[2].cookie()}});assert.deepEqual(await unrelated.json(),{state:'none'});
+ // Preserve the foundation's 10-second revision cooldown in transport tests.
+ await new Promise(resolve=>setTimeout(resolve,11000));
  const race=await Promise.all([1,2].map(()=>submit(people[1],{...payload,optionId:publicQuestion.options[1].id,operationId:randomUUID(),expectedRevision:1}).then(r=>r.json())));assert.deepEqual(race.map(r=>r.state).sort(),['accepted','revision_conflict']);
  for(let i=2;i<people.length;i++)assert.equal((await (await submit(people[i],{...payload,operationId:randomUUID()})).json()).state,'accepted');
  await rpc(people[0].client,'community_pulse_transition',{p_question:question,p_status:'closed'});
