@@ -5,10 +5,15 @@ export const COMMUNITY_PULSE_HEADERS = {
 };
 
 export function sameOriginJson(request: Request) {
-  const origin = request.headers.get('origin');
-  return origin === new URL(request.url).origin &&
-    (!request.headers.has('sec-fetch-site') || request.headers.get('sec-fetch-site') === 'same-origin') &&
-    /^application\/json(?:;|$)/i.test(request.headers.get('content-type') || '');
+  // Render can present an internal Next origin. Compare against the configured
+  // public site, never against an arbitrary client-supplied forwarded host.
+  try {
+    const site = process.env.NEXT_PUBLIC_SITE_URL || (process.env.NODE_ENV === 'production' ? '' : request.url);
+    const expected = new URL(site);
+    return ['https:', 'http:'].includes(expected.protocol) && request.headers.get('origin') === expected.origin &&
+      (!request.headers.has('sec-fetch-site') || request.headers.get('sec-fetch-site') === 'same-origin') &&
+      /^application\/json(?:;|$)/i.test(request.headers.get('content-type') || '');
+  } catch { return false; }
 }
 
 /** Read the actual stream so a missing or false Content-Length cannot bypass the limit. */

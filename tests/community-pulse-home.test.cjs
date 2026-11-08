@@ -34,3 +34,7 @@ test('an ambiguous save retries the identical operation, while a confirmed revis
  values[1]=other;values[2]=true;global.fetch=async(url,init)=>{sent.push(JSON.parse(init.body));return {json:async()=>({state:'accepted',revision:2})};};await form().props.onSubmit({preventDefault(){}});assert.equal(sent[2].expectedRevision,1);assert.notEqual(sent[2].operationId,sent[0].operationId);assert.equal(values[0].optionId,other);assert.equal(values[0].revision,2);
  }finally{global.fetch=oldFetch;}
 });
+test('configured public Origin works behind an internal proxy without trusting forwarded hosts',()=>{
+ const old=process.env.NEXT_PUBLIC_SITE_URL;process.env.NEXT_PUBLIC_SITE_URL='https://hypeknight.fun';
+ try{const request=new Request('http://localhost:10000/api/community-pulse',{method:'POST',headers:{origin:'https://hypeknight.fun','content-type':'application/json','x-forwarded-host':'evil.test'},body:'{}'});assert.equal(http.sameOriginJson(request),true);assert.equal(http.sameOriginJson(new Request('http://localhost:10000/api/community-pulse',{method:'POST',headers:{origin:'https://evil.test','content-type':'application/json','x-forwarded-host':'evil.test'},body:'{}'})),false);}finally{if(old===undefined)delete process.env.NEXT_PUBLIC_SITE_URL;else process.env.NEXT_PUBLIC_SITE_URL=old;}
+});
