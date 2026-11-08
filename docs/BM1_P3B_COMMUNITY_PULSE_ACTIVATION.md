@@ -63,9 +63,22 @@ Approve the signed-in release only after the listed integration and operational 
 | Native PostgreSQL 17 | Pass P3-A/P3-B SQL checks and independent-session account-budget race |
 | Real disposable Supabase Auth/PostgREST + Next HTTP | Pass genuine local user JWTs, private cookie-derived identity, denied direct collector access, spoof rejection, duplicate replay, concurrent revisions, six-response frozen total, private own state, and authorized/unauthorized admin page handling |
 | Supabase security advisors | No WARN or ERROR; 11 INFO `rls_enabled_no_policy` findings reflect nine deliberately deny-direct-access private tables plus two deny-access registry fixtures |
-| Representative staging and mobile browser acceptance | Pending; disposable API/SSR tests do not establish production administrator or browser acceptance |
+| Public responsive browser inspection | Pass on disposable published-question fixture at 320, 390, 768 and 1280 pixels; long text wraps without horizontal overflow |
+| Authenticated browser and representative staging acceptance | Pending; fixture read/API/SSR checks do not establish production administrator or signed-in browser acceptance |
 | Production changes | No schema application, voting enablement, question publication, merge or deployment |
 
 The transport test respects the existing ten-second revision cooldown. It also checks Next's streamed redirect response for denied members and asserts protected question/editor content is absent, rather than assuming every redirect uses an HTTP 307 before streaming begins. Registry ambiguity falls back to the platform question instead of selecting an arbitrary market.
 
 Recommendation: draft review is appropriate. Public activation still depends on the staging/browser, approved migration/release and editorial/retention/erasure operations described above. No guest launch is claimed.
+
+## Continued development — public browser review
+
+The private Codespace review was restored from its disposable Supabase backup. The actual homepage fetched a published local community question through the trusted service and loaded the anonymous participant state through the real HTTP route. No production data, credential or permission was used. The rest of this minimal fixture intentionally lacks discovery/settings tables, so their truthful Unavailable states and corresponding development-console diagnostics are expected; this is not a complete production-data staging environment.
+
+Public browser inspection covered 320, 390, 768 and 1280 pixel iframe widths. After hydration, document scroll width equaled client width at each size. The 390-pixel review measured a roughly 584-pixel panel before correction and 505 pixels after correction with the same question and description, with results collapsed. The question now uses scoped compact typography, version information sits inside results details, and the choice preview uses two columns. Long unbroken prompt, description and 80-character option text wraps without horizontal overflow at the narrowest 320-pixel review.
+
+The pending-results disclosure was opened in the real browser and correctly withheld counts and percentages while explaining that results follow editorial closure. The sign-in CTA retained `/#community-pulse` as its return destination. These checks establish the public layout and anonymous read flow. They do not establish an authorized administrator browser session, a signed-in browser submission or full staging acceptance. Those gates remain open and require an authorized staging sign-in. No authentication guard was weakened or bypassed.
+
+`tests/community-pulse-browser-fixture.cjs` makes this public review repeatable against an already validated local transport fixture. It rejects hosted resources, checks that every existing profile belongs to the disposable fixture, creates a short-lived local editorial session internally and never prints credentials. It publishes an explicitly labeled development question, then starts Next with only local Supabase resources, the activation flag on and homepage telemetry off. `COMMUNITY_PULSE_REVIEW_SITE` must be the private Codespace HTTPS origin. Use `COMMUNITY_PULSE_REVIEW_REUSE_SERVER=1` to refresh the question without starting another server and `COMMUNITY_PULSE_REVIEW_STRESS_TEXT=1` for wrapping checks. It does not provide browser sign-in or production authority.
+
+Application verification after the layout correction: all 324 tests, TypeScript, diff checks and the optimized build with activation enabled pass. SQL, permissions, collection trust and business rules are unchanged by this continuation. Production voting remains disabled, and PR #22 remains a draft.

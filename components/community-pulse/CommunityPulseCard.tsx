@@ -94,9 +94,9 @@ export default function CommunityPulseCard({ question, scopeLabel, city, state }
   return <aside id="community-pulse" className="sc-community sc-community-early" aria-labelledby="sc-community-title">
     <div className="sc-community-heading"><p className="sc-label">COMMUNITY PULSE · {scopeLabel}</p>
       <h2 id="sc-community-title">Your city has a Pulse.<br /><em>Add yours.</em></h2>
-      <p className="sc-small-note">Voluntary community choices. Question version {question.version}.</p></div>
+      </div>
     <div className="sc-community-question">
-      <h3>{question.prompt}</h3>{question.description ? <p>{question.description}</p> : null}
+      <h3 className="cp-question-heading">{question.prompt}</h3>{question.description ? <p className="cp-question-description">{question.description}</p> : null}
       {question.acceptingResponses ? <>
         {participant.state === 'loading' ? <p role="status">Checking your response…</p> : null}
         {participant.state === 'sign_in_required' ? <p><Link className="sc-button sc-button-secondary"
@@ -105,7 +105,7 @@ export default function CommunityPulseCard({ question, scopeLabel, city, state }
         {canAnswer ? <form onSubmit={submit} aria-busy={sending}>
           <fieldset disabled={sending || pending !== null || revision >= 6} aria-describedby="community-pulse-notice">
             <legend className="sr-only">{question.prompt}</legend>
-            <div className="sc-question-options">{question.options.map(option => <label key={option.id}>
+            <div className="sc-question-options cp-response-options">{question.options.map(option => <label key={option.id}>
               <input type="radio" name="community-choice" value={option.id} checked={selected === option.id}
                 onChange={() => setSelected(option.id)} required /><span>{option.label}</span>
             </label>)}</div>
@@ -123,6 +123,7 @@ export default function CommunityPulseCard({ question, scopeLabel, city, state }
       {message ? <p role="status" aria-live="polite" className="sc-small-note">{message}</p> : null}
     </div>
     <details className="sc-results-explainer"><summary>Community results</summary>
+      <p className="sc-small-note">Question version {question.version}. Results summarize voluntary community choices.</p>
       {report.state === 'available' ? <>
         <p>{report.total} effective responses in this question’s complete sample.</p>
         <dl className="cp-results">{report.options.map(row => <div key={row.optionId}>
